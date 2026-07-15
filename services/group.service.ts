@@ -1,20 +1,26 @@
 import { prisma } from "@/lib/prisma";
 import { employmentService } from "@/services/employment.service";
+import { actionService } from "@/services/action.service";
 
 export class GroupService {
   async upsertFromTelegram(input: {
     telegramId: string;
     name?: string | null;
-    ownerTelegramId?: string | null;
+    adminTelegramIds?: string[] | null;
     memberCount?: number | null;
     description?: string | null;
   }) {
+    const adminJson =
+      input.adminTelegramIds && input.adminTelegramIds.length > 0
+        ? JSON.stringify(input.adminTelegramIds)
+        : undefined;
+
     const group = await prisma.telegramGroup.upsert({
       where: { telegramId: input.telegramId },
       create: {
         telegramId: input.telegramId,
         name: input.name ?? null,
-        ownerTelegramId: input.ownerTelegramId ?? null,
+        adminTelegramIds: adminJson ?? null,
         memberCount: input.memberCount ?? null,
         description: input.description ?? null,
         settings: {
@@ -23,12 +29,15 @@ export class GroupService {
             welcomeMembers: true,
             replyToMentions: true,
             answerQuestions: true,
+            spamModeration: true,
+            mentionNotifications: true,
+            dailySummaryHour: 9,
           },
         },
       },
       update: {
         name: input.name ?? undefined,
-        ownerTelegramId: input.ownerTelegramId ?? undefined,
+        adminTelegramIds: adminJson,
         memberCount: input.memberCount ?? undefined,
         description: input.description ?? undefined,
       },
@@ -45,30 +54,16 @@ export class GroupService {
         group: {
           include: {
             settings: true,
-            _count: {
-              select: {
-                messages: true,
-                faqs: true,
-              },
-            },
+            _count: { select: { faqs: true } },
           },
         },
       },
       orderBy: { updatedAt: "desc" },
     });
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
     const result = [];
     for (const link of links) {
-      const messagesToday = await prisma.conversationContext.count({
-        where: {
-          groupId: link.groupId,
-          createdAt: { gte: startOfDay },
-        },
-      });
-
+      const stats = await actionService.groupStatsToday(link.groupId);
       result.push({
         id: link.group.id,
         telegramId: link.group.telegramId,
@@ -76,10 +71,10 @@ export class GroupService {
         memberCount: link.group.memberCount,
         enabled: link.enabled && (link.group.settings?.enabled ?? false),
         employmentEnabled: link.enabled,
+        enabledByUserId: link.userId,
         settings: link.group.settings,
-        messagesToday,
         faqCount: link.group._count.faqs,
-        recentActivity: messagesToday,
+        ...stats,
       });
     }
 
@@ -104,18 +99,23 @@ export class GroupService {
       throw new Error("Group not found for this account");
     }
 
+    const stats = await actionService.groupStatsToday(groupId);
+
     return {
       id: link.group.id,
       telegramId: link.group.telegramId,
       name: link.group.name,
       description: link.group.description,
+      purpose: link.group.purpose,
       rules: link.group.rules,
       memberCount: link.group.memberCount,
-      ownerTelegramId: link.group.ownerTelegramId,
+      adminTelegramIds: link.group.adminTelegramIds,
+      enabledByUserId: link.userId,
       enabled: link.enabled && (link.group.settings?.enabled ?? false),
       settings: link.group.settings,
       faqs: link.group.faqs,
       recentMessages: [...link.group.messages].reverse(),
+      ...stats,
     };
   }
 
@@ -140,6 +140,9 @@ export class GroupService {
         welcomeMembers: true,
         replyToMentions: true,
         answerQuestions: true,
+        spamModeration: true,
+        mentionNotifications: true,
+        dailySummaryHour: 9,
       },
       update: { enabled: true },
     });
@@ -150,7 +153,12 @@ export class GroupService {
       update: { enabled: true },
     });
 
-    return { groupId: group.id, telegramId: group.telegramId, enabled: link.enabled };
+    return {
+      groupId: group.id,
+      telegramId: group.telegramId,
+      enabled: link.enabled,
+      enabledByUserId: userId,
+    };
   }
 
   async disable(userId: string, groupId: string) {
@@ -186,22 +194,39 @@ export class GroupService {
       welcomeMembers?: boolean;
       replyToMentions?: boolean;
       answerQuestions?: boolean;
+      spamModeration?: boolean;
+      mentionNotifications?: boolean;
+      dailySummaryHour?: number;
+      summaryToGroup?: boolean;
+      summaryToAdmins?: boolean;
+      summaryToPrivate?: boolean;
       rules?: string | null;
       description?: string | null;
+      purpose?: string | null;
     },
   ) {
     await this.getForUser(userId, groupId);
 
-    if (data.rules !== undefined || data.description !== undefined) {
+    if (
+      data.rules !== undefined ||
+      data.description !== undefined ||
+      data.purpose !== undefined
+    ) {
       await prisma.telegramGroup.update({
         where: { id: groupId },
         data: {
           rules: data.rules === undefined ? undefined : data.rules,
           description:
             data.description === undefined ? undefined : data.description,
+          purpose: data.purpose === undefined ? undefined : data.purpose,
         },
       });
     }
+
+    const hour =
+      data.dailySummaryHour !== undefined
+        ? Math.min(23, Math.max(0, Math.floor(data.dailySummaryHour)))
+        : undefined;
 
     const settings = await prisma.groupSettings.upsert({
       where: { groupId },
@@ -211,11 +236,23 @@ export class GroupService {
         welcomeMembers: data.welcomeMembers ?? true,
         replyToMentions: data.replyToMentions ?? true,
         answerQuestions: data.answerQuestions ?? true,
+        spamModeration: data.spamModeration ?? true,
+        mentionNotifications: data.mentionNotifications ?? true,
+        dailySummaryHour: hour ?? 9,
+        summaryToGroup: data.summaryToGroup ?? true,
+        summaryToAdmins: data.summaryToAdmins ?? true,
+        summaryToPrivate: data.summaryToPrivate ?? true,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
         replyToMentions: data.replyToMentions,
         answerQuestions: data.answerQuestions,
+        spamModeration: data.spamModeration,
+        mentionNotifications: data.mentionNotifications,
+        dailySummaryHour: hour,
+        summaryToGroup: data.summaryToGroup,
+        summaryToAdmins: data.summaryToAdmins,
+        summaryToPrivate: data.summaryToPrivate,
       },
     });
 

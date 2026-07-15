@@ -12,23 +12,25 @@ function systemRules() {
     "You are Sentry, an AI community employee for Telegram.",
     "Never invent group rules.",
     "Never pretend to be human.",
-    "Only answer using the provided group context, FAQs, and recent messages.",
-    "If you are unsure, say exactly: I don't know.",
-    "Keep replies concise and helpful.",
+    "Only use provided group context, FAQs, and recent messages.",
+    "If unsure, say exactly: I don't know.",
+    "Keep replies concise.",
   ].join(" ");
 }
 
 function formatContext(context: ContextBundle) {
   const recent = context.recentMessages
-    .slice(-30)
+    .slice(-25)
     .map((m) => `${m.from}: ${m.text}`)
     .join("\n");
   const faqs = context.faqs
+    .slice(0, 12)
     .map((f, i) => `${i + 1}. Q: ${f.question}\n   A: ${f.answer}`)
     .join("\n");
 
   return [
     `Group: ${context.groupName}`,
+    `Purpose: ${context.purpose ?? "(none)"}`,
     `Description: ${context.description ?? "(none)"}`,
     `Rules: ${context.rules ?? "(none)"}`,
     `FAQs:\n${faqs || "(none)"}`,
@@ -36,7 +38,10 @@ function formatContext(context: ContextBundle) {
   ].join("\n\n");
 }
 
-async function callOpenAI(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>) {
+async function callOpenAI(
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  maxTokens = 400,
+) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
@@ -51,6 +56,7 @@ async function callOpenAI(messages: Array<{ role: "system" | "user" | "assistant
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       temperature: 0.3,
+      max_tokens: maxTokens,
       messages,
     }),
   });
@@ -63,8 +69,7 @@ async function callOpenAI(messages: Array<{ role: "system" | "user" | "assistant
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
-  const content = data.choices?.[0]?.message?.content?.trim();
-  return content || "I don't know.";
+  return data.choices?.[0]?.message?.content?.trim() || "I don't know.";
 }
 
 export class AiService {
@@ -74,31 +79,61 @@ export class AiService {
 
   async generateReply(input: ReplyInput) {
     const faqHit = await this.answerFAQ(input.context, input.userQuestion);
-    if (faqHit) return faqHit;
+    if (faqHit) return { text: faqHit, viaFaq: true as const };
 
-    return callOpenAI([
+    const text = await callOpenAI([
       { role: "system", content: systemRules() },
       {
         role: "user",
         content: `${formatContext(input.context)}\n\nUser (${input.userName ?? "member"}) asked:\n${input.userQuestion}`,
       },
     ]);
+    return { text, viaFaq: false as const };
   }
 
-  async generateWelcome(input: {
+  async generateWelcome(input: { context: ContextBundle; memberName: string }) {
+    return callOpenAI(
+      [
+        { role: "system", content: systemRules() },
+        {
+          role: "user",
+          content: `${formatContext(input.context)}\n\nWrite a short friendly welcome for "${input.memberName}". Max 2 sentences.`,
+        },
+      ],
+      120,
+    );
+  }
+
+  async generateDailySummary(context: ContextBundle) {
+    return callOpenAI(
+      [
+        { role: "system", content: systemRules() },
+        {
+          role: "user",
+          content: `${formatContext(context)}\n\nWrite a concise daily summary with sections:\n- Important discussions\n- Questions asked\n- Decisions made\n- Unanswered questions\nKeep under 180 words.`,
+        },
+      ],
+      350,
+    );
+  }
+
+  async generateMentionDigest(input: {
     context: ContextBundle;
-    memberName: string;
+    mentionedUsername: string;
+    triggerText: string;
   }) {
-    return callOpenAI([
-      { role: "system", content: systemRules() },
-      {
-        role: "user",
-        content: `${formatContext(input.context)}\n\nWrite a short friendly welcome for new member "${input.memberName}". Max 2 sentences.`,
-      },
-    ]);
+    return callOpenAI(
+      [
+        { role: "system", content: systemRules() },
+        {
+          role: "user",
+          content: `${formatContext(input.context)}\n\n@${input.mentionedUsername} was mentioned:\n"${input.triggerText}"\n\nWrite a private notification with:\nSummary:\n...\nRecommended action:\n...\nKeep under 100 words.`,
+        },
+      ],
+      220,
+    );
   }
 
-  /** Kept for later prompts — not used in Prompt 3. */
   summarize(): never {
     throw new Error("Not Implemented");
   }

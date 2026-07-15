@@ -2,7 +2,9 @@ import type { Telegraf, Context } from "telegraf";
 import { groupService } from "@/services/group.service";
 import { contextService } from "@/services/context.service";
 import { aiService } from "@/services/ai.service";
-import { prisma } from "@/lib/prisma";
+import { actionService } from "@/services/action.service";
+import { moderationService } from "@/services/moderation.service";
+import { notificationService } from "@/services/notification.service";
 
 function chatId(ctx: Context) {
   return ctx.chat?.id != null ? String(ctx.chat.id) : null;
@@ -27,7 +29,7 @@ function mentionedBot(text: string, username: string) {
   );
 }
 
-async function groupIsActive(telegramId: string) {
+async function resolveActiveEmployer(telegramId: string) {
   const group = await groupService.findActiveGroupByTelegramId(telegramId);
   if (!group?.settings?.enabled) return null;
 
@@ -38,7 +40,7 @@ async function groupIsActive(telegramId: string) {
       Number(link.user.wallet?.balance?.toString() ?? "0") > 0,
   );
   if (!activeEmployer) return null;
-  return group;
+  return { group, employerUserId: activeEmployer.userId };
 }
 
 export function registerHandlers(bot: Telegraf) {
@@ -55,14 +57,17 @@ export function registerHandlers(bot: Telegraf) {
     const status = member.status;
     if (status !== "member" && status !== "administrator") return;
 
-    const owners = await ctx.telegram.getChatAdministrators(chat.id).catch(() => []);
-    const creator = owners.find((a) => a.status === "creator");
+    const admins = await ctx.telegram.getChatAdministrators(chat.id).catch(() => []);
+    const adminIds = admins.map((a) => String(a.user.id));
 
     await groupService.upsertFromTelegram({
       telegramId: String(chat.id),
       name: chat.title,
-      ownerTelegramId: creator?.user.id ? String(creator.user.id) : null,
-      memberCount: "member_count" in chat ? (chat as { member_count?: number }).member_count ?? null : null,
+      adminTelegramIds: adminIds,
+      memberCount:
+        "member_count" in chat
+          ? ((chat as { member_count?: number }).member_count ?? null)
+          : null,
     });
   });
 
@@ -76,17 +81,19 @@ export function registerHandlers(bot: Telegraf) {
 
     for (const member of newcomers) {
       if (member.id === me.id) {
+        const admins = await ctx.telegram.getChatAdministrators(ctx.chat!.id).catch(() => []);
         await groupService.upsertFromTelegram({
           telegramId,
           name: "title" in ctx.chat! ? ctx.chat.title : null,
+          adminTelegramIds: admins.map((a) => String(a.user.id)),
         });
         continue;
       }
 
-      const group = await groupIsActive(telegramId);
-      if (!group?.settings?.welcomeMembers) continue;
+      const active = await resolveActiveEmployer(telegramId);
+      if (!active?.group.settings?.welcomeMembers) continue;
 
-      const context = await contextService.build(group.id);
+      const context = await contextService.build(active.group.id);
       const name = member.username ? `@${member.username}` : member.first_name;
       try {
         const welcome = await aiService.generateWelcome({
@@ -94,7 +101,13 @@ export function registerHandlers(bot: Telegraf) {
           memberName: name,
         });
         await ctx.reply(welcome);
-        await prisma.task.create({ data: { groupId: group.id } });
+        await actionService.record({
+          type: "welcome",
+          groupId: active.group.id,
+          userId: active.employerUserId,
+          billable: true,
+          metadata: { member: name },
+        });
       } catch (err) {
         console.error("[welcome]", err);
         await ctx.reply(`Welcome ${name}!`);
@@ -113,39 +126,110 @@ export function registerHandlers(bot: Telegraf) {
     });
 
     const text = ctx.message.text;
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const fromUsername = ctx.from?.username ?? ctx.from?.first_name ?? null;
+
     await contextService.appendMessage({
       groupId: groupRecord.id,
       telegramMessageId: String(ctx.message.message_id),
-      fromUserId: ctx.from?.id ? String(ctx.from.id) : null,
-      fromUsername: ctx.from?.username ?? ctx.from?.first_name ?? null,
+      fromUserId,
+      fromUsername,
       text,
     });
 
-    const group = await groupIsActive(telegramId);
-    if (!group) return;
+    const active = await resolveActiveEmployer(telegramId);
+    if (!active) return;
+
+    // Mention notifications for monitored users (non-bot mentions)
+    await notificationService.handlePossibleMention({
+      groupId: active.group.id,
+      text,
+      fromUsername,
+    });
+
+    // Moderation
+    if (active.group.settings?.spamModeration) {
+      const verdict = moderationService.inspect({
+        text,
+        fromUserId,
+        groupId: active.group.id,
+      });
+      if (verdict.spam) {
+        try {
+          await ctx.deleteMessage(ctx.message.message_id);
+        } catch {
+          // missing delete permission
+        }
+        await ctx
+          .reply(
+            `Warning: message removed (${verdict.reason ?? "spam"}). Please follow group rules.`,
+          )
+          .catch(() => undefined);
+
+        if (active.group.adminTelegramIds) {
+          try {
+            const admins = JSON.parse(active.group.adminTelegramIds) as string[];
+            for (const adminId of admins.slice(0, 5)) {
+              await ctx.telegram
+                .sendMessage(
+                  Number(adminId),
+                  `Moderation in ${active.group.name ?? telegramId}: removed spam (${verdict.reason}) from ${fromUsername ?? fromUserId}`,
+                )
+                .catch(() => undefined);
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        await actionService.record({
+          type: "spam_moderation",
+          groupId: active.group.id,
+          userId: active.employerUserId,
+          billable: true,
+          metadata: { reason: verdict.reason, confidence: verdict.confidence },
+        });
+        return;
+      }
+    }
 
     const username = await botUsername(ctx);
-    const isReplyToBot =
-      ctx.message.reply_to_message?.from?.id === (await ctx.telegram.getMe()).id;
+    const me = await ctx.telegram.getMe();
+    const isReplyToBot = ctx.message.reply_to_message?.from?.id === me.id;
     const isMention = mentionedBot(text, username);
 
     if (!isMention && !isReplyToBot) return;
-    if (!group.settings?.replyToMentions && !group.settings?.answerQuestions) return;
+    if (!active.group.settings?.replyToMentions && !active.group.settings?.answerQuestions) {
+      return;
+    }
 
-    const context = await contextService.build(group.id);
+    const context = await contextService.build(active.group.id);
     const cleaned = text.replace(new RegExp(`@${username}`, "ig"), "").trim();
 
     try {
-      const reply = await aiService.generateReply({
+      const result = await aiService.generateReply({
         context,
         userQuestion: cleaned || text,
-        userName: ctx.from?.username ?? ctx.from?.first_name,
+        userName: fromUsername ?? undefined,
       });
-      await ctx.reply(reply, { reply_to_message_id: ctx.message.message_id });
-      await prisma.task.create({ data: { groupId: group.id } });
+      await ctx.reply(result.text, { reply_to_message_id: ctx.message.message_id });
+      await actionService.record({
+        type: result.viaFaq ? "faq_answer" : "mention_reply",
+        groupId: active.group.id,
+        userId: active.employerUserId,
+        billable: true,
+        metadata: { viaFaq: result.viaFaq },
+      });
     } catch (err) {
       console.error("[mention]", err);
       await ctx.reply("I don't know.");
+      await actionService.record({
+        type: "mention_reply",
+        groupId: active.group.id,
+        userId: active.employerUserId,
+        billable: false,
+        status: "failed",
+      });
     }
   });
 }

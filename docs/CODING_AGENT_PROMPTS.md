@@ -1705,3 +1705,446 @@ This hackathon project will be developed, tested, and demonstrated entirely on C
 - OpenAI / Telegram tokens must be set in `.env` for live replies
 - EmploymentContract still user-deployed on Celo mainnet (`pnpm deploy-celo` + sync)
 
+---
+
+# CTO Said
+
+This is progressing exactly the way I'd expect. The architecture is still clean, and I don't see any overengineering creeping in.
+
+I only have **three small corrections** before Prompt 4.
+
+---
+
+# Fixes from Prompt 3
+
+## 1. Don't store the last 100 raw messages forever
+
+The summary says:
+
+> Rolling ConversationContext (last 100 messages)
+
+Keep this, but make it **ephemeral**.
+
+Rules:
+
+* Maximum 100 recent messages.
+* Maximum retention: **24 hours**.
+* Automatically delete anything older than 24 hours.
+* This is working memory, **not** chat history.
+
+This reduces storage, improves privacy, and keeps prompts relevant.
+
+---
+
+## 2. Dashboard should never show "Tasks Today"
+
+At this point the system has no billing engine.
+
+Replace
+
+```text
+Tasks Today
+```
+
+with
+
+```text
+Actions Completed
+```
+
+Later, billing will decide which actions are billable.
+
+---
+
+## 3. Group owner
+
+Telegram doesn't reliably expose the group owner through normal bot events.
+
+Instead, store:
+
+* Group ID
+* Group Name
+* User who enabled Sentry
+* Administrators (when obtainable)
+
+Do not assume ownership information exists.
+
+---
+
+# Prompt 4 — Community Employee (Core Work Engine)
+
+## Objective
+
+This prompt turns Sentry into a **real AI Community Employee**.
+
+By the end of this prompt, Sentry should be capable of performing useful work inside Telegram communities.
+
+**This is the first prompt where Sentry actually earns money (logically), but do NOT implement blockchain deductions yet.** Instead, record billable actions in the database.
+
+---
+
+# Scope
+
+Implement only these six jobs:
+
+1. Reply to mentions
+2. Welcome new members
+3. Answer FAQs
+4. Moderate spam
+5. Summarize discussions
+6. Notify users of important mentions
+
+Nothing else.
+
+---
+
+# Community Moderation
+
+Implement lightweight moderation.
+
+Detect:
+
+* obvious spam
+* repeated messages
+* scam links
+* excessive emojis
+* offensive language (AI-assisted)
+
+Actions:
+
+* Delete message (if bot has permission)
+* Warn user
+* Notify admins
+
+Every moderation action becomes an **Action Record**.
+
+---
+
+# Discussion Summaries
+
+Implement:
+
+Daily Summary
+
+Generate a concise summary containing:
+
+* Important discussions
+* Questions asked
+* Decisions made
+* Unanswered questions
+
+Send to:
+
+* Group
+* Admins
+* Private chat
+
+according to group settings.
+
+---
+
+# Mention Notifications
+
+If a monitored user is mentioned while away:
+
+Notify them privately.
+
+Example:
+
+```text
+You were mentioned in "Sentry Builders".
+
+Summary:
+
+John asked for the deployment link.
+
+Alice replied with a partial answer.
+
+Recommended action:
+Reply when available.
+```
+
+---
+
+# Action Records
+
+Create a new model:
+
+```text
+ActionRecord
+```
+
+Purpose:
+
+Track work completed by Sentry.
+
+Fields:
+
+```text
+type
+
+groupId
+
+userId
+
+completedAt
+
+status
+
+billable (boolean)
+
+metadata
+```
+
+This is **not** billing.
+
+It is a work log.
+
+Future prompts will convert billable actions into payments.
+
+---
+
+# Scheduler
+
+Implement the scheduler now.
+
+Only five jobs:
+
+* Daily summaries
+* Daily reports
+* Reminder notifications
+* Conversation cleanup (delete messages older than 24 hours)
+* Maintenance
+
+Nothing more.
+
+Use the simplest scheduler available.
+
+---
+
+# AI Improvements
+
+Improve prompts.
+
+Always include:
+
+* Group name
+* Group purpose
+* Group rules
+* Recent conversation
+* FAQs
+* User settings
+
+Keep prompts concise.
+
+Limit unnecessary tokens.
+
+---
+
+# Dashboard
+
+Replace the placeholder dashboard.
+
+Display:
+
+```text
+Wallet Balance
+
+Employment Status
+
+Connected Groups
+
+Actions Completed
+
+Today's Billable Actions
+
+Recent Activity
+```
+
+Recent Activity:
+
+```text
+Answered Mention
+
+Generated Summary
+
+Moderated Spam
+
+Sent Notification
+
+Welcomed Member
+```
+
+---
+
+# Group Dashboard
+
+Display:
+
+```text
+Group Name
+
+Employment Enabled
+
+Actions Today
+
+Mentions Handled
+
+Spam Removed
+
+Summary Status
+```
+
+---
+
+# Group Settings
+
+Expand settings.
+
+Users can configure:
+
+* Welcome message ON/OFF
+* Mention replies ON/OFF
+* FAQ ON/OFF
+* Spam moderation ON/OFF
+* Daily summary time
+* Mention notifications ON/OFF
+
+Nothing else.
+
+---
+
+# Billing Preparation
+
+Do **not** deduct money yet.
+
+Instead:
+
+Every completed job creates an `ActionRecord`.
+
+Mark whether it is billable.
+
+Example:
+
+```text
+Reply → billable
+
+Welcome → billable
+
+Summary → billable
+
+Spam moderation → billable
+
+Notification → billable
+```
+
+No blockchain interaction in this prompt.
+
+---
+
+# API
+
+Implement:
+
+```text
+GET /api/actions
+
+GET /api/actions/recent
+
+GET /api/groups/:id/actions
+
+PATCH /api/groups/:id/settings
+```
+
+---
+
+# Excluded
+
+Do NOT implement:
+
+* Smart contract deductions
+* Wallet charging
+* On-chain settlement
+* Revenue dashboard
+* Analytics
+* Multi-user billing
+* Payment streaming
+
+These belong to Prompt 5.
+
+---
+
+# Acceptance Criteria
+
+At the end of Prompt 4:
+
+* ✅ Sentry actively works inside Telegram groups.
+* ✅ It answers mentions.
+* ✅ Welcomes members.
+* ✅ Detects and moderates obvious spam.
+* ✅ Generates daily summaries.
+* ✅ Sends private mention notifications.
+* ✅ Records every completed action in `ActionRecord`.
+* ✅ Dashboard reflects real work completed.
+* ✅ Conversation context is automatically cleaned after 24 hours.
+
+---
+
+## One architectural improvement
+
+From this point onward, stop thinking in terms of **"tasks"** and start thinking in terms of **"completed work."**
+
+Everything Sentry does should follow the same lifecycle:
+
+```text
+Event
+    ↓
+AI decides
+    ↓
+Work completed
+    ↓
+ActionRecord created
+    ↓
+(Next prompt)
+Billing Engine charges
+```
+
+That separation is important because it keeps the AI focused on doing useful work while the payment system simply accounts for completed work. It also makes it easy to change pricing later without changing the AI behavior. I think this is the cleanest separation of concerns for the rest of the implementation.
+
+---
+
+# Agent Session Summary — Prompt 4 (2026-07-15)
+
+## Prompt 3 fixes
+
+- Conversation context is ephemeral: max **100** messages **and** max **24 hours** (prune on write + scheduler every 15m).
+- Dashboard uses **Actions Completed** (not Tasks Today).
+- Groups store **admins** (`adminTelegramIds`) + **enabledByUserId** via `GroupEmployment`; no assumed Telegram owner.
+
+## Core work engine
+
+- New `ActionRecord` model (`type`, `groupId`, `userId`, `completedAt`, `status`, `billable`, `metadata`).
+- Jobs wired with ActionRecords (all billable when successful):
+  - Mention replies / FAQ answers
+  - Welcomes
+  - Spam moderation (scam links, repeats, emoji spam, offensive; delete + warn + notify admins)
+  - Daily summaries (group / admins / private per settings)
+  - Private mention notifications for monitored Telegram usernames
+- No on-chain deductions (billing prep only).
+
+## Scheduler (`node-cron`)
+
+Jobs: conversation cleanup, hourly daily-summary pass, daily reports log, reminders stub, weekly maintenance.  
+Starts via `instrumentation.ts` and `pnpm scheduler`.
+
+## APIs & UI
+
+- `GET /api/actions`, `GET /api/actions/recent`, `GET /api/groups/:id/actions`, `PATCH /api/groups/:id/settings`
+- Dashboard: wallet, employment, groups, actions completed, today's billable, recent activity feed
+- Group dashboard stats + expanded settings (welcome, mentions, FAQ, spam, summary hour, mention notifications)
+- User settings: Telegram username + user ID for DM alerts
+
+## Migration
+
+`prisma/migrations/20260715160000_prompt4_actions/` — run `pnpm prisma:migrate` when Postgres is up.
+

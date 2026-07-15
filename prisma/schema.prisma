@@ -14,6 +14,20 @@ enum EmploymentStatus {
   Exhausted
 }
 
+enum ActionType {
+  mention_reply
+  welcome
+  faq_answer
+  spam_moderation
+  daily_summary
+  mention_notification
+}
+
+enum ActionStatus {
+  completed
+  failed
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -27,6 +41,7 @@ model User {
   reports         Report[]
   settings        Settings?
   sessions        Session[]
+  actions         ActionRecord[]
 }
 
 model Session {
@@ -40,7 +55,6 @@ model Session {
 
 model Wallet {
   id        String   @id @default(cuid())
-  /// Smart wallet address managed for employment — never a user private key.
   address   String   @unique
   balance   Decimal  @default(0) @db.Decimal(36, 18)
   provider  String   @default("employment-contract")
@@ -54,30 +68,40 @@ model TelegramGroup {
   id              String   @id @default(cuid())
   telegramId      String   @unique
   name            String?
-  ownerTelegramId String?
+  /// JSON array of admin telegram user ids when obtainable — not assumed ownership.
+  adminTelegramIds String?
   memberCount     Int?
   description     String?
+  purpose         String?
   rules           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tasks        Task[]
-  settings     GroupSettings?
-  employment   GroupEmployment[]
-  faqs         GroupFAQ[]
-  messages     ConversationContext[]
+  tasks      Task[]
+  settings   GroupSettings?
+  employment GroupEmployment[]
+  faqs       GroupFAQ[]
+  messages   ConversationContext[]
+  actions    ActionRecord[]
+  reports    Report[]
 }
 
 model GroupSettings {
-  id               String        @id @default(cuid())
-  groupId          String        @unique
-  group            TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  enabled          Boolean       @default(false)
-  welcomeMembers   Boolean       @default(true)
-  replyToMentions  Boolean       @default(true)
-  answerQuestions  Boolean       @default(true)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                    String        @id @default(cuid())
+  groupId               String        @unique
+  group                 TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  enabled               Boolean       @default(false)
+  welcomeMembers        Boolean       @default(true)
+  replyToMentions       Boolean       @default(true)
+  answerQuestions       Boolean       @default(true)
+  spamModeration        Boolean       @default(true)
+  mentionNotifications  Boolean       @default(true)
+  dailySummaryHour      Int           @default(9)
+  summaryToGroup        Boolean       @default(true)
+  summaryToAdmins       Boolean       @default(true)
+  summaryToPrivate      Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 }
 
 model GroupEmployment {
@@ -86,6 +110,7 @@ model GroupEmployment {
   groupId   String
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   group     TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  /// User who enabled Sentry for this group.
   enabled   Boolean       @default(true)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -117,6 +142,25 @@ model ConversationContext {
 
   @@unique([groupId, telegramMessageId])
   @@index([groupId, createdAt])
+  @@index([createdAt])
+}
+
+model ActionRecord {
+  id          String        @id @default(cuid())
+  type        ActionType
+  groupId     String?
+  group       TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  completedAt DateTime      @default(now())
+  status      ActionStatus  @default(completed)
+  billable    Boolean       @default(true)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+
+  @@index([userId, completedAt])
+  @@index([groupId, completedAt])
+  @@index([completedAt])
 }
 
 model Employment {
@@ -147,10 +191,13 @@ model BillingRecord {
 }
 
 model Report {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id        String         @id @default(cuid())
+  userId    String?
+  user      User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId   String?
+  group     TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  content   String?
+  createdAt DateTime       @default(now())
 }
 
 model Settings {
@@ -161,6 +208,9 @@ model Settings {
   timeZone           String   @default("UTC")
   autoResume         Boolean  @default(true)
   emailNotifications Boolean  @default(true)
+  /// Telegram identity for private mention notifications
+  telegramUserId     String?
+  telegramUsername   String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

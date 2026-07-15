@@ -8,6 +8,8 @@ type SettingsState = {
   timeZone: string;
   autoResume: boolean;
   emailNotifications: boolean;
+  telegramUserId: string;
+  telegramUsername: string;
 };
 
 export default function SettingsPage() {
@@ -16,6 +18,8 @@ export default function SettingsPage() {
     timeZone: "UTC",
     autoResume: true,
     emailNotifications: true,
+    telegramUserId: "",
+    telegramUsername: "",
   });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +68,7 @@ export default function SettingsPage() {
         Settings
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        General, employment, and notification preferences. Telegram options arrive in
-        Prompt 4.
+        General preferences plus Telegram identity for private mention notifications.
       </p>
 
       <form onSubmit={onSubmit} className="mt-10 max-w-lg space-y-8">
@@ -113,6 +116,24 @@ export default function SettingsPage() {
               }
             />
             Email Notifications
+          </label>
+          <label className="block text-sm text-[#9aa89a]">
+            Telegram username (for mention alerts)
+            <input
+              value={settings.telegramUsername}
+              onChange={(e) => setSettings((s) => ({ ...s, telegramUsername: e.target.value }))}
+              placeholder="bobman7000"
+              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+            />
+          </label>
+          <label className="block text-sm text-[#9aa89a]">
+            Telegram user ID (numeric, for private DMs)
+            <input
+              value={settings.telegramUserId}
+              onChange={(e) => setSettings((s) => ({ ...s, telegramUserId: e.target.value }))}
+              placeholder="123456789"
+              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+            />
           </label>
         </section>
 

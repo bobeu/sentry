@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { EmploymentStatus } from "@prisma/client";
 import { walletService } from "@/services/wallet.service";
+import { actionService } from "@/services/action.service";
 
 function balanceOf(value: { toString(): string } | null | undefined) {
   if (!value) return 0;
@@ -11,14 +12,6 @@ export class EmploymentService {
   async getStatus(userId: string) {
     let employment = await prisma.employment.findUnique({ where: { userId } });
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    const enabledGroups = await prisma.groupEmployment.count({
-      where: { userId, enabled: true },
-    });
-    const tasksToday = await prisma.task.count({
-      where: {
-        createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-      },
-    });
 
     if (employment?.status === "Active" && balanceOf(wallet?.balance) <= 0) {
       employment = await prisma.employment.update({
@@ -26,6 +19,8 @@ export class EmploymentService {
         data: { status: "Exhausted" },
       });
     }
+
+    const stats = await actionService.dashboardStats(userId);
 
     return {
       status: (employment?.status ?? "Inactive") as EmploymentStatus | "Inactive",
@@ -44,8 +39,10 @@ export class EmploymentService {
             provider: wallet.provider,
           }
         : null,
-      groups: enabledGroups,
-      tasks: tasksToday,
+      groups: stats.groups,
+      actionsCompleted: stats.actionsCompleted,
+      billableToday: stats.billableToday,
+      recentActivity: stats.recent,
     };
   }
 

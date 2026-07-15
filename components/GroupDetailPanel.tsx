@@ -12,12 +12,23 @@ export function GroupDetailPanel() {
   const groupId = params.id;
 
   const [name, setName] = useState("");
+  const [stats, setStats] = useState({
+    actionsToday: 0,
+    mentionsHandled: 0,
+    spamRemoved: 0,
+    summaryStatus: "No summary yet",
+    enabled: false,
+  });
   const [settings, setSettings] = useState({
     welcomeMembers: true,
     replyToMentions: true,
     answerQuestions: true,
+    spamModeration: true,
+    mentionNotifications: true,
+    dailySummaryHour: 9,
   });
   const [rules, setRules] = useState("");
+  const [purpose, setPurpose] = useState("");
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
@@ -32,15 +43,27 @@ export function GroupDetailPanel() {
       setError(json.error ?? "Failed to load group");
       return;
     }
-    setName(json.group.name ?? json.group.telegramId);
-    setSettings({
-      welcomeMembers: json.group.settings?.welcomeMembers ?? true,
-      replyToMentions: json.group.settings?.replyToMentions ?? true,
-      answerQuestions: json.group.settings?.answerQuestions ?? true,
+    const g = json.group;
+    setName(g.name ?? g.telegramId);
+    setStats({
+      actionsToday: g.actionsToday ?? 0,
+      mentionsHandled: g.mentionsHandled ?? 0,
+      spamRemoved: g.spamRemoved ?? 0,
+      summaryStatus: g.summaryStatus ?? "No summary yet",
+      enabled: g.enabled ?? false,
     });
-    setRules(json.group.rules ?? "");
-    setFaqs(json.group.faqs ?? []);
-    setMessages(json.group.recentMessages ?? []);
+    setSettings({
+      welcomeMembers: g.settings?.welcomeMembers ?? true,
+      replyToMentions: g.settings?.replyToMentions ?? true,
+      answerQuestions: g.settings?.answerQuestions ?? true,
+      spamModeration: g.settings?.spamModeration ?? true,
+      mentionNotifications: g.settings?.mentionNotifications ?? true,
+      dailySummaryHour: g.settings?.dailySummaryHour ?? 9,
+    });
+    setRules(g.rules ?? "");
+    setPurpose(g.purpose ?? "");
+    setFaqs(g.faqs ?? []);
+    setMessages(g.recentMessages ?? []);
     setError(null);
   }
 
@@ -51,10 +74,10 @@ export function GroupDetailPanel() {
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
     setMessage(null);
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(`/api/groups/${groupId}/settings`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...settings, rules }),
+      body: JSON.stringify({ ...settings, rules, purpose }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -99,15 +122,22 @@ export function GroupDetailPanel() {
         <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl text-[#e8f5d8]">
           {name || "Group"}
         </h1>
+        <p className="mt-3 text-sm text-[#9aa89a]">
+          Employment {stats.enabled ? "Enabled" : "Disabled"} · Actions today{" "}
+          {stats.actionsToday} · Mentions {stats.mentionsHandled} · Spam removed{" "}
+          {stats.spamRemoved} · {stats.summaryStatus}
+        </p>
       </div>
 
       <form onSubmit={saveSettings} className="max-w-xl space-y-4">
         <h2 className="text-lg text-[#e8f5d8]">Settings</h2>
         {(
           [
-            ["welcomeMembers", "Welcome Members"],
-            ["replyToMentions", "Reply To Mentions"],
-            ["answerQuestions", "Answer Questions"],
+            ["welcomeMembers", "Welcome message"],
+            ["replyToMentions", "Mention replies"],
+            ["answerQuestions", "FAQ / questions"],
+            ["spamModeration", "Spam moderation"],
+            ["mentionNotifications", "Mention notifications"],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex items-center gap-3 text-sm text-[#c7d6c4]">
@@ -119,6 +149,27 @@ export function GroupDetailPanel() {
             {label}
           </label>
         ))}
+        <label className="block text-sm text-[#9aa89a]">
+          Daily summary hour (UTC 0–23)
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={settings.dailySummaryHour}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, dailySummaryHour: Number(e.target.value) }))
+            }
+            className="mt-2 w-28 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+        </label>
+        <label className="block text-sm text-[#9aa89a]">
+          Group purpose
+          <input
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+        </label>
         <label className="block text-sm text-[#9aa89a]">
           Group rules
           <textarea
@@ -167,17 +218,14 @@ export function GroupDetailPanel() {
             rows={3}
             className="w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
           />
-          <button
-            type="submit"
-            className="rounded-full border border-white/20 px-5 py-2.5 text-sm"
-          >
+          <button type="submit" className="rounded-full border border-white/20 px-5 py-2.5 text-sm">
             Add FAQ
           </button>
         </form>
       </section>
 
       <section className="max-w-2xl space-y-3">
-        <h2 className="text-lg text-[#e8f5d8]">Recent Messages</h2>
+        <h2 className="text-lg text-[#e8f5d8]">Recent Messages (24h working memory)</h2>
         {messages.length === 0 ? (
           <p className="text-sm text-[#9aa89a]">No messages captured yet.</p>
         ) : (

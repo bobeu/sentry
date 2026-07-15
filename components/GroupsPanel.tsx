@@ -8,7 +8,10 @@ type GroupRow = {
   telegramId: string;
   name: string | null;
   enabled: boolean;
-  messagesToday: number;
+  actionsToday: number;
+  mentionsHandled: number;
+  spamRemoved: number;
+  summaryStatus: string;
   faqCount: number;
   memberCount: number | null;
 };
@@ -114,9 +117,8 @@ export function GroupsPanel() {
                   {g.name ?? g.telegramId}
                 </Link>
                 <p className="mt-1 text-sm text-[#9aa89a]">
-                  {g.enabled ? "Enabled" : "Disabled"} · Messages today {g.messagesToday} · FAQs{" "}
-                  {g.faqCount}
-                  {g.memberCount != null ? ` · Members ${g.memberCount}` : ""}
+                  {g.enabled ? "Enabled" : "Disabled"} · Actions today {g.actionsToday ?? 0} ·
+                  Mentions {g.mentionsHandled ?? 0} · Spam {g.spamRemoved ?? 0} · FAQs {g.faqCount}
                 </p>
               </div>
               <div className="flex gap-2">

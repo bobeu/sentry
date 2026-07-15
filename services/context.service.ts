@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 
 const MAX_CONTEXT = 100;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type ContextBundle = {
   groupName: string;
+  purpose: string | null;
   description: string | null;
   rules: string | null;
   recentMessages: Array<{
@@ -17,10 +19,22 @@ export type ContextBundle = {
     welcomeMembers: boolean;
     replyToMentions: boolean;
     answerQuestions: boolean;
+    spamModeration: boolean;
+    mentionNotifications: boolean;
   };
 };
 
 export class ContextService {
+  async pruneExpired(groupId?: string) {
+    const cutoff = new Date(Date.now() - MAX_AGE_MS);
+    await prisma.conversationContext.deleteMany({
+      where: {
+        createdAt: { lt: cutoff },
+        ...(groupId ? { groupId } : {}),
+      },
+    });
+  }
+
   async appendMessage(input: {
     groupId: string;
     telegramMessageId: string;
@@ -29,6 +43,8 @@ export class ContextService {
     text: string;
   }) {
     if (!input.text.trim()) return;
+
+    await this.pruneExpired(input.groupId);
 
     await prisma.conversationContext.upsert({
       where: {
@@ -66,12 +82,19 @@ export class ContextService {
   }
 
   async build(groupId: string): Promise<ContextBundle> {
+    await this.pruneExpired(groupId);
+    const cutoff = new Date(Date.now() - MAX_AGE_MS);
+
     const group = await prisma.telegramGroup.findUnique({
       where: { id: groupId },
       include: {
         settings: true,
         faqs: { orderBy: { createdAt: "asc" }, take: 20 },
-        messages: { orderBy: { createdAt: "desc" }, take: MAX_CONTEXT },
+        messages: {
+          where: { createdAt: { gte: cutoff } },
+          orderBy: { createdAt: "desc" },
+          take: MAX_CONTEXT,
+        },
       },
     });
 
@@ -83,6 +106,7 @@ export class ContextService {
 
     return {
       groupName: group.name ?? `Group ${group.telegramId}`,
+      purpose: group.purpose,
       description: group.description,
       rules: group.rules,
       recentMessages: recent.map((m) => ({
@@ -96,6 +120,8 @@ export class ContextService {
         welcomeMembers: group.settings?.welcomeMembers ?? true,
         replyToMentions: group.settings?.replyToMentions ?? true,
         answerQuestions: group.settings?.answerQuestions ?? true,
+        spamModeration: group.settings?.spamModeration ?? true,
+        mentionNotifications: group.settings?.mentionNotifications ?? true,
       },
     };
   }
