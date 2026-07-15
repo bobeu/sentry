@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { EmploymentStatus } from "@prisma/client";
+import { walletService } from "@/services/wallet.service";
 
 function balanceOf(value: { toString(): string } | null | undefined) {
   if (!value) return 0;
@@ -10,10 +11,12 @@ export class EmploymentService {
   async getStatus(userId: string) {
     let employment = await prisma.employment.findUnique({ where: { userId } });
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    const groups = await prisma.telegramGroup.count();
-    const tasks = await prisma.task.count({
+    const enabledGroups = await prisma.groupEmployment.count({
+      where: { userId, enabled: true },
+    });
+    const tasksToday = await prisma.task.count({
       where: {
-        OR: [{ groupId: null }, { group: { isNot: null } }],
+        createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       },
     });
 
@@ -38,21 +41,17 @@ export class EmploymentService {
         ? {
             address: wallet.address,
             balance: balanceOf(wallet.balance),
+            provider: wallet.provider,
           }
         : null,
-      groups: 0,
-      tasks: 0,
-      counts: { groups, tasks },
+      groups: enabledGroups,
+      tasks: tasksToday,
     };
   }
 
   async start(userId: string) {
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) {
-      throw new Error("Create or connect a wallet before hiring Sentry");
-    }
-
-    const bal = balanceOf(wallet.balance);
+    const wallet = await walletService.ensureSmartWallet(userId);
+    const bal = wallet.balance;
     const nextStatus: EmploymentStatus = bal > 0 ? "Active" : "Inactive";
 
     const employment = await prisma.employment.upsert({
@@ -80,6 +79,7 @@ export class EmploymentService {
         startedAt: employment.startedAt,
         pausedAt: employment.pausedAt,
       },
+      wallet,
     };
   }
 
@@ -94,10 +94,7 @@ export class EmploymentService {
 
     const updated = await prisma.employment.update({
       where: { userId },
-      data: {
-        status: "Paused",
-        pausedAt: new Date(),
-      },
+      data: { status: "Paused", pausedAt: new Date() },
     });
 
     return {
@@ -146,6 +143,14 @@ export class EmploymentService {
       startedAt: updated.startedAt,
       pausedAt: updated.pausedAt,
     };
+  }
+
+  async assertCanWork(userId: string) {
+    const status = await this.getStatus(userId);
+    if (status.status !== "Active") {
+      throw new Error("Sentry employment is not Active");
+    }
+    return status;
   }
 }
 

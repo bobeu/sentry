@@ -1132,3 +1132,576 @@ More importantly, it aligns with the product model: **employment begins when the
 
 ---
 
+# CTO Said
+
+This is progressing well.
+
+I also noticed something important in Prompt 2 that I'd **change before moving forward**.
+
+---
+
+# Fixes from Prompt 2
+
+## ❌ Remove private key generation
+
+This concerns me.
+
+The summary says:
+
+> `create wallet (returns private key once...)`
+
+I don't want Sentry generating and exposing users' private keys.
+
+For this hackathon, that's unnecessary and introduces security concerns.
+
+Instead:
+
+* User connects an existing wallet **or**
+* User creates a smart wallet through the wallet provider you'll ultimately use.
+
+Sentry should **never** become a wallet generator or custodian unless that's a core part of the product.
+
+For now, abstract the wallet layer behind a `WalletProvider` interface so it can later be backed by a provider such as Para, Privy, Dynamic, or another smart-wallet solution without changing the rest of the codebase.
+
+---
+
+## ❌ Remove Sepolia
+
+Everything should be Celo-only.
+
+Remove Ethereum references.
+
+Only support:
+
+* Celo Mainnet
+
+---
+
+## ✅ Good decision
+
+Separating
+
+```
+smartContracts/
+```
+
+from the app is exactly what I would have done.
+
+Keep it.
+
+---
+
+# Prompt 3
+
+This is where Sentry actually becomes an AI employee.
+
+Do **not** implement billing yet.
+
+The AI must first prove it can work.
+
+---
+
+# Prompt 3 — Telegram Employee Foundation
+
+## Objective
+
+Transform Sentry from a web application into a working Telegram AI Community Employee.
+
+By the end of this prompt:
+
+* Sentry can join Telegram groups.
+* Users can hire Sentry for specific groups.
+* Sentry understands the group's recent conversation.
+* Sentry can answer mentions.
+* Sentry can welcome members.
+* Sentry can answer basic questions.
+
+No billing.
+
+No moderation.
+
+No reports.
+
+No scheduler.
+
+No summaries.
+
+---
+
+# Telegram
+
+Implement webhook mode.
+
+Support
+
+```text
+/start
+
+/help
+```
+
+plus
+
+Group events.
+
+---
+
+When Sentry joins a group
+
+Store
+
+* Group ID
+* Group Name
+* Owner
+* Member Count (if available)
+
+---
+
+# Employment
+
+A user hires Sentry globally.
+
+Then enables it
+
+per group.
+
+Example
+
+```text
+User
+
+↓
+
+Hire Sentry
+
+↓
+
+Add Sentry
+
+↓
+
+Enable
+
+Group A
+
+↓
+
+Enable
+
+Group B
+```
+
+Employment remains user-based.
+
+Activation becomes group-based.
+
+---
+
+# Group Configuration
+
+Each group has
+
+```text
+Enabled
+
+Welcome Members
+
+Reply To Mentions
+
+Answer Questions
+```
+
+Nothing else.
+
+---
+
+# Context Engine
+
+Implement a lightweight context engine.
+
+No vector database.
+
+No RAG.
+
+No embeddings.
+
+Only keep
+
+```text
+Pinned Messages
+
++
+
+Group Description
+
++
+
+Recent Messages
+
+(last 100)
+
++
+
+Group Configuration
+```
+
+Whenever AI generates a reply
+
+Build the prompt from
+
+those four inputs.
+
+---
+
+# Mention Detection
+
+When
+
+```text
+@sentry
+```
+
+or
+
+the bot is replied to
+
+↓
+
+Generate a response.
+
+Do NOT answer every message.
+
+Only respond when explicitly addressed.
+
+---
+
+# Welcome Messages
+
+When a new member joins
+
+↓
+
+Generate a friendly welcome.
+
+Use group context.
+
+Keep it short.
+
+---
+
+# FAQ
+
+Admins can save
+
+up to
+
+20
+
+question/answer pairs.
+
+Store them in the database.
+
+Before using AI
+
+Check FAQs first.
+
+If matched
+
+↓
+
+Return FAQ answer.
+
+Otherwise
+
+↓
+
+Call AI.
+
+---
+
+# AI Service
+
+Implement
+
+```typescript
+generateReply()
+
+generateWelcome()
+
+answerFAQ()
+```
+
+Use OpenAI.
+
+Prompt should always include
+
+* Group Name
+* Group Rules
+* Recent Messages
+* FAQs
+* User Question
+
+---
+
+# Memory
+
+Never remember forever.
+
+Only use
+
+recent messages.
+
+No long-term memory.
+
+---
+
+# Database
+
+Add
+
+```text
+GroupFAQ
+
+ConversationContext
+```
+
+ConversationContext
+
+should only store
+
+recent messages.
+
+Automatically delete old entries.
+
+Cap at
+
+100.
+
+---
+
+# Dashboard
+
+Groups page
+
+Display
+
+```text
+Telegram Groups
+
+Enabled
+
+Employment Status
+
+Recent Activity
+
+Messages Today
+```
+
+---
+
+Clicking a group
+
+opens
+
+```text
+Settings
+
+Recent Messages
+
+FAQs
+
+Employment
+
+```
+
+---
+
+# API
+
+Implement
+
+```text
+POST /api/groups/enable
+
+POST /api/groups/disable
+
+POST /api/groups/faq
+
+GET /api/groups
+
+GET /api/groups/:id
+```
+
+---
+
+# AI Rules
+
+The AI must
+
+Never
+
+* invent rules
+* pretend to be human
+* answer outside context
+
+If unsure
+
+↓
+
+Say
+
+"I don't know."
+
+---
+
+# Excluded
+
+Do NOT implement
+
+* Billing
+* Payment deductions
+* Moderation
+* Reports
+* Scheduler
+* Summaries
+* Spam detection
+* Analytics
+
+---
+
+# Acceptance Criteria
+
+At the end of Prompt 3
+
+✅ Sentry can join Telegram groups.
+
+✅ Users can enable or disable Sentry per group.
+
+✅ Sentry answers mentions.
+
+✅ Sentry welcomes members.
+
+✅ FAQ system works.
+
+✅ AI uses recent conversation context.
+
+✅ Dashboard displays connected groups.
+
+---
+
+## One important change I'd make
+
+I would **not** store raw conversation history indefinitely in the database.
+
+Instead:
+
+* Store only a rolling window of the last **100 messages** (or fewer if the group is quiet).
+* Delete the oldest messages as new ones arrive.
+* Treat this as **working memory**, not permanent storage.
+
+This keeps storage predictable, respects user privacy better, and gives the AI enough context to respond intelligently without accumulating an ever-growing message archive. For the MVP, that's the right balance between usefulness and simplicity.
+
+---
+
+# Prompt 3 Amendments
+
+## Smart Wallet Architecture (Required)
+
+Do **not** create or manage EOAs (Externally Owned Accounts) for users.
+
+Sentry uses **Smart Contract Accounts (Smart Wallets)**.
+
+The smart wallet is the user's internal employment wallet and is managed by the Employment smart contract.
+
+### Wallet Requirements
+
+* Every user owns exactly one Smart Wallet.
+* The Smart Wallet is automatically created when the user hires Sentry for the first time.
+* The wallet exists only for interacting with Sentry.
+* Users do not manage private keys.
+* Users only interact with their Smart Wallet through the Sentry application.
+* The Smart Wallet stores the user's prepaid balance used to pay Sentry.
+* All deductions are executed by the Employment smart contract.
+* The application should expose only the wallet address and current balance to the user.
+
+The architecture should resemble:
+
+```text
+User
+    │
+    ▼
+Sentry Web App
+    │
+    ▼
+Employment Smart Contract
+    │
+    ▼
+User Smart Wallet (Contract Account)
+```
+
+The backend should never generate or return private keys.
+
+Future wallet providers may be integrated later without changing the product architecture.
+
+---
+
+## Blockchain Network
+
+Sentry targets **Celo Mainnet only**.
+
+Do **not** implement support for:
+
+* Celo Alfajores
+* Celo Sepolia
+* Ethereum Sepolia
+* Ethereum Mainnet
+* Any other EVM network
+
+Every contract, deployment script, configuration file, RPC configuration, and blockchain service should assume **Celo Mainnet** as the only supported network.
+
+Remove every reference to test networks from the project.
+
+Deployment scripts, configuration, and documentation should all target Celo Mainnet exclusively.
+
+This hackathon project will be developed, tested, and demonstrated entirely on Celo Mainnet.
+
+---
+
+# Agent Session Summary — Prompt 3 (2026-07-15)
+
+## Prompt 2 fixes applied
+
+- Removed EOA private-key generation and UI that displayed keys.
+- Added `lib/wallet-provider.ts` (`WalletProvider` + `EmploymentContractWalletProvider`).
+- Smart wallet is provisioned on Hire / ensure — address + balance only, no keys.
+- Removed wallet connect/create-key flow; `/api/wallet/create` now only ensures the smart wallet.
+- Celo **Mainnet only**: dropped Sepolia from Hardhat, sync-data, blockchain service, README, and env examples.
+
+## Telegram employee foundation
+
+- Webhook `POST /api/telegram` + `/start` `/help`.
+- On bot join (`my_chat_member` / `new_chat_members`): store group id, name, owner, member count.
+- User-level employment + per-group enable via `GroupEmployment` + `GroupSettings`.
+- Group toggles: Enabled, Welcome Members, Reply To Mentions, Answer Questions.
+- Rolling `ConversationContext` (last 100 messages, auto-prune).
+- `GroupFAQ` (max 20); FAQ match before OpenAI.
+- Mentions / replies to bot → `aiService.generateReply()`; new members → `generateWelcome()`.
+- AI rules: no invented rules, no pretending to be human, say "I don't know." when unsure.
+
+## APIs & UI
+
+- `GET/PATCH /api/groups`, `GET /api/groups/:id`, `POST enable|disable`, `POST/DELETE faq`
+- Pages: `/groups`, `/groups/[id]` (settings, FAQs, recent messages)
+- Dashboard shows live enabled group count / tasks today
+
+## Database
+
+- Migration `20260715140000_prompt3_telegram`
+- Models: `GroupSettings`, `GroupEmployment`, `GroupFAQ`, `ConversationContext`; expanded `TelegramGroup`; `Wallet.provider`
+
+## Not run in this session
+
+- `prisma migrate` requires local Postgres
+- OpenAI / Telegram tokens must be set in `.env` for live replies
+- EmploymentContract still user-deployed on Celo mainnet (`pnpm deploy-celo` + sync)
+

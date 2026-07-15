@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { blockchainService } from "@/services/blockchain.service";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { isAddress, getAddress, type Address } from "viem";
+import { walletProvider } from "@/lib/wallet-provider";
 
 function toBalanceNumber(value: { toString(): string } | string | number | null | undefined) {
   if (value == null) return 0;
@@ -13,54 +12,27 @@ export class WalletService {
     return prisma.wallet.findUnique({ where: { userId } });
   }
 
-  async createWallet(userId: string) {
+  /**
+   * Ensure the user has a smart wallet managed by the employment layer.
+   * Never generates or returns private keys.
+   */
+  async ensureSmartWallet(userId: string) {
     const existing = await prisma.wallet.findUnique({ where: { userId } });
     if (existing) {
-      throw new Error("Wallet already exists for this user");
+      return {
+        id: existing.id,
+        address: existing.address,
+        balance: toBalanceNumber(existing.balance),
+        provider: existing.provider,
+      };
     }
 
-    const privateKey = generatePrivateKey();
-    const account = privateKeyToAccount(privateKey);
-
+    const smart = await walletProvider.ensureSmartWallet(userId);
     const wallet = await prisma.wallet.create({
       data: {
         userId,
-        address: account.address,
-        balance: 0,
-      },
-    });
-
-    return {
-      wallet: {
-        id: wallet.id,
-        address: wallet.address,
-        balance: toBalanceNumber(wallet.balance),
-      },
-      // Returned once — caller must save it. Not stored in the database.
-      privateKey,
-    };
-  }
-
-  async connectWallet(userId: string, addressInput: string) {
-    if (!isAddress(addressInput)) {
-      throw new Error("Invalid wallet address");
-    }
-
-    const address = getAddress(addressInput) as Address;
-    const existing = await prisma.wallet.findUnique({ where: { userId } });
-    if (existing) {
-      throw new Error("Wallet already connected for this user");
-    }
-
-    const taken = await prisma.wallet.findUnique({ where: { address } });
-    if (taken) {
-      throw new Error("This wallet is already linked to another account");
-    }
-
-    const wallet = await prisma.wallet.create({
-      data: {
-        userId,
-        address,
+        address: smart.address,
+        provider: smart.provider,
         balance: 0,
       },
     });
@@ -69,6 +41,7 @@ export class WalletService {
       id: wallet.id,
       address: wallet.address,
       balance: toBalanceNumber(wallet.balance),
+      provider: wallet.provider,
     };
   }
 
@@ -77,9 +50,10 @@ export class WalletService {
     if (!wallet) {
       return {
         connected: false,
-        address: null,
+        address: null as string | null,
         balance: 0,
         currency: "USD",
+        provider: null as string | null,
         onChain: null,
       };
     }
@@ -91,32 +65,28 @@ export class WalletService {
       address: wallet.address,
       balance: toBalanceNumber(wallet.balance),
       currency: "USD",
+      provider: wallet.provider,
       onChain,
     };
   }
 
-  /**
-   * Records a deposit against the prepaid employment balance.
-   * Uses an explicit amount (test-friendly). When the contract is deployed,
-   * clients can pass the on-chain receipt amount here after calling deposit().
-   */
   async recordDeposit(userId: string, amount: number) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error("Deposit amount must be greater than zero");
     }
 
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    let wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) {
-      throw new Error("Create or connect a wallet first");
+      await this.ensureSmartWallet(userId);
+      wallet = await prisma.wallet.findUnique({ where: { userId } });
+    }
+    if (!wallet) {
+      throw new Error("Smart wallet could not be created");
     }
 
     const updated = await prisma.wallet.update({
       where: { id: wallet.id },
-      data: {
-        balance: {
-          increment: amount,
-        },
-      },
+      data: { balance: { increment: amount } },
     });
 
     const employment = await prisma.employment.findUnique({ where: { userId } });

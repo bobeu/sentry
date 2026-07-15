@@ -11,8 +11,8 @@ export default function WalletPage() {
         Wallet
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Connect an existing address or create a new wallet. Deposit prepaid funds to keep
-        Sentry working.
+        Your employment smart wallet is provisioned when you hire Sentry. Address and
+        prepaid balance only — no private keys.
       </p>
       <WalletPanel />
     </main>

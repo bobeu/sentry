@@ -6,7 +6,6 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy": "hardhat deploy --network hardhat",
-    "deploy-sepolia": "hardhat deploy --network sepolia && node sync-data.js",
     "deploy-celo": "hardhat deploy --network celo && node sync-data.js",
     "sync": "node sync-data.js",
     "clean": "hardhat clean"

@@ -4,6 +4,7 @@ import { APP_NAME } from "@/lib/constants";
 const links = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/groups", label: "Groups" },
   { href: "/employment", label: "Employment" },
   { href: "/wallet", label: "Wallet" },
   { href: "/settings", label: "Settings" },

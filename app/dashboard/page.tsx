@@ -14,6 +14,9 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-3 text-sm">
+          <Link href="/groups" className="rounded-full border border-white/20 px-4 py-2">
+            Groups
+          </Link>
           <Link href="/employment" className="rounded-full border border-white/20 px-4 py-2">
             Employment
           </Link>

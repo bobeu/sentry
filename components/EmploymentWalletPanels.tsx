@@ -40,7 +40,7 @@ export function EmploymentPanel() {
       const res = await fetch(path, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Request failed");
-      setMessage(json.message ?? `Status: ${json.employment?.status ?? json.status}`);
+      setMessage(json.message ?? `Status: ${json.employment?.status ?? "updated"}`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -99,9 +99,8 @@ export function EmploymentPanel() {
 export function WalletPanel() {
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
-  const [connectAddress, setConnectAddress] = useState("");
+  const [provider, setProvider] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState("25");
-  const [privateKeyOnce, setPrivateKeyOnce] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,6 +114,7 @@ export function WalletPanel() {
     }
     setAddress(json.address);
     setBalance(json.balance ?? 0);
+    setProvider(json.provider);
     setError(null);
   }
 
@@ -122,41 +122,18 @@ export function WalletPanel() {
     void refresh();
   }, []);
 
-  async function createWallet() {
+  async function ensureWallet() {
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
       const res = await fetch("/api/wallet/create", { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Create failed");
-      setPrivateKeyOnce(json.privateKey);
-      setMessage("Wallet created. Save the private key now — it is not stored.");
+      if (!res.ok) throw new Error(json.error ?? "Wallet failed");
+      setMessage("Smart wallet ready (no private keys — managed by Sentry employment).");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function connectWallet(event: FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/wallet/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: connectAddress }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Connect failed");
-      setMessage("Wallet connected");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect failed");
+      setError(err instanceof Error ? err.message : "Wallet failed");
     } finally {
       setLoading(false);
     }
@@ -188,41 +165,27 @@ export function WalletPanel() {
   return (
     <div className="mt-8 max-w-xl space-y-6">
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <p className="text-sm uppercase tracking-[0.18em] text-[#9aa89a]">Wallet</p>
+        <p className="text-sm uppercase tracking-[0.18em] text-[#9aa89a]">Smart Wallet</p>
         <p className="mt-3 break-all font-mono text-sm text-[#e8f5d8]">
-          {address ?? "No wallet yet"}
+          {address ?? "Not provisioned yet — hire Sentry or provision below"}
         </p>
+        {provider ? (
+          <p className="mt-2 text-xs text-[#9aa89a]">Provider: {provider}</p>
+        ) : null}
         <p className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#f4f7f0]">
           ${balance.toFixed(2)}
         </p>
       </div>
 
       {!address ? (
-        <div className="space-y-4">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={createWallet}
-            className="rounded-full bg-[#35d07f] px-5 py-2.5 text-sm font-semibold text-[#061008]"
-          >
-            Create Wallet
-          </button>
-          <form onSubmit={connectWallet} className="space-y-3">
-            <input
-              value={connectAddress}
-              onChange={(e) => setConnectAddress(e.target.value)}
-              placeholder="0x…"
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 font-mono text-sm outline-none focus:border-[#35d07f]"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-full border border-white/20 px-5 py-2.5 text-sm"
-            >
-              Connect Wallet
-            </button>
-          </form>
-        </div>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={ensureWallet}
+          className="rounded-full bg-[#35d07f] px-5 py-2.5 text-sm font-semibold text-[#061008]"
+        >
+          Provision Smart Wallet
+        </button>
       ) : (
         <form onSubmit={deposit} className="flex flex-wrap items-end gap-3">
           <label className="text-sm text-[#9aa89a]">
@@ -242,13 +205,6 @@ export function WalletPanel() {
           </button>
         </form>
       )}
-
-      {privateKeyOnce ? (
-        <div className="rounded-xl border border-[#fcff52]/40 bg-[#fcff52]/10 p-4 text-sm">
-          <p className="font-semibold text-[#fcff52]">Private key (save now)</p>
-          <p className="mt-2 break-all font-mono text-[#e8f5d8]">{privateKeyOnce}</p>
-        </div>
-      ) : null}
 
       {message ? <p className="text-sm text-[#35d07f]">{message}</p> : null}
       {error ? <p className="text-sm text-red-300">{error}</p> : null}

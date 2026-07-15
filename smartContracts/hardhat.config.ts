@@ -18,12 +18,7 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       saveDeployments: true,
-    },
-    sepolia: {
-      url: "https://forno.celo-sepolia.celo-testnet.org",
-      accounts: [cleanKey(process.env.KEY_ROUTE ?? process.env.PRIVATE_KEY)],
-      chainId: 11_142_220,
-      saveDeployments: true,
+      chainId: 42220,
     },
     celo: {
       url: "https://forno.celo.org",
@@ -42,14 +37,6 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: process.env.CELOSCAN_API_KEY ?? "",
     customChains: [
-      {
-        chainId: 11142220,
-        network: "celoSepolia",
-        urls: {
-          apiURL: "https://api.etherscan.io/v2/api",
-          browserURL: "https://sepolia.celoscan.io",
-        },
-      },
       {
         chainId: 42220,
         network: "celo",

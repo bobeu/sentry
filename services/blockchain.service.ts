@@ -5,7 +5,7 @@ import {
   isAddress,
   type Address,
 } from "viem";
-import { celo, celoSepolia } from "viem/chains";
+import { celo } from "viem/chains";
 import { CONTRACTS } from "@/lib/contracts";
 
 const employmentAbi = [
@@ -16,38 +16,23 @@ const employmentAbi = [
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
-  {
-    type: "function",
-    name: "deposit",
-    stateMutability: "payable",
-    inputs: [],
-    outputs: [],
-  },
 ] as const;
 
+/** Celo Mainnet only. */
 export class BlockchainService {
   connect() {
-    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "42220");
     return {
       connected: true,
-      network: chainId === 11142220 ? "celo-sepolia" : "celo-mainnet",
-      chainId,
+      network: "celo-mainnet",
+      chainId: 42220,
       employmentContract: CONTRACTS.EmploymentContract.address ?? null,
     };
   }
 
   private client() {
-    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "42220");
-    const chain = chainId === 11142220 ? celoSepolia : celo;
-    const rpc =
-      process.env.CELO_RPC ??
-      (chainId === 11142220
-        ? "https://forno.celo-sepolia.celo-testnet.org"
-        : "https://forno.celo.org");
-
     return createPublicClient({
-      chain,
-      transport: http(rpc),
+      chain: celo,
+      transport: http(process.env.CELO_RPC ?? "https://forno.celo.org"),
     });
   }
 
@@ -66,8 +51,7 @@ export class BlockchainService {
     }
 
     try {
-      const client = this.client();
-      const raw = await client.readContract({
+      const raw = await this.client().readContract({
         address: contractAddress,
         abi: employmentAbi,
         functionName: "balanceOf",

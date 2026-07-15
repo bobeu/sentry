@@ -20,12 +20,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wallet         Wallet?
-  employment     Employment?
-  billingRecords BillingRecord[]
-  reports        Report[]
-  settings       Settings?
-  sessions       Session[]
+  wallet          Wallet?
+  employment      Employment?
+  groupLinks      GroupEmployment[]
+  billingRecords  BillingRecord[]
+  reports         Report[]
+  settings        Settings?
+  sessions        Session[]
 }
 
 model Session {
@@ -39,8 +40,10 @@ model Session {
 
 model Wallet {
   id        String   @id @default(cuid())
+  /// Smart wallet address managed for employment — never a user private key.
   address   String   @unique
   balance   Decimal  @default(0) @db.Decimal(36, 18)
+  provider  String   @default("employment-contract")
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -48,14 +51,72 @@ model Wallet {
 }
 
 model TelegramGroup {
-  id         String   @id @default(cuid())
-  telegramId String   @unique
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String   @id @default(cuid())
+  telegramId      String   @unique
+  name            String?
+  ownerTelegramId String?
+  memberCount     Int?
+  description     String?
+  rules           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  tasks    Task[]
-  settings Settings?
+  tasks        Task[]
+  settings     GroupSettings?
+  employment   GroupEmployment[]
+  faqs         GroupFAQ[]
+  messages     ConversationContext[]
+}
+
+model GroupSettings {
+  id               String        @id @default(cuid())
+  groupId          String        @unique
+  group            TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  enabled          Boolean       @default(false)
+  welcomeMembers   Boolean       @default(true)
+  replyToMentions  Boolean       @default(true)
+  answerQuestions  Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model GroupEmployment {
+  id        String        @id @default(cuid())
+  userId    String
+  groupId   String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  enabled   Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([userId, groupId])
+}
+
+model GroupFAQ {
+  id        String        @id @default(cuid())
+  groupId   String
+  group     TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([groupId])
+}
+
+model ConversationContext {
+  id                String        @id @default(cuid())
+  groupId           String
+  group             TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramMessageId String
+  fromUserId        String?
+  fromUsername      String?
+  text              String
+  createdAt         DateTime      @default(now())
+
+  @@unique([groupId, telegramMessageId])
+  @@index([groupId, createdAt])
 }
 
 model Employment {
@@ -93,15 +154,13 @@ model Report {
 }
 
 model Settings {
-  id                 String         @id @default(cuid())
-  userId             String?        @unique
-  groupId            String?        @unique
-  user               User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group              TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  userId             String?  @unique
+  user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName        String?
-  timeZone           String         @default("UTC")
-  autoResume         Boolean        @default(true)
-  emailNotifications Boolean        @default(true)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  timeZone           String   @default("UTC")
+  autoResume         Boolean  @default(true)
+  emailNotifications Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
