@@ -4606,3 +4606,429 @@ That level of focus is exactly what tends to produce strong hackathon demos. Eve
 
 - README: architecture diagram (mermaid), dual funding, testing, demo checklist.
 
+---
+
+# CTO Said
+
+This is **much better than I expected**. At this point, I don't think Sentry needs another implementation prompt.
+
+I think it needs a **release engineering prompt**.
+
+Looking at the summary, I see a few things I'd change before calling the project MVP-complete.
+
+---
+
+# 1. Remove deterministic wallet addresses
+
+This is the only thing that worries me.
+
+The summary says:
+
+> Permanent employment wallet (`wallet-provider.ts` deterministic address)
+
+I would **not** derive wallet addresses deterministically from a hash.
+
+Instead:
+
+```text
+User hires Sentry
+
+↓
+
+Factory deploys a Smart Wallet
+
+↓
+
+Wallet address stored forever
+```
+
+That is much safer and much closer to how smart account systems work.
+
+So Prompt 8 should replace deterministic wallets with a **WalletFactory** contract.
+
+---
+
+# 2. Remove MockERC20 from production
+
+Keep it only inside
+
+```text
+test/
+```
+
+Never deploy it.
+
+---
+
+# 3. Scheduler
+
+Five minutes is okay.
+
+I wouldn't go lower.
+
+---
+
+# 4. Sync
+
+I'd also add
+
+```text
+Sync Balance
+```
+
+after every successful deposit transaction.
+
+No need to wait five minutes if the user just deposited from the UI.
+
+---
+
+Everything else looks excellent.
+
+---
+
+# Prompt 8 — Release Candidate (RC1)
+
+This is the final engineering prompt.
+
+After this, **no more implementation**.
+
+Only bug fixes.
+
+---
+
+## Objective
+
+Prepare Sentry for hackathon submission.
+
+No new functionality.
+
+Only quality.
+
+---
+
+# Wallet Factory
+
+Replace deterministic wallet generation.
+
+Implement
+
+```text
+EmploymentWalletFactory
+```
+
+Responsibilities
+
+```text
+Create Employment Wallet
+
+Register Identity
+
+Return Wallet Address
+```
+
+Every user gets
+
+exactly one
+
+Employment Wallet.
+
+Never regenerate.
+
+Store permanently.
+
+---
+
+# Smart Wallet
+
+Review
+
+* ownership
+* access control
+* token handling
+* pause
+* resume
+
+No functional changes.
+
+Only improvements.
+
+---
+
+# Deposit UX
+
+After successful
+
+web deposit
+
+↓
+
+Automatically
+
+```text
+Sync Balance
+
+↓
+
+Refresh Dashboard
+
+↓
+
+Notify User
+```
+
+No manual refresh required.
+
+The manual **Sync Balance** button remains for direct transfers.
+
+---
+
+# Direct Transfer UX
+
+Improve the wallet page.
+
+```text
+Employment Wallet
+
+0xABCD...
+
+[ Copy ]
+
+[ QR Code ]
+
+────────────
+
+Funding Methods
+
+① Deposit from Connected Wallet
+
+② Send Funds Directly
+
+────────────
+
+Accepted Currency
+
+USDm
+
+────────────
+
+Current Balance
+
+24.35
+```
+
+Everything should fit on one screen.
+
+---
+
+# Telegram Polish
+
+Improve responses.
+
+Examples
+
+Instead of
+
+> I don't know.
+
+Use
+
+> I couldn't determine that from the available conversation or configured FAQs.
+
+Much more natural.
+
+---
+
+# AI Prompt Review
+
+Audit prompts.
+
+Remove:
+
+* repetition
+* unnecessary instructions
+* token waste
+
+Keep prompts compact.
+
+---
+
+# Smart Contract Audit
+
+Review for
+
+* reentrancy
+* integer safety
+* ownership
+* duplicate charging
+* unsupported tokens
+* event emission
+
+No feature changes.
+
+---
+
+# Dashboard Polish
+
+Review
+
+* mobile responsiveness
+* dark mode
+* spacing
+* loading
+* error states
+* empty states
+
+No redesign.
+
+---
+
+# Performance
+
+Review
+
+* unnecessary queries
+* duplicate OpenAI calls
+* duplicate Telegram calls
+* unnecessary blockchain reads
+
+Optimize only obvious issues.
+
+---
+
+# Final Testing
+
+Run
+
+Backend
+
+Telegram
+
+Contracts
+
+Wallet
+
+Billing
+
+Scheduler
+
+Deployment
+
+Fix every failing test.
+
+---
+
+# Demo Mode
+
+Add
+
+```text
+DEMO_MODE=true
+```
+
+Purpose
+
+Allow judges to demonstrate
+
+without risking production funds.
+
+When enabled
+
+Use
+
+small values
+
+Example
+
+```text
+Reply
+
+0.0001 USDm
+```
+
+instead of
+
+```text
+0.01
+```
+
+No other behavior changes.
+
+---
+
+# Deployment
+
+Prepare
+
+Production
+
+Environment Variables
+
+Deployment Guide
+
+Telegram Setup
+
+Celo Mainnet Deployment
+
+README
+
+One-command start.
+
+---
+
+# Final Acceptance Criteria
+
+Sentry should now be:
+
+* Feature complete.
+* Stable.
+* Tested.
+* Ready for judges.
+* Ready for production deployment after minor refinements.
+
+---
+
+## Agent Session Summary — Prompt 8 (RC1)
+
+**Date:** 2026-07-15
+
+### Wallet Factory (replaces deterministic addresses)
+
+- Added `EmploymentWallet.sol`, `EmploymentWalletFactory.sol`, `IEmploymentRegistry.sol`.
+- Factory deploys one real smart wallet per `identityHash`, registers identity on `EmploymentContract`, idempotent `createWallet`.
+- `EmploymentContract`: `identityRegistrars` mapping so factory can call `registerIdentity`.
+- Deploy script `02_deploy_wallet_factory.ts` authorizes factory as registrar.
+- `lib/wallet-provider.ts` → `EmploymentFactoryWalletProvider` via `blockchainService.ensureEmploymentWallet()`.
+- `sync-data.js` syncs both `EmploymentContract` and `EmploymentWalletFactory` to `lib/contracts/`.
+
+### MockERC20
+
+- Moved from `contracts/MockERC20.sol` to `contracts/mocks/MockERC20.sol` (test-only; never deployed).
+
+### Deposit UX
+
+- Web deposit waits for tx receipt, auto-syncs balance, notifies user, dispatches `sentry:wallet-updated` for dashboard refresh.
+- Wallet page compact single-screen layout per spec (address, copy, QR, funding ①②, currency, balance).
+- Manual Sync Balance retained for direct transfers.
+
+### Polish
+
+- `lib/messages.ts`: natural uncertain reply for AI + Telegram.
+- Compact AI system prompt (`services/ai.service.ts`).
+- `DEMO_MODE=true` scales pricing 100× down via `lib/demo-mode.ts`.
+- Removed duplicate on-chain balance read in `wallet.service.getBalance()`.
+- Dashboard listens for wallet update events.
+
+### Deployment & docs
+
+- `pnpm start:all` — prisma generate + migrate + dev.
+- README: factory architecture, Telegram setup, `DEMO_MODE`, deployment notes.
+
+### Tests
+
+- `pnpm test` — 7 passing (identity, pricing demo mode, currency).
+- `pnpm test:contracts` — 12 passing (EmploymentContract + EmploymentWalletFactory).
+- Fixed stablecoin deposit tests (switch active token first) and replay-protection test ordering.
+
+### Env
+
+- `.env.example`: `DEMO_MODE=false`.

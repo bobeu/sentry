@@ -14,6 +14,12 @@ export const CONTRACTS = {
     addresses: (addresses as Record<string, Record<string, string>>).EmploymentContract ?? {},
     abi: ((abis as Record<string, unknown[]>).EmploymentContract ?? []) as readonly unknown[],
   },
+  EmploymentWalletFactory: {
+    address: undefined as Address | undefined,
+    addresses:
+      (addresses as Record<string, Record<string, string>>).EmploymentWalletFactory ?? {},
+    abi: ((abis as Record<string, unknown[]>).EmploymentWalletFactory ?? []) as readonly unknown[],
+  },
 } as const;
 
 export type ContractName = keyof typeof CONTRACTS;

@@ -81,6 +81,23 @@ const employmentAbi = [
   },
 ] as const;
 
+const factoryAbi = [
+  {
+    type: "function",
+    name: "createWallet",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "identityHash", type: "bytes32" }],
+    outputs: [{ name: "wallet", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "walletFor",
+    stateMutability: "view",
+    inputs: [{ name: "identityHash", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
 function operatorKey(): Hex | null {
   const raw = process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
   if (!raw?.trim()) return null;
@@ -121,6 +138,16 @@ export class BlockchainService {
     const addr = CONTRACTS.EmploymentContract.address;
     if (!addr || !isAddress(addr)) return null;
     return addr;
+  }
+
+  private factoryAddress(): Address | null {
+    const addr = CONTRACTS.EmploymentWalletFactory?.address;
+    if (!addr || !isAddress(addr)) return null;
+    return addr;
+  }
+
+  isFactoryConfigured() {
+    return Boolean(this.factoryAddress() && operatorKey());
   }
 
   private async operatorWallet() {
@@ -237,6 +264,48 @@ export class BlockchainService {
       account: op.account,
       chain: celo,
     });
+  }
+
+  /** Deploy or fetch employment wallet from factory (idempotent). */
+  async ensureEmploymentWallet(identityHash: Hex): Promise<Address> {
+    const factory = this.factoryAddress();
+    const op = await this.operatorWallet();
+    if (!factory || !op) throw Errors.blockchainUnavailable();
+
+    const existing = await this.client().readContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "walletFor",
+      args: [identityHash],
+    });
+
+    if (existing && existing !== "0x0000000000000000000000000000000000000000") {
+      return existing as Address;
+    }
+
+    const hash = await op.wallet.writeContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "createWallet",
+      args: [identityHash],
+      account: op.account,
+      chain: celo,
+    });
+    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
+    if (receipt.status !== "success") {
+      throw Errors.blockchainUnavailable();
+    }
+
+    const wallet = await this.client().readContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "walletFor",
+      args: [identityHash],
+    });
+    if (!wallet || wallet === "0x0000000000000000000000000000000000000000") {
+      throw Errors.blockchainUnavailable();
+    }
+    return wallet as Address;
   }
 
   async setActivePaymentToken(currency: PaymentCurrency): Promise<string | null> {

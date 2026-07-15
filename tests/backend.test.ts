@@ -5,7 +5,8 @@ import {
   identityHash,
   telegramIdentityHash,
 } from "../lib/identity";
-import { priceFor, averageActionCost, getPricing } from "../lib/pricing";
+import { priceFor, averageActionCost, getPricing, PRICING_AMOUNTS } from "../lib/pricing";
+import { isDemoMode } from "../lib/demo-mode";
 import { isPaymentCurrency, formatAmount } from "../lib/payment-currency";
 
 describe("identity", () => {
@@ -33,6 +34,14 @@ describe("pricing", () => {
   it("includes currency in pricing rows", () => {
     const rows = getPricing("USDm");
     assert.ok(rows.every((r) => r.currency === "USDm"));
+  });
+
+  it("scales prices down in demo mode", () => {
+    const prev = process.env.DEMO_MODE;
+    process.env.DEMO_MODE = "true";
+    assert.equal(priceFor("mention_reply"), PRICING_AMOUNTS.mention_reply / 100);
+    process.env.DEMO_MODE = prev;
+    assert.equal(isDemoMode(), prev === "true");
   });
 });
 

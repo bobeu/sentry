@@ -68,9 +68,12 @@ export function DashboardLive() {
     }
     void load();
     const id = setInterval(() => void load(), 15_000);
+    const onWallet = () => void load();
+    window.addEventListener("sentry:wallet-updated", onWallet);
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener("sentry:wallet-updated", onWallet);
     };
   }, []);
 

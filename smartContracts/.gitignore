@@ -8,3 +8,4 @@ coverage.json
 .env
 *.log
 deployments/hardhat/
+/tests

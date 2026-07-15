@@ -3,7 +3,7 @@ import { blockchainService } from "@/services/blockchain.service";
 import { walletProvider } from "@/lib/wallet-provider";
 import { billingService } from "@/services/billing.service";
 import { paymentService } from "@/services/payment.service";
-import { emailIdentityHash } from "@/lib/identity";
+import { emailIdentityHash, identityHash } from "@/lib/identity";
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
 import { formatAmount } from "@/lib/payment-currency";
@@ -30,8 +30,13 @@ export class WalletService {
       };
     }
 
-    const smart = await walletProvider.ensureSmartWallet(userId);
-    const identityHash = email ? emailIdentityHash(email) : null;
+    const hash = email
+      ? emailIdentityHash(email)
+      : (identityHash("wallet", userId) as string);
+    const smart = await walletProvider.ensureSmartWallet({
+      userId,
+      identityHash: hash as `0x${string}`,
+    });
 
     const wallet = await prisma.wallet.create({
       data: {
@@ -39,15 +44,9 @@ export class WalletService {
         address: smart.address,
         provider: smart.provider,
         balance: 0,
-        identityHash,
+        identityHash: hash,
       },
     });
-
-    if (identityHash && blockchainService.isConfigured()) {
-      await blockchainService
-        .registerIdentityOnChain(identityHash as `0x${string}`, smart.address as `0x${string}`)
-        .catch(() => undefined);
-    }
 
     return {
       id: wallet.id,
@@ -98,7 +97,6 @@ export class WalletService {
     }
 
     const synced = await this.syncBalanceFromChain(userId);
-    const onChain = await blockchainService.getEmploymentBalance(wallet.address);
 
     return {
       connected: true,
@@ -106,7 +104,9 @@ export class WalletService {
       balance: synced?.balance ?? toBalanceNumber(wallet.balance),
       currency,
       provider: wallet.provider,
-      onChain,
+      onChain: synced
+        ? { formatted: synced.balance.toString(), wei: null, contract: null }
+        : null,
       identityHash: wallet.identityHash,
     };
   }

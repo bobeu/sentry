@@ -1,37 +1,29 @@
-import { keccak256, encodePacked, getAddress, type Address } from "viem";
+import type { Address, Hex } from "viem";
+import { blockchainService } from "@/services/blockchain.service";
 
 export type SmartWallet = {
   address: Address;
   provider: string;
 };
 
-/**
- * Abstract wallet layer. Backed today by a deterministic employment smart-wallet
- * address; replaceable later with Para, Privy, Dynamic, etc.
- */
 export interface WalletProvider {
   readonly name: string;
-  ensureSmartWallet(userId: string): Promise<SmartWallet>;
+  ensureSmartWallet(input: { userId: string; identityHash: Hex }): Promise<SmartWallet>;
 }
 
 /**
- * Deterministic CREATE2-style address for the user's Sentry employment wallet.
- * No private key is generated or stored — deposits are tracked against this
- * address via the Employment smart contract / app ledger.
+ * Deploys a real EmploymentWallet via EmploymentWalletFactory (one per identity, permanent).
  */
-export class EmploymentContractWalletProvider implements WalletProvider {
-  readonly name = "employment-contract";
+export class EmploymentFactoryWalletProvider implements WalletProvider {
+  readonly name = "employment-wallet-factory";
 
-  async ensureSmartWallet(userId: string): Promise<SmartWallet> {
-    // Fixed factory salt namespace for Sentry employment wallets on Celo.
-    const namespace = "0x53656e747279456d706c6f796d656e7400000000000000000000000000000000";
-    const hash = keccak256(
-      encodePacked(["bytes32", "string"], [namespace as `0x${string}`, userId]),
-    );
-    // Map hash to a 20-byte address (not a deployable EOA key — identity only).
-    const address = getAddress(`0x${hash.slice(26)}`);
+  async ensureSmartWallet(input: {
+    userId: string;
+    identityHash: Hex;
+  }): Promise<SmartWallet> {
+    const address = await blockchainService.ensureEmploymentWallet(input.identityHash);
     return { address, provider: this.name };
   }
 }
 
-export const walletProvider: WalletProvider = new EmploymentContractWalletProvider();
+export const walletProvider: WalletProvider = new EmploymentFactoryWalletProvider();

@@ -1,6 +1,7 @@
 import type { ContextBundle } from "@/services/context.service";
 import { faqService } from "@/services/faq.service";
 import { Errors } from "@/lib/errors";
+import { UNCERTAIN_REPLY } from "@/lib/messages";
 
 type ReplyInput = {
   context: ContextBundle;
@@ -8,19 +9,12 @@ type ReplyInput = {
   userName?: string;
 };
 
-const UNCERTAIN = "I don't know based on the available context.";
-
 function systemRules() {
   return [
     "You are Sentry, an AI community employee for Telegram.",
-    "Give short responses only.",
-    "Never fabricate information.",
-    "Never invent group rules, policies, or facts.",
-    "Always respect the provided group rules when answering.",
-    "Never pretend to be human.",
-    "Only use provided group context, FAQs, and recent messages.",
-    "Never answer outside the available context.",
-    `If uncertain, say exactly: ${UNCERTAIN}`,
+    "Short replies only. Never fabricate facts, rules, or policies.",
+    "Use only provided context, FAQs, and recent messages. Never pretend to be human.",
+    `If uncertain: ${UNCERTAIN_REPLY}`,
   ].join(" ");
 }
 
@@ -79,7 +73,7 @@ async function callOpenAI(
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    return data.choices?.[0]?.message?.content?.trim() || UNCERTAIN;
+    return data.choices?.[0]?.message?.content?.trim() || UNCERTAIN_REPLY;
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw Errors.aiUnavailable();

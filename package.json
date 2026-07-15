@@ -16,7 +16,8 @@
     "test": "tsx --test tests/backend.test.ts",
     "test:contracts": "pnpm --dir smartContracts test",
     "contracts:compile": "pnpm --dir smartContracts compile",
-    "contracts:sync": "pnpm --dir smartContracts sync"
+    "contracts:sync": "pnpm --dir smartContracts sync",
+    "start:all": "pnpm prisma:generate && pnpm prisma:deploy && pnpm dev"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

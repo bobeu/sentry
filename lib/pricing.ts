@@ -1,8 +1,8 @@
 import type { ActionType } from "@prisma/client";
 import type { PaymentCurrency } from "@/lib/payment-currency";
-import { paymentService } from "@/services/payment.service";
+import { demoPrice } from "@/lib/demo-mode";
 
-/** Central pricing in active payment currency units. */
+/** Central pricing in active payment currency units (production amounts). */
 export const PRICING_AMOUNTS: Record<ActionType, number> = {
   mention_reply: 0.01,
   faq_answer: 0.005,
@@ -25,16 +25,16 @@ export function getPricing(currency: PaymentCurrency = "USDm") {
   return Object.entries(PRICING_AMOUNTS).map(([type, amount]) => ({
     type,
     label: PRICING_LABELS[type as ActionType],
-    amount,
+    amount: demoPrice(amount),
     currency,
   }));
 }
 
 export function priceFor(type: ActionType): number {
-  return PRICING_AMOUNTS[type] ?? 0;
+  return demoPrice(PRICING_AMOUNTS[type] ?? 0);
 }
 
 export function averageActionCost(): number {
-  const values = Object.values(PRICING_AMOUNTS);
+  const values = Object.values(PRICING_AMOUNTS).map(demoPrice);
   return values.reduce((a, b) => a + b, 0) / values.length;
 }

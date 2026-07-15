@@ -37,7 +37,8 @@ describe("EmploymentContract", function () {
   });
 
   it("accepts supported stablecoin deposits", async function () {
-    const { contract, user, usdm } = await deploy();
+    const { contract, user, usdm, owner } = await deploy();
+    await contract.connect(owner).setActivePaymentToken(1);
     await usdm.mint(user.address, ethers.parseEther("10"));
     await usdm.connect(user).approve(await contract.getAddress(), ethers.parseEther("5"));
     await contract.connect(user).depositERC20(ethers.parseEther("5"));
@@ -45,7 +46,8 @@ describe("EmploymentContract", function () {
   });
 
   it("accepts depositERC20For (web deposit stablecoin to employment wallet)", async function () {
-    const { contract, user, funder, usdm } = await deploy();
+    const { contract, user, funder, usdm, owner } = await deploy();
+    await contract.connect(owner).setActivePaymentToken(1);
     await usdm.mint(funder.address, ethers.parseEther("10"));
     await usdm.connect(funder).approve(await contract.getAddress(), ethers.parseEther("3"));
     await contract.connect(funder).depositERC20For(user.address, ethers.parseEther("3"));
@@ -63,7 +65,8 @@ describe("EmploymentContract", function () {
   });
 
   it("rejects native deposit when stablecoin is active", async function () {
-    const { contract, user } = await deploy();
+    const { contract, user, owner } = await deploy();
+    await contract.connect(owner).setActivePaymentToken(1);
     await expect(
       contract.connect(user).depositNative({ value: ethers.parseEther("1") }),
     ).to.be.revertedWithCustomError(contract, "WrongDepositMethod");
@@ -73,12 +76,13 @@ describe("EmploymentContract", function () {
     const { contract, operator, user } = await deploy();
     await contract.connect(user).depositNative({ value: ethers.parseEther("1") });
     const actionId = ethers.id("action-1");
-    await contract.connect(operator).charge(user.address, ethers.parseEther("1"), actionId);
-    expect(await contract.balanceOf(user.address)).to.equal(0n);
-    expect(await contract.isPaused(user.address)).to.equal(true);
+    await contract.connect(operator).charge(user.address, ethers.parseEther("0.5"), actionId);
     await expect(
       contract.connect(operator).charge(user.address, ethers.parseEther("0.01"), actionId),
     ).to.be.revertedWithCustomError(contract, "AlreadyCharged");
+    await contract.connect(operator).charge(user.address, ethers.parseEther("0.5"), ethers.id("action-2"));
+    expect(await contract.balanceOf(user.address)).to.equal(0n);
+    expect(await contract.isPaused(user.address)).to.equal(true);
   });
 
   it("rejects unauthorized charge", async function () {

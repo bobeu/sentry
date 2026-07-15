@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/logger";
 import { billingService } from "@/services/billing.service";
 
-const UNCERTAIN = "I don't know based on the available context.";
+import { UNCERTAIN_REPLY } from "@/lib/messages";
 
 function chatId(ctx: Context) {
   return ctx.chat?.id != null ? String(ctx.chat.id) : null;
@@ -325,7 +325,7 @@ export function registerHandlers(bot: Telegraf) {
       });
     } catch (err) {
       console.error("[mention]", err);
-      await ctx.reply(UNCERTAIN);
+      await ctx.reply(UNCERTAIN_REPLY);
       await actionService.record({
         type: "mention_reply",
         groupId: active.group.id,

@@ -2,14 +2,15 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "./IERC20.sol";
-import { Ownable } from "@openzeppelin/contracts";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title EmploymentContract
  * @notice Global payment currency, per-wallet balances, operator billing.
  *         Identity on-chain is bytes32 only — backend computes keccak256(namespace:value).
  */
-contract EmploymentContract {
+contract EmploymentContract is Ownable, ReentrancyGuard {
     enum PaymentToken {
         CELO,
         USDm,
@@ -17,7 +18,6 @@ contract EmploymentContract {
         USDT
     }
 
-    address public owner;
     address public operator;
     address public treasury;
 
@@ -27,6 +27,7 @@ contract EmploymentContract {
     mapping(address => mapping(PaymentToken => uint256)) private _balances;
     mapping(address => bool) private _paused;
     mapping(bytes32 => bool) public chargedActions;
+    mapping(address => bool) public identityRegistrars;
 
     uint256 private _locked;
 
@@ -57,6 +58,7 @@ contract EmploymentContract {
     event SupportedTokenUpdated(PaymentToken indexed token, address indexed tokenAddress);
     event TreasuryUpdated(address indexed treasury);
     event OperatorUpdated(address indexed previousOperator, address indexed newOperator);
+    event IdentityRegistrarUpdated(address indexed registrar, bool allowed);
 
     error InsufficientBalance();
     error ZeroAmount();
@@ -67,24 +69,11 @@ contract EmploymentContract {
     error AlreadyCharged();
     error InvalidToken();
     error WrongDepositMethod();
-    error ReentrancyGuard();
     error ZeroAddress();
 
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
-        _;
-    }
-
     modifier onlyOperator() {
-        if (msg.sender != operator) revert Unauthorized();
+        if (_msgSender() != operator) revert Unauthorized();
         _;
-    }
-
-    modifier nonReentrant() {
-        if (_locked == 1) revert ReentrancyGuard();
-        _locked = 1;
-        _;
-        _locked = 0;
     }
 
     constructor(
@@ -94,14 +83,13 @@ contract EmploymentContract {
         address usdm,
         address usdc,
         address usdt
-    ) {
+    ) Ownable(initialOwner) {
         if (initialOwner == address(0) || initialOperator == address(0) || initialTreasury == address(0)) {
             revert ZeroAddress();
         }
-        owner = initialOwner;
         operator = initialOperator;
         treasury = initialTreasury;
-        activePaymentToken = PaymentToken.USDm;
+        activePaymentToken = PaymentToken.CELO;
         supportedTokens[PaymentToken.USDm] = usdm;
         supportedTokens[PaymentToken.USDC] = usdc;
         supportedTokens[PaymentToken.USDT] = usdt;
@@ -136,7 +124,14 @@ contract EmploymentContract {
         emit SupportedTokenUpdated(token, tokenAddress);
     }
 
-    function registerIdentity(bytes32 identityHash, address wallet) external onlyOperator {
+    function setIdentityRegistrar(address registrar, bool allowed) external onlyOwner {
+        identityRegistrars[registrar] = allowed;
+        emit IdentityRegistrarUpdated(registrar, allowed);
+    }
+
+    function registerIdentity(bytes32 identityHash, address wallet) external {
+        address sender = _msgSender();
+        if (sender != operator && !identityRegistrars[sender]) revert Unauthorized();
         if (wallet == address(0)) revert ZeroAddress();
         identityWallet[identityHash] = wallet;
         emit IdentityRegistered(identityHash, wallet);
@@ -144,7 +139,7 @@ contract EmploymentContract {
 
     /// @notice Fund caller's own employment balance (Method A — self deposit).
     function depositNative() external payable {
-        _depositNative(msg.sender, msg.value);
+        _depositNative(_msgSender(), msg.value);
     }
 
     /// @notice Fund another employment wallet from connected wallet (Method A — web deposit).
