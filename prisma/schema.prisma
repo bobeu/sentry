@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmploymentStatus {
+  Inactive
+  Active
+  Paused
+  Exhausted
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet         Wallet?
+  employment     Employment?
+  billingRecords BillingRecord[]
+  reports        Report[]
+  settings       Settings?
+  sessions       Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  balance   Decimal  @default(0) @db.Decimal(36, 18)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TelegramGroup {
+  id         String   @id @default(cuid())
+  telegramId String   @unique
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tasks    Task[]
+  settings Settings?
+}
+
+model Employment {
+  id        String           @id @default(cuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    EmploymentStatus @default(Inactive)
+  startedAt DateTime?
+  pausedAt  DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model Task {
+  id        String         @id @default(cuid())
+  groupId   String?
+  group     TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model BillingRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Decimal  @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Settings {
+  id                 String         @id @default(cuid())
+  userId             String?        @unique
+  groupId            String?        @unique
+  user               User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group              TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  displayName        String?
+  timeZone           String         @default("UTC")
+  autoResume         Boolean        @default(true)
+  emailNotifications Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}

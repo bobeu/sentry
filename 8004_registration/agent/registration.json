@@ -1,0 +1,34 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "Sentry",
+  "description": "Sentry is an AI employee for Telegram that businesses and individuals hire to monitor conversations, represent them, moderate communities, and generate intelligent reports. Users fund a prepaid on-chain wallet on Celo; Sentry automatically charges for completed work and stops when the balance runs out.",
+  "image": "https://raw.githubusercontent.com/bobeu/sentry/main/agent/sentry-icon.svg",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://github.com/bobeu/sentry"
+    },
+    {
+      "name": "email",
+      "endpoint": "bobmatea27@gmail.com"
+    }
+  ],
+  "endpoints": [
+    {
+      "type": "wallet",
+      "address": "0xa1f70ffA4322E3609dD905b41f17Bf3913366bC1",
+      "chainId": 42220
+    }
+  ],
+  "x402Support": true,
+  "active": true,
+  "supportedTrust": [
+    "reputation"
+  ],
+  "registrations": [
+    {
+      "agentId": 9680,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ]
+}
