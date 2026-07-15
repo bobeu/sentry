@@ -5,7 +5,6 @@ import { aiService } from "@/services/ai.service";
 import { actionService } from "@/services/action.service";
 import { moderationService } from "@/services/moderation.service";
 import { notificationService } from "@/services/notification.service";
-import { blockchainService } from "@/services/blockchain.service";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/logger";
 import { billingService } from "@/services/billing.service";
@@ -43,12 +42,8 @@ async function resolveActiveEmployer(telegramId: string) {
     if (!link.enabled || link.user.employment?.status !== "Active") continue;
     const wallet = link.user.wallet;
     if (!wallet) continue;
-    let balance = Number(wallet.balance.toString());
-    if (blockchainService.isConfigured()) {
-      const chainBal = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
-      if (chainBal !== null) balance = chainBal;
-    }
-    if (balance > 0) {
+    const ledger = await billingService.getBalanceLedger(link.userId);
+    if (ledger.availableBalance > 0) {
       return { group, employerUserId: link.userId };
     }
   }

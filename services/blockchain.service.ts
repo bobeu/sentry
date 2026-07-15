@@ -227,6 +227,43 @@ export class BlockchainService {
     return hash;
   }
 
+  /** Batch settlement — service revenue + fee in one on-chain transfer. */
+  async chargeSettlementOnChain(input: {
+    account: Address;
+    totalAmount: number;
+    settlementId: Hex;
+  }): Promise<string> {
+    const op = await this.operatorWallet();
+    if (!op) throw Errors.blockchainUnavailable();
+
+    const hash = await op.wallet.writeContract({
+      address: op.address,
+      abi: [
+        ...employmentAbi,
+        {
+          type: "function",
+          name: "chargeSettlement",
+          stateMutability: "nonpayable",
+          inputs: [
+            { name: "account", type: "address" },
+            { name: "totalAmount", type: "uint256" },
+            { name: "settlementId", type: "bytes32" },
+          ],
+          outputs: [],
+        },
+      ] as const,
+      functionName: "chargeSettlement",
+      args: [input.account, parseEther(input.totalAmount.toString()), input.settlementId],
+      account: op.account,
+      chain: celo,
+    });
+    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
+    if (receipt.status !== "success") {
+      throw Errors.chargeFailed("Settlement transaction reverted on-chain");
+    }
+    return hash;
+  }
+
   async pauseOnChain(account: Address): Promise<string | null> {
     const op = await this.operatorWallet();
     if (!op) return null;

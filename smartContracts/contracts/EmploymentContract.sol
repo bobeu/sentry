@@ -27,6 +27,7 @@ contract EmploymentContract is Ownable, ReentrancyGuard {
     mapping(address => mapping(PaymentToken => uint256)) private _balances;
     mapping(address => bool) private _paused;
     mapping(bytes32 => bool) public chargedActions;
+    mapping(bytes32 => bool) public settledBatches;
     mapping(address => bool) public identityRegistrars;
 
     uint256 private _locked;
@@ -49,6 +50,12 @@ contract EmploymentContract is Ownable, ReentrancyGuard {
         uint256 amount,
         uint256 newBalance,
         bytes32 indexed actionId
+    );
+    event SettlementCompleted(
+        address indexed account,
+        PaymentToken indexed token,
+        uint256 totalAmount,
+        bytes32 indexed settlementId
     );
     event Paused(address indexed account);
     event Resumed(address indexed account);
@@ -190,6 +197,30 @@ contract EmploymentContract is Ownable, ReentrancyGuard {
         _payout(treasury, token, amount);
         chargedActions[actionId] = true;
         emit Charged(account, token, amount, next, actionId);
+        if (next == 0) {
+            _paused[account] = true;
+            emit EmploymentExhausted(account);
+            emit Paused(account);
+        }
+    }
+
+    /// @notice Batch settlement — service revenue + settlement fee in one transfer.
+    function chargeSettlement(
+        address account,
+        uint256 totalAmount,
+        bytes32 settlementId
+    ) external onlyOperator nonReentrant {
+        if (totalAmount == 0) revert ZeroAmount();
+        if (_paused[account]) revert AccountPaused();
+        if (settledBatches[settlementId]) revert AlreadyCharged();
+        PaymentToken token = activePaymentToken;
+        uint256 bal = _balances[account][token];
+        if (bal < totalAmount) revert InsufficientBalance();
+        uint256 next = bal - totalAmount;
+        _balances[account][token] = next;
+        _payout(treasury, token, totalAmount);
+        settledBatches[settlementId] = true;
+        emit SettlementCompleted(account, token, totalAmount, settlementId);
         if (next == 0) {
             _paused[account] = true;
             emit EmploymentExhausted(account);

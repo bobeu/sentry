@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { EmploymentStatus } from "@prisma/client";
 import { walletService } from "@/services/wallet.service";
 import { actionService } from "@/services/action.service";
+import { billingService } from "@/services/billing.service";
 import { paymentService } from "@/services/payment.service";
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
@@ -16,14 +17,10 @@ export class EmploymentService {
     let employment = await prisma.employment.findUnique({ where: { userId } });
     const walletRow = await prisma.wallet.findUnique({ where: { userId } });
     const currency = await paymentService.getActiveCurrency();
+    const ledger = await billingService.getBalanceLedger(userId);
+    const settlement = await billingService.getSettlementStatus(userId);
 
-    let walletBalance = balanceOf(walletRow?.balance);
-    if (walletRow) {
-      const synced = await walletService.syncBalanceFromChain(userId);
-      walletBalance = synced?.balance ?? walletBalance;
-    }
-
-    if (employment?.status === "Active" && walletBalance <= 0) {
+    if (employment?.status === "Active" && ledger.availableBalance <= 0) {
       employment = await prisma.employment.update({
         where: { userId },
         data: { status: "Exhausted" },
@@ -40,12 +37,17 @@ export class EmploymentService {
             status: employment.status,
             startedAt: employment.startedAt,
             pausedAt: employment.pausedAt,
+            outstandingCharges: balanceOf(employment.outstandingCharges),
+            lastSettlementAt: employment.lastSettlementAt,
           }
         : null,
       wallet: walletRow
         ? {
             address: walletRow.address,
-            balance: walletBalance,
+            balance: ledger.onChainBalance,
+            availableBalance: ledger.availableBalance,
+            outstandingCharges: ledger.outstandingCharges,
+            withdrawableBalance: ledger.withdrawableBalance,
             provider: walletRow.provider,
           }
         : null,
@@ -54,15 +56,18 @@ export class EmploymentService {
       actionsCompleted: stats.actionsCompleted,
       todaySpend: stats.todaySpend,
       lifetimeSpend: stats.lifetimeSpend,
+      outstandingCharges: ledger.outstandingCharges,
+      availableBalance: ledger.availableBalance,
+      lastSettlementAt: settlement.lastSettlementAt,
+      nextSettlement: settlement.nextSettlement,
       recentActivity: stats.recent,
     };
   }
 
   async start(userId: string, email?: string) {
     const wallet = await walletService.ensureSmartWallet(userId, email);
-    const synced = await walletService.syncBalanceFromChain(userId);
-    const bal = synced?.balance ?? wallet.balance;
-    const nextStatus: EmploymentStatus = bal > 0 ? "Active" : "Inactive";
+    const ledger = await billingService.getBalanceLedger(userId);
+    const nextStatus: EmploymentStatus = ledger.availableBalance > 0 ? "Active" : "Inactive";
 
     const employment = await prisma.employment.upsert({
       where: { userId },
@@ -123,8 +128,8 @@ export class EmploymentService {
       throw new Error("Only Paused employment can be resumed");
     }
 
-    const synced = await walletService.syncBalanceFromChain(userId);
-    if (!synced || synced.balance <= 0) {
+    const ledger = await billingService.getBalanceLedger(userId);
+    if (ledger.availableBalance <= 0) {
       const exhausted = await prisma.employment.update({
         where: { userId },
         data: { status: "Exhausted", pausedAt: null },
@@ -155,10 +160,18 @@ export class EmploymentService {
     };
   }
 
-  async assertCanWork(userId: string) {
+  async assertCanWork(userId: string, actionType?: import("@prisma/client").ActionType) {
     const status = await this.getStatus(userId);
     if (status.status !== "Active") {
       throw Errors.employmentInactive();
+    }
+    const canWork = await billingService.canPerformAction(
+      userId,
+      actionType ?? undefined,
+    );
+    if (!canWork) {
+      await billingService.exhaustUser(userId, "insufficient_available_balance");
+      throw Errors.walletNotFunded();
     }
     return status;
   }

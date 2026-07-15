@@ -14,8 +14,8 @@ export default async function PricingPage() {
         Pricing
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Pay per completed work in {currency}. Sentry only charges after successful on-chain
-        settlement.
+        Pay per completed work in {currency}. Work accrues as outstanding charges and settles
+        on-chain in batches (monetary, action-count, or time thresholds).
       </p>
       <p className="mt-2 inline-flex rounded-full border border-[#35d07f]/30 bg-[#35d07f]/10 px-4 py-1 text-sm text-[#35d07f]">
         Payment Currency · {currency}

@@ -25,7 +25,7 @@ export class ActionService {
 
     if (action.status === "completed" && action.billable && action.userId) {
       try {
-        await billingService.chargeUser(action.id);
+        await billingService.recordAction(action.id);
       } catch (err) {
         console.warn("[action] billing pending/failed", action.id, err);
       }
@@ -83,8 +83,11 @@ export class ActionService {
       groupsEnabled,
       todaySpend: spending.todaySpend,
       lifetimeSpend: spending.lifetimeSpend,
-      balance: spending.balance,
+      balance: spending.onChainBalance,
+      availableBalance: spending.availableBalance,
+      outstandingCharges: spending.outstandingCharges,
       estimatedRemainingActions: spending.estimatedRemainingActions,
+      settlement: spending.settlement,
       spendSeries: spending.series,
     };
   }

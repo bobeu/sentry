@@ -5032,3 +5032,541 @@ Sentry should now be:
 ### Env
 
 - `.env.example`: `DEMO_MODE=false`.
+
+---
+
+# CTO Said
+
+# Prompt 8 — Refactor Billing & Settlement Architecture
+
+## Objective
+
+Refactor Sentry's payment architecture from **immediate on-chain charging per completed task** to a **prepaid settlement model**.
+
+This is a fundamental architectural change intended to:
+
+* Reduce blockchain transaction costs.
+* Improve scalability.
+* Preserve a responsive Telegram experience.
+* Keep Celo Mainnet as the financial source of truth.
+* Ensure the platform never subsidizes gas costs.
+
+Do **not** add new product features. This prompt only changes how payments are accounted for and settled.
+
+---
+
+# Why This Change
+
+The current implementation submits an on-chain `charge()` transaction after every completed action.
+
+Although technically correct, this creates unnecessary blockchain transactions and can result in gas costs exceeding the value of small actions.
+
+The new architecture separates:
+
+* **Work Accounting**
+* **Blockchain Settlement**
+
+This follows how real-world payment systems operate.
+
+---
+
+# New Payment Model
+
+Users still prepay before Sentry begins working.
+
+The difference is that completed work is accumulated off-chain and settled periodically.
+
+Flow:
+
+```text
+User Funds Employment Wallet
+            │
+            ▼
+Available Balance Calculated
+            │
+            ▼
+AI Completes Work
+            │
+            ▼
+ActionRecord Created
+            │
+            ▼
+Outstanding Charges Increased
+            │
+            ▼
+Settlement Threshold Reached
+            │
+            ▼
+Single On-chain Settlement
+            │
+            ▼
+Treasury Receives Payment
+```
+
+---
+
+# Employment Wallet
+
+The Employment Smart Wallet remains the user's dedicated wallet.
+
+Users can fund it using either:
+
+### Method 1
+
+Connect wallet
+
+↓
+
+Deposit from Sentry dashboard
+
+### Method 2
+
+Transfer CELO / USDm / USDC / USDT directly to the Employment Wallet address.
+
+Both methods are equally supported.
+
+---
+
+# Blockchain Source of Truth
+
+Funds always exist on-chain.
+
+The backend must never invent balances.
+
+Maintain:
+
+* Cached On-chain Balance
+* Outstanding Charges
+
+Calculate:
+
+```text
+Available Balance =
+Cached On-chain Balance
+−
+Outstanding Charges
+```
+
+Before Sentry performs any billable action:
+
+Check whether
+
+```text
+Available Balance >= Estimated Cost
+```
+
+If false:
+
+* Stop work.
+* Mark Employment as Exhausted.
+* Notify the user.
+
+No further billable actions should be performed until additional funds are deposited or unsettled charges are reduced.
+
+---
+
+# Outstanding Charges
+
+Introduce a new concept:
+
+Outstanding Charges.
+
+Definition:
+
+The total value of completed billable work that has **not yet been settled on-chain**.
+
+Outstanding Charges are maintained entirely by the backend.
+
+Every successful ActionRecord increases Outstanding Charges.
+
+No blockchain transaction occurs at this stage.
+
+---
+
+# Settlement
+
+Settlement transfers accumulated earnings from the Employment Wallet to the Treasury.
+
+Settlement occurs when **any** of the following conditions is true:
+
+* Outstanding Charges exceed the configured monetary threshold.
+* Outstanding billable actions reach the configured action threshold.
+* The maximum settlement interval has elapsed.
+
+Example configuration:
+
+* Monetary Threshold: 0.50 cUSD
+* Action Threshold: 5 completed actions
+* Time Threshold: 15 minutes
+
+These values must be configurable.
+
+Do not hardcode them.
+
+---
+
+# Settlement Fee
+
+Every settlement incurs blockchain transaction costs.
+
+The platform must never absorb this cost.
+
+Before submitting a settlement transaction:
+
+Estimate the blockchain transaction cost.
+
+Calculate:
+
+```text
+Settlement Amount =
+Outstanding Charges
++
+Estimated Settlement Fee
+```
+
+Transfer both amounts from the user's Employment Wallet.
+
+The Treasury receives:
+
+* Service Revenue
+* Settlement Fee
+
+Record both separately.
+
+Do not merge them into one accounting value.
+
+---
+
+# Withdrawal Rules
+
+Users may withdraw funds at any time.
+
+However, they may only withdraw their:
+
+Available Balance.
+
+Formula:
+
+```text
+Withdrawable Balance =
+On-chain Balance
+−
+Outstanding Charges
+```
+
+Reject withdrawals that would reduce the wallet below Outstanding Charges.
+
+Example:
+
+On-chain Balance
+
+50 USDm
+
+Outstanding
+
+4 USDm
+
+Maximum Withdrawal
+
+46 USDm
+
+---
+
+# Settlement Lifecycle
+
+Implement the following lifecycle.
+
+```text
+Action Completed
+        │
+        ▼
+ActionRecord
+        │
+        ▼
+Outstanding Charges Updated
+        │
+        ▼
+Settlement Trigger
+        │
+        ▼
+Estimate Gas Cost
+        │
+        ▼
+Submit Settlement
+        │
+        ├──────────────┐
+        │              │
+        ▼              ▼
+Success          Failure
+        │              │
+        ▼              ▼
+Outstanding      Retry Later
+Reset
+```
+
+If settlement fails:
+
+* Do not lose Outstanding Charges.
+* Retry later.
+* Never double-charge.
+
+---
+
+# Database Changes
+
+Add:
+
+## Settlement
+
+Fields:
+
+* id
+* userId
+* walletId
+* amount
+* settlementFee
+* currency
+* actionCount
+* transactionHash
+* status
+* createdAt
+* completedAt
+
+---
+
+Update ActionRecord
+
+Add:
+
+* settlementId (nullable)
+
+An ActionRecord belongs to at most one Settlement.
+
+---
+
+Employment
+
+Add:
+
+* outstandingCharges
+* lastSettlementAt
+
+---
+
+# Billing Engine
+
+Replace immediate charging.
+
+Implement:
+
+```text
+recordAction()
+
+calculateOutstanding()
+
+estimateSettlementFee()
+
+canPerformAction()
+
+settleEmployment()
+
+retrySettlement()
+```
+
+Remove immediate `chargeUser()` calls after every completed task.
+
+Charging now occurs only during settlement.
+
+---
+
+# Smart Contract Changes
+
+The contract no longer receives one transaction per ActionRecord.
+
+Instead:
+
+The operator submits a single settlement transaction.
+
+Example:
+
+```text
+chargeSettlement(
+    wallet,
+    totalAmount,
+    settlementId
+)
+```
+
+The contract should:
+
+* Validate authorization.
+* Prevent duplicate settlements.
+* Transfer funds.
+* Emit SettlementCompleted.
+
+The contract should not know about individual ActionRecords.
+
+Action accounting remains off-chain.
+
+---
+
+# Frontend Changes
+
+## Dashboard
+
+Replace:
+
+Today's Spend
+
+with:
+
+Today's Spend
+
+Outstanding Charges
+
+Available Balance
+
+Last Settlement
+
+Next Settlement
+
+---
+
+## Wallet Page
+
+Display:
+
+Current Balance
+
+Outstanding Charges
+
+Withdrawable Balance
+
+Settlement Status
+
+Last Settlement
+
+Funding Options
+
+Sync Balance
+
+---
+
+## Billing History
+
+Separate:
+
+Completed Settlements
+
+Outstanding Charges
+
+Users should clearly understand:
+
+* What has already been paid.
+* What is pending settlement.
+
+---
+
+# Scheduler
+
+The scheduler should now additionally:
+
+* Evaluate settlement thresholds.
+* Trigger settlements.
+* Retry failed settlements.
+
+Do not continuously poll the blockchain.
+
+Use the existing scheduler infrastructure.
+
+---
+
+# Notifications
+
+Notify users when:
+
+* Outstanding Charges become significant.
+* Settlement completes.
+* Settlement fails.
+* Wallet balance becomes insufficient.
+* Employment pauses because available funds are exhausted.
+
+---
+
+# Security
+
+Prevent:
+
+* Duplicate settlement.
+* Double billing.
+* Settlement replay.
+* Negative outstanding balances.
+* Withdrawals that exceed available balance.
+
+The blockchain remains the source of truth for deposited funds.
+
+The backend remains the source of truth for unsettled work.
+
+---
+
+# Acceptance Criteria
+
+The implementation is complete when:
+
+* Users continue funding the same Employment Smart Wallet.
+* Sentry checks Available Balance before every billable action.
+* Completed work increases Outstanding Charges without immediately calling the blockchain.
+* Settlement batches multiple completed actions into one blockchain transaction.
+* Settlement fees are estimated and charged to the user's wallet.
+* Withdrawals are limited to the Withdrawable Balance.
+* Failed settlements can be retried safely.
+* Dashboard clearly displays Current Balance, Outstanding Charges, Available Balance, and Settlement History.
+* No existing Telegram functionality is broken by this refactor.
+
+This prompt supersedes the previous immediate per-action charging implementation and becomes the canonical billing architecture for Sentry.
+
+---
+
+## Agent Session Summary — Prompt 8 (Settlement Billing Refactor)
+
+**Date:** 2026-07-15
+
+### Architecture change
+
+Replaced immediate per-action `charge()` with **prepaid settlement model**:
+- Completed work → `ActionRecord` + pending `ChargeRecord` → outstanding charges increase (no chain tx).
+- Settlement batches outstanding work into one `chargeSettlement(wallet, totalAmount, settlementId)` on-chain.
+- **Available balance** = on-chain balance − outstanding charges gates all billable work.
+
+### Database
+
+- New `Settlement` model (amount, settlementFee, actionCount, status, transactionHash).
+- `Employment.outstandingCharges`, `Employment.lastSettlementAt`.
+- `ActionRecord.settlementId` links actions to batch settlements.
+
+### Services
+
+- `billing.service.ts`: `recordAction()`, `canPerformAction()`, `settleEmployment()`, `retrySettlement()`, `evaluateSettlements()`, `getBalanceLedger()`.
+- Removed immediate `chargeUser()` flow from action completion.
+- `employment.service.ts`: gates on available balance; dashboard exposes settlement fields.
+- `wallet.service.ts`: withdrawals capped at withdrawable balance.
+- `scheduler.service.ts`: evaluates settlement thresholds + retries failures every 5 min.
+
+### Smart contract
+
+- `EmploymentContract.chargeSettlement()` with `settledBatches` replay protection and `SettlementCompleted` event.
+
+### Config (env)
+
+- `SETTLEMENT_MONETARY_THRESHOLD`, `SETTLEMENT_ACTION_THRESHOLD`, `SETTLEMENT_INTERVAL_MINUTES`, `SETTLEMENT_FEE_ESTIMATE`.
+
+### UI
+
+- Dashboard: outstanding, available, last/next settlement.
+- Wallet: outstanding, withdrawable, settlement status, withdraw form.
+- Billing history API returns `{ settlements, outstanding }` separately.
+
+### Tests
+
+- `pnpm test` — 8 passing (includes settlement config).
+- `pnpm test:contracts` — 13 passing (includes `chargeSettlement` test).

@@ -135,8 +135,13 @@ const DEPOSIT_ABI = [
 export function WalletPanel() {
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
+  const [outstanding, setOutstanding] = useState(0);
+  const [withdrawable, setWithdrawable] = useState(0);
+  const [lastSettlementAt, setLastSettlementAt] = useState<string | null>(null);
+  const [settlementStatus, setSettlementStatus] = useState<string>("—");
   const [currency, setCurrency] = useState("USDm");
   const [depositAmount, setDepositAmount] = useState("1");
+  const [withdrawAmount, setWithdrawAmount] = useState("1");
   const [depositConfig, setDepositConfig] = useState<DepositConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -145,9 +150,10 @@ export function WalletPanel() {
   const [loading, setLoading] = useState(false);
 
   async function refresh() {
-    const [balRes, prepareRes] = await Promise.all([
+    const [balRes, prepareRes, spendRes] = await Promise.all([
       fetch("/api/wallet/balance"),
       fetch("/api/wallet/deposit/prepare"),
+      fetch("/api/billing/spending"),
     ]);
     const balJson = await balRes.json();
     if (!balRes.ok) {
@@ -155,9 +161,23 @@ export function WalletPanel() {
       return;
     }
     setAddress(balJson.address);
-    setBalance(balJson.balance ?? 0);
+    setBalance(balJson.onChainBalance ?? balJson.balance ?? 0);
+    setOutstanding(balJson.outstandingCharges ?? 0);
+    setWithdrawable(balJson.withdrawableBalance ?? balJson.availableBalance ?? 0);
     setCurrency(balJson.currency ?? "USDm");
     setError(null);
+
+    if (spendRes.ok) {
+      const spend = await spendRes.json();
+      setLastSettlementAt(spend.settlement?.lastSettlementAt ?? null);
+      const failed = spend.settlement?.failedSettlement;
+      const triggers = spend.settlement?.nextSettlement?.triggers;
+      if (failed) setSettlementStatus("Retry pending");
+      else if (triggers?.monetary || triggers?.actions || triggers?.time)
+        setSettlementStatus("Ready to settle");
+      else if ((spend.outstandingCharges ?? 0) > 0) setSettlementStatus("Accumulating");
+      else setSettlementStatus("Up to date");
+    }
 
     if (prepareRes.ok) {
       setDepositConfig(await prepareRes.json());
@@ -264,6 +284,29 @@ export function WalletPanel() {
     }
   }
 
+  async function withdraw(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const amount = Number(withdrawAmount);
+      const res = await fetch("/api/wallet/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Withdraw failed");
+      setMessage(`Withdrawal recorded. Balance ${Number(json.balance).toFixed(4)} ${json.currency}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Withdraw failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="mt-6 max-w-lg">
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
@@ -358,6 +401,47 @@ export function WalletPanel() {
         <p className="mt-1 font-[family-name:var(--font-display)] text-3xl text-[#f4f7f0]">
           {balance.toFixed(4)} <span className="text-lg text-[#9aa89a]">{currency}</span>
         </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-[#9aa89a]">Outstanding</p>
+            <p className="text-[#e8f5d8]">{outstanding.toFixed(4)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[#9aa89a]">Withdrawable</p>
+            <p className="text-[#e8f5d8]">{withdrawable.toFixed(4)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[#9aa89a]">Settlement</p>
+            <p className="text-[#e8f5d8]">{settlementStatus}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[#9aa89a]">Last Settlement</p>
+            <p className="text-[#e8f5d8]">
+              {lastSettlementAt ? new Date(lastSettlementAt).toLocaleString() : "—"}
+            </p>
+          </div>
+        </div>
+
+        {address ? (
+          <form onSubmit={withdraw} className="mt-4 flex flex-wrap items-end gap-2">
+            <label className="text-xs text-[#9aa89a]">
+              Withdraw (max {withdrawable.toFixed(4)})
+              <input
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                className="mt-1 block w-28 rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#35d07f]"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={loading || withdrawable <= 0}
+              className="rounded-full border border-white/20 px-4 py-2 text-xs disabled:opacity-40"
+            >
+              Withdraw
+            </button>
+          </form>
+        ) : null}
       </div>
 
       {message ? <p className="mt-3 text-sm text-[#35d07f]">{message}</p> : null}

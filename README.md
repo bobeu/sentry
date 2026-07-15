@@ -9,8 +9,8 @@ Sentry is a pay-per-completed-work product:
 1. User hires Sentry → **EmploymentWalletFactory** deploys a permanent employment smart wallet.
 2. User funds the wallet (**web deposit** or **direct transfer** + sync).
 3. Sentry joins Telegram groups and performs billable work.
-4. Each completed action triggers an on-chain `charge()` — **blockchain is the source of truth**.
-5. When balance reaches zero, employment exhausts automatically.
+4. Completed work accumulates as **outstanding charges** off-chain; batch **settlements** settle on-chain via `chargeSettlement()`.
+5. **Available balance** = on-chain balance − outstanding charges. Work stops when available balance is exhausted.
 
 Supported payment currencies (global, admin-configured): **CELO**, **USDm**, **USDC**, **USDT**.
 
@@ -78,6 +78,10 @@ Point Telegram webhook to `POST /api/telegram`.
 | `CELO_USDM_ADDRESS` / `USDC` / `USDT` | ERC-20 addresses on Celo |
 | `ADMIN_EMAILS` | Comma-separated admin emails |
 | `DEMO_MODE` | Set `true` to scale pricing down 100× for judge demos |
+| `SETTLEMENT_MONETARY_THRESHOLD` | Batch settle when outstanding charges reach this amount |
+| `SETTLEMENT_ACTION_THRESHOLD` | Batch settle after this many unsettled actions |
+| `SETTLEMENT_INTERVAL_MINUTES` | Maximum time between settlements |
+| `SETTLEMENT_FEE_ESTIMATE` | Estimated gas fee added to each settlement |
 
 ## Testing
 

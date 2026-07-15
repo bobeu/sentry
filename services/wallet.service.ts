@@ -97,11 +97,16 @@ export class WalletService {
     }
 
     const synced = await this.syncBalanceFromChain(userId);
+    const ledger = await billingService.getBalanceLedger(userId);
 
     return {
       connected: true,
       address: wallet.address,
       balance: synced?.balance ?? toBalanceNumber(wallet.balance),
+      onChainBalance: ledger.onChainBalance,
+      outstandingCharges: ledger.outstandingCharges,
+      availableBalance: ledger.availableBalance,
+      withdrawableBalance: ledger.withdrawableBalance,
       currency,
       provider: wallet.provider,
       onChain: synced
@@ -146,13 +151,13 @@ export class WalletService {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw Errors.walletNotFunded();
 
-    const current =
-      (await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)) ??
-      toBalanceNumber(wallet.balance);
+    const ledger = await billingService.getBalanceLedger(userId);
 
-    if (amount > current) {
+    if (amount > ledger.withdrawableBalance) {
       throw Errors.walletNotFunded();
     }
+
+    const current = ledger.onChainBalance;
 
     // Withdrawal executes on-chain via user's wallet calling contract withdraw — MVP records intent
     const newBal = current - amount;
@@ -163,7 +168,7 @@ export class WalletService {
       data: { balance: newBal, balanceCachedAt: new Date() },
     });
 
-    if (newBal <= 0) {
+    if (newBal <= 0 && ledger.outstandingCharges <= 0) {
       await billingService.exhaustUser(userId, "withdrawn_to_zero");
     }
 

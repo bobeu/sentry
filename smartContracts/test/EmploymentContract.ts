@@ -121,4 +121,16 @@ describe("EmploymentContract", function () {
     await usdc.connect(owner).approve(await contract.getAddress(), ethers.parseEther("1"));
     await contract.connect(owner).depositERC20(ethers.parseEther("1"));
   });
+
+  it("settles batch charges with replay protection", async function () {
+    const { contract, operator, user } = await deploy();
+    await contract.connect(user).depositNative({ value: ethers.parseEther("2") });
+    const settlementId = ethers.id("settlement-1");
+    const total = ethers.parseEther("1.1");
+    await contract.connect(operator).chargeSettlement(user.address, total, settlementId);
+    expect(await contract.balanceOf(user.address)).to.equal(ethers.parseEther("0.9"));
+    await expect(
+      contract.connect(operator).chargeSettlement(user.address, total, settlementId),
+    ).to.be.revertedWithCustomError(contract, "AlreadyCharged");
+  });
 });

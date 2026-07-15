@@ -42,6 +42,7 @@ model User {
   settings        Settings?
   sessions        Session[]
   actions         ActionRecord[]
+  settlements     Settlement[]
 }
 
 model Session {
@@ -64,6 +65,8 @@ model Wallet {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  settlements Settlement[]
 }
 
 model TelegramGroup {
@@ -150,6 +153,20 @@ model ConversationContext {
   @@index([createdAt])
 }
 
+enum ChargeStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+enum SettlementStatus {
+  pending
+  submitted
+  succeeded
+  failed
+}
+
 model ActionRecord {
   id          String         @id @default(cuid())
   type        ActionType
@@ -161,19 +178,15 @@ model ActionRecord {
   status      ActionStatus   @default(completed)
   billable    Boolean        @default(true)
   metadata    Json?
+  settlementId String?
+  settlement   Settlement?   @relation(fields: [settlementId], references: [id], onDelete: SetNull)
   createdAt   DateTime       @default(now())
   charge      ChargeRecord?
 
   @@index([userId, completedAt])
   @@index([groupId, completedAt])
   @@index([completedAt])
-}
-
-enum ChargeStatus {
-  pending
-  succeeded
-  failed
-  refunded
+  @@index([settlementId])
 }
 
 model ChargeRecord {
@@ -191,6 +204,27 @@ model ChargeRecord {
   @@index([status])
 }
 
+model Settlement {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId        String
+  wallet          Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Decimal          @db.Decimal(36, 18)
+  settlementFee   Decimal          @db.Decimal(36, 18)
+  currency        String           @default("USDm")
+  actionCount     Int
+  transactionHash String?
+  status          SettlementStatus @default(pending)
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+  actions         ActionRecord[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
 model PaymentConfig {
   id             String   @id @default("global")
   activeCurrency String   @default("USDm")
@@ -198,14 +232,16 @@ model PaymentConfig {
 }
 
 model Employment {
-  id        String           @id @default(cuid())
-  userId    String           @unique
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    EmploymentStatus @default(Inactive)
-  startedAt DateTime?
-  pausedAt  DateTime?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id                 String           @id @default(cuid())
+  userId             String           @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             EmploymentStatus @default(Inactive)
+  outstandingCharges Decimal          @default(0) @db.Decimal(36, 18)
+  lastSettlementAt   DateTime?
+  startedAt          DateTime?
+  pausedAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 }
 
 model Task {

@@ -11,14 +11,29 @@ type ActionRow = {
   group?: { name: string | null } | null;
 };
 
+type NextSettlement = {
+  monetaryRemaining: number;
+  actionsRemaining: number;
+  timeRemainingMs: number;
+};
+
 type StatusPayload = {
   status: string;
   currency: string;
-  wallet: { address: string; balance: number } | null;
+  wallet: {
+    address: string;
+    balance: number;
+    availableBalance?: number;
+    outstandingCharges?: number;
+  } | null;
   groupsEnabled: number;
   actionsCompleted: number;
   todaySpend: number;
   lifetimeSpend: number;
+  outstandingCharges?: number;
+  availableBalance?: number;
+  lastSettlementAt?: string | null;
+  nextSettlement?: NextSettlement;
   recentActivity: ActionRow[];
 };
 
@@ -46,6 +61,12 @@ function actionLabel(type: string) {
     default:
       return type;
   }
+}
+
+function formatDuration(ms: number) {
+  const mins = Math.ceil(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.ceil(mins / 60)}h`;
 }
 
 export function DashboardLive() {
@@ -95,7 +116,10 @@ export function DashboardLive() {
   if (!data) return null;
 
   const balance = data.wallet?.balance ?? 0;
+  const available = data.availableBalance ?? data.wallet?.availableBalance ?? balance;
+  const outstanding = data.outstandingCharges ?? data.wallet?.outstandingCharges ?? 0;
   const currency = data.currency ?? "USDm";
+  const next = data.nextSettlement;
 
   return (
     <div className="mt-10 space-y-8">
@@ -103,18 +127,46 @@ export function DashboardLive() {
         <Card title="Employment Status" value={statusLabel(data.status)} description="Current employment" />
         <Card
           title="Current Balance"
-          value={`${balance.toFixed(3)} ${currency}`}
-          description={data.wallet?.address ?? "No wallet yet"}
+          value={`${balance.toFixed(4)} ${currency}`}
+          description="On-chain wallet balance"
+        />
+        <Card
+          title="Available Balance"
+          value={`${available.toFixed(4)} ${currency}`}
+          description="Balance minus outstanding charges"
+        />
+        <Card
+          title="Outstanding Charges"
+          value={`${outstanding.toFixed(4)} ${currency}`}
+          description="Work pending on-chain settlement"
         />
         <Card
           title="Today's Spend"
-          value={`${(data.todaySpend ?? 0).toFixed(3)} ${currency}`}
-          description="Successful charges today"
+          value={`${(data.todaySpend ?? 0).toFixed(4)} ${currency}`}
+          description="Completed work today"
         />
         <Card
           title="Lifetime Spend"
-          value={`${(data.lifetimeSpend ?? 0).toFixed(3)} ${currency}`}
-          description="All successful charges"
+          value={`${(data.lifetimeSpend ?? 0).toFixed(4)} ${currency}`}
+          description="Successfully settled on-chain"
+        />
+        <Card
+          title="Last Settlement"
+          value={
+            data.lastSettlementAt
+              ? new Date(data.lastSettlementAt).toLocaleString()
+              : "None yet"
+          }
+          description="Most recent batch settlement"
+        />
+        <Card
+          title="Next Settlement"
+          value={
+            next
+              ? `${next.actionsRemaining} actions · ${next.monetaryRemaining.toFixed(2)} ${currency} · ${formatDuration(next.timeRemainingMs)}`
+              : "—"
+          }
+          description="Thresholds until auto-settlement"
         />
         <Card
           title="Groups Enabled"

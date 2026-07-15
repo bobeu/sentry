@@ -8,6 +8,7 @@ import {
 import { priceFor, averageActionCost, getPricing, PRICING_AMOUNTS } from "../lib/pricing";
 import { isDemoMode } from "../lib/demo-mode";
 import { isPaymentCurrency, formatAmount } from "../lib/payment-currency";
+import { getSettlementConfig } from "../lib/settlement-config";
 
 describe("identity", () => {
   it("hashes namespaced email without exposing raw value on-chain shape", () => {
@@ -53,5 +54,15 @@ describe("payment currency", () => {
 
   it("formats amounts with currency label", () => {
     assert.match(formatAmount(1.5, "USDm"), /USDm/);
+  });
+});
+
+describe("settlement config", () => {
+  it("loads configurable thresholds from env defaults", () => {
+    const config = getSettlementConfig();
+    assert.ok(config.monetaryThreshold > 0);
+    assert.ok(config.actionThreshold >= 1);
+    assert.ok(config.intervalMinutes >= 1);
+    assert.ok(config.feeEstimate > 0);
   });
 });
