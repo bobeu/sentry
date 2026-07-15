@@ -57,6 +57,17 @@ export class SchedulerService {
       }
     });
 
+    // Blockchain balance sync — every 5 minutes (not continuous polling)
+    cron.schedule("*/5 * * * *", async () => {
+      try {
+        const { syncService } = await import("@/services/sync.service");
+        const result = await syncService.syncAllWallets();
+        console.log("[scheduler] wallet sync", result);
+      } catch (err) {
+        console.error("[scheduler] wallet sync", err);
+      }
+    });
+
     console.log("[scheduler] started");
   }
 }

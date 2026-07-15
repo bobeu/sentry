@@ -32,7 +32,8 @@ export class BillingService {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     let balance = bal(wallet?.balance);
     if (wallet && blockchainService.isConfigured()) {
-      balance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      const chainBal = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      if (chainBal !== null) balance = chainBal;
       await prisma.wallet.update({
         where: { id: wallet.id },
         data: { balance, balanceCachedAt: new Date() },
@@ -172,7 +173,9 @@ export class BillingService {
       throw Errors.blockchainUnavailable();
     }
 
-    const chainBalance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+    const chainBalance =
+      (await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)) ??
+      toBalanceNumber(wallet.balance);
     if (chainBalance < amount) {
       await prisma.chargeRecord.update({
         where: { id: pending.id },
@@ -189,7 +192,8 @@ export class BillingService {
         actionId: actionHash,
       });
 
-      const newBal = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      const newBal =
+        (await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)) ?? chainBalance - amount;
       const charge = await prisma.$transaction([
         prisma.chargeRecord.update({
           where: { id: pending.id },
@@ -285,9 +289,9 @@ export class BillingService {
     if (!wallet) return;
 
     const balance =
-      blockchainService.isConfigured()
+      (blockchainService.isConfigured()
         ? await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)
-        : bal(wallet.balance);
+        : null) ?? bal(wallet.balance);
     if (balance <= 0) return;
 
     await prisma.wallet.update({

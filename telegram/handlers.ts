@@ -45,7 +45,8 @@ async function resolveActiveEmployer(telegramId: string) {
     if (!wallet) continue;
     let balance = Number(wallet.balance.toString());
     if (blockchainService.isConfigured()) {
-      balance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      const chainBal = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      if (chainBal !== null) balance = chainBal;
     }
     if (balance > 0) {
       return { group, employerUserId: link.userId };

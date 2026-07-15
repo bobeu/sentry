@@ -170,9 +170,9 @@ export class BlockchainService {
     }
   }
 
-  async syncBalanceCache(address: Address): Promise<number> {
+  async syncBalanceCache(address: Address): Promise<number | null> {
     const onChain = await this.getEmploymentBalance(address);
-    if (!onChain) return 0;
+    if (!onChain) return null;
     return Number(onChain.formatted);
   }
 
@@ -250,6 +250,47 @@ export class BlockchainService {
       account: owner.account,
       chain: celo,
     });
+  }
+
+  getContractAddress(): Address | null {
+    return this.contractAddress();
+  }
+
+  getDepositAbi() {
+    return [
+      ...employmentAbi,
+      {
+        type: "function",
+        name: "depositNativeFor",
+        stateMutability: "payable",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [],
+      },
+      {
+        type: "function",
+        name: "depositERC20For",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "account", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+        outputs: [],
+      },
+      {
+        type: "function",
+        name: "depositNative",
+        stateMutability: "payable",
+        inputs: [],
+        outputs: [],
+      },
+      {
+        type: "function",
+        name: "depositERC20",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "amount", type: "uint256" }],
+        outputs: [],
+      },
+    ] as const;
   }
 }
 

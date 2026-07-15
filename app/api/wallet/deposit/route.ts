@@ -4,7 +4,7 @@ import { requireSessionUser } from "@/lib/auth";
 import { walletService } from "@/services/wallet.service";
 import { errorResponse } from "@/lib/errors";
 
-/** Sync balance from blockchain after user deposited on-chain. */
+/** Sync balance from blockchain (Method B — after direct transfer). */
 export async function POST() {
   try {
     const user = await requireSessionUser();

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
 import {IERC20} from "./IERC20.sol";
+import { Ownable } from "@openzeppelin/contracts";
 
 /**
  * @title EmploymentContract
  * @notice Global payment currency, per-wallet balances, operator billing.
- *         Supports CELO (native), USDm, USDC, USDT. No credit() — users fund via depositNative/depositERC20.
+ *         Identity on-chain is bytes32 only — backend computes keccak256(namespace:value).
  */
 contract EmploymentContract {
     enum PaymentToken {
@@ -26,6 +27,8 @@ contract EmploymentContract {
     mapping(address => mapping(PaymentToken => uint256)) private _balances;
     mapping(address => bool) private _paused;
     mapping(bytes32 => bool) public chargedActions;
+
+    uint256 private _locked;
 
     event Deposited(
         address indexed account,
@@ -48,9 +51,9 @@ contract EmploymentContract {
     );
     event Paused(address indexed account);
     event Resumed(address indexed account);
-    event Exhausted(address indexed account);
+    event EmploymentExhausted(address indexed account);
     event IdentityRegistered(bytes32 indexed identityHash, address indexed wallet);
-    event ActivePaymentTokenUpdated(PaymentToken indexed token);
+    event PaymentCurrencyChanged(PaymentToken indexed token);
     event SupportedTokenUpdated(PaymentToken indexed token, address indexed tokenAddress);
     event TreasuryUpdated(address indexed treasury);
     event OperatorUpdated(address indexed previousOperator, address indexed newOperator);
@@ -64,6 +67,8 @@ contract EmploymentContract {
     error AlreadyCharged();
     error InvalidToken();
     error WrongDepositMethod();
+    error ReentrancyGuard();
+    error ZeroAddress();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
@@ -75,6 +80,13 @@ contract EmploymentContract {
         _;
     }
 
+    modifier nonReentrant() {
+        if (_locked == 1) revert ReentrancyGuard();
+        _locked = 1;
+        _;
+        _locked = 0;
+    }
+
     constructor(
         address initialOwner,
         address initialOperator,
@@ -83,9 +95,9 @@ contract EmploymentContract {
         address usdc,
         address usdt
     ) {
-        require(initialOwner != address(0), "owner=0");
-        require(initialOperator != address(0), "operator=0");
-        require(initialTreasury != address(0), "treasury=0");
+        if (initialOwner == address(0) || initialOperator == address(0) || initialTreasury == address(0)) {
+            revert ZeroAddress();
+        }
         owner = initialOwner;
         operator = initialOperator;
         treasury = initialTreasury;
@@ -98,60 +110,57 @@ contract EmploymentContract {
     }
 
     function setOperator(address newOperator) external onlyOwner {
-        require(newOperator != address(0), "operator=0");
+        if (newOperator == address(0)) revert ZeroAddress();
         emit OperatorUpdated(operator, newOperator);
         operator = newOperator;
     }
 
     function setTreasury(address newTreasury) external onlyOwner {
-        require(newTreasury != address(0), "treasury=0");
+        if (newTreasury == address(0)) revert ZeroAddress();
         treasury = newTreasury;
         emit TreasuryUpdated(newTreasury);
     }
 
     function setActivePaymentToken(PaymentToken token) external onlyOwner {
-        if (token != PaymentToken.CELO) {
-            if (supportedTokens[token] == address(0)) revert InvalidToken();
+        if (token != PaymentToken.CELO && supportedTokens[token] == address(0)) {
+            revert InvalidToken();
         }
         activePaymentToken = token;
-        emit ActivePaymentTokenUpdated(token);
+        emit PaymentCurrencyChanged(token);
     }
 
     function setSupportedTokenAddress(PaymentToken token, address tokenAddress) external onlyOwner {
         if (token == PaymentToken.CELO) revert InvalidToken();
-        require(tokenAddress != address(0), "token=0");
+        if (tokenAddress == address(0)) revert ZeroAddress();
         supportedTokens[token] = tokenAddress;
         emit SupportedTokenUpdated(token, tokenAddress);
     }
 
     function registerIdentity(bytes32 identityHash, address wallet) external onlyOperator {
-        require(wallet != address(0), "wallet=0");
+        if (wallet == address(0)) revert ZeroAddress();
         identityWallet[identityHash] = wallet;
         emit IdentityRegistered(identityHash, wallet);
     }
 
+    /// @notice Fund caller's own employment balance (Method A — self deposit).
     function depositNative() external payable {
-        if (activePaymentToken != PaymentToken.CELO) revert WrongDepositMethod();
-        if (msg.value == 0) revert ZeroAmount();
-        if (_paused[msg.sender]) revert AccountPaused();
-        _balances[msg.sender][PaymentToken.CELO] += msg.value;
-        emit Deposited(msg.sender, PaymentToken.CELO, msg.value, _balances[msg.sender][PaymentToken.CELO]);
+        _depositNative(msg.sender, msg.value);
+    }
+
+    /// @notice Fund another employment wallet from connected wallet (Method A — web deposit).
+    function depositNativeFor(address account) external payable {
+        _depositNative(account, msg.value);
     }
 
     function depositERC20(uint256 amount) external {
-        if (activePaymentToken == PaymentToken.CELO) revert WrongDepositMethod();
-        if (amount == 0) revert ZeroAmount();
-        if (_paused[msg.sender]) revert AccountPaused();
-        PaymentToken token = activePaymentToken;
-        address tokenAddr = supportedTokens[token];
-        if (tokenAddr == address(0)) revert InvalidToken();
-        bool ok = IERC20(tokenAddr).transferFrom(msg.sender, address(this), amount);
-        if (!ok) revert TransferFailed();
-        _balances[msg.sender][token] += amount;
-        emit Deposited(msg.sender, token, amount, _balances[msg.sender][token]);
+        _depositERC20(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) external {
+    function depositERC20For(address account, uint256 amount) external {
+        _depositERC20(account, amount);
+    }
+
+    function withdraw(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
         if (_paused[msg.sender]) revert AccountPaused();
         PaymentToken token = activePaymentToken;
@@ -174,7 +183,7 @@ contract EmploymentContract {
         return _paused[account];
     }
 
-    function charge(address account, uint256 amount, bytes32 actionId) external onlyOperator {
+    function charge(address account, uint256 amount, bytes32 actionId) external onlyOperator nonReentrant {
         if (amount == 0) revert ZeroAmount();
         if (_paused[account]) revert AccountPaused();
         if (chargedActions[actionId]) revert AlreadyCharged();
@@ -188,7 +197,7 @@ contract EmploymentContract {
         emit Charged(account, token, amount, next, actionId);
         if (next == 0) {
             _paused[account] = true;
-            emit Exhausted(account);
+            emit EmploymentExhausted(account);
             emit Paused(account);
         }
     }
@@ -207,7 +216,31 @@ contract EmploymentContract {
         emit Resumed(account);
     }
 
+    function _depositNative(address account, uint256 amount) private {
+        if (activePaymentToken != PaymentToken.CELO) revert WrongDepositMethod();
+        if (amount == 0) revert ZeroAmount();
+        if (account == address(0)) revert ZeroAddress();
+        if (_paused[account]) revert AccountPaused();
+        _balances[account][PaymentToken.CELO] += amount;
+        emit Deposited(account, PaymentToken.CELO, amount, _balances[account][PaymentToken.CELO]);
+    }
+
+    function _depositERC20(address account, uint256 amount) private {
+        if (activePaymentToken == PaymentToken.CELO) revert WrongDepositMethod();
+        if (amount == 0) revert ZeroAmount();
+        if (account == address(0)) revert ZeroAddress();
+        if (_paused[account]) revert AccountPaused();
+        PaymentToken token = activePaymentToken;
+        address tokenAddr = supportedTokens[token];
+        if (tokenAddr == address(0)) revert InvalidToken();
+        bool ok = IERC20(tokenAddr).transferFrom(msg.sender, address(this), amount);
+        if (!ok) revert TransferFailed();
+        _balances[account][token] += amount;
+        emit Deposited(account, token, amount, _balances[account][token]);
+    }
+
     function _payout(address to, PaymentToken token, uint256 amount) private {
+        if (to == address(0)) revert ZeroAddress();
         if (token == PaymentToken.CELO) {
             (bool ok, ) = payable(to).call{value: amount}("");
             if (!ok) revert TransferFailed();

@@ -50,14 +50,10 @@ export class EmploymentService {
           }
         : null,
       currency,
-      groupsConnected: stats.groupsConnected,
       groupsEnabled: stats.groupsEnabled,
-      actionsCompletedToday: stats.actionsCompletedToday,
       actionsCompleted: stats.actionsCompleted,
       todaySpend: stats.todaySpend,
       lifetimeSpend: stats.lifetimeSpend,
-      estimatedRemainingActions: stats.estimatedRemainingActions,
-      spendSeries: stats.spendSeries,
       recentActivity: stats.recent,
     };
   }

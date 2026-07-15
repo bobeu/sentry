@@ -13,6 +13,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "bot:poll": "tsx telegram/poll.ts",
     "scheduler": "tsx scripts/run-scheduler.ts",
+    "test": "tsx --test tests/backend.test.ts",
+    "test:contracts": "pnpm --dir smartContracts test",
     "contracts:compile": "pnpm --dir smartContracts compile",
     "contracts:sync": "pnpm --dir smartContracts sync"
   },

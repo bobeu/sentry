@@ -63,13 +63,19 @@ export class WalletService {
     if (!wallet) return null;
 
     const currency = await paymentService.getActiveCurrency();
-    let balance = toBalanceNumber(wallet.balance);
+    const cached = toBalanceNumber(wallet.balance);
 
-    if (blockchainService.isConfigured()) {
-      balance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+    const onChain = blockchainService.isConfigured()
+      ? await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)
+      : null;
+
+    // Blockchain is source of truth when readable; never replace cache with failed/stale zero reads.
+    const balance = onChain !== null ? onChain : cached;
+
+    if (onChain !== null && onChain !== cached) {
       await prisma.wallet.update({
         where: { id: wallet.id },
-        data: { balance, balanceCachedAt: new Date() },
+        data: { balance: onChain, balanceCachedAt: new Date() },
       });
     }
 
@@ -140,9 +146,9 @@ export class WalletService {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw Errors.walletNotFunded();
 
-    const current = blockchainService.isConfigured()
-      ? await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)
-      : toBalanceNumber(wallet.balance);
+    const current =
+      (await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)) ??
+      toBalanceNumber(wallet.balance);
 
     if (amount > current) {
       throw Errors.walletNotFunded();
@@ -168,6 +174,33 @@ export class WalletService {
     );
 
     return { address: wallet.address, balance: newBal, currency };
+  }
+
+  /** Deposit instructions for Method A (web) and Method B (direct transfer). */
+  async getDepositConfig(userId: string) {
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw Errors.walletNotFunded();
+
+    const currency = await paymentService.getActiveCurrency();
+    const contract = blockchainService.getContractAddress();
+    const isCelo = currency === "CELO";
+
+    return {
+      employmentWallet: wallet.address,
+      contract,
+      currency,
+      methodA: {
+        description: "Connect wallet and deposit via the Employment contract",
+        functionName: isCelo ? "depositNativeFor" : "depositERC20For",
+        args: isCelo ? [wallet.address] : [wallet.address, "amount"],
+        payable: isCelo,
+      },
+      methodB: {
+        description: "Send supported assets then click Sync Balance",
+        note: "Funds sent directly to your employment wallet address appear after blockchain synchronization.",
+        employmentWallet: wallet.address,
+      },
+    };
   }
 }
 

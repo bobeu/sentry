@@ -7,24 +7,18 @@ import Link from "next/link";
 type ActionRow = {
   id: string;
   type: string;
-  billable: boolean;
   completedAt: string;
   group?: { name: string | null } | null;
 };
-
-type SpendPoint = { date: string; spend: number };
 
 type StatusPayload = {
   status: string;
   currency: string;
   wallet: { address: string; balance: number } | null;
-  groupsConnected: number;
   groupsEnabled: number;
-  actionsCompletedToday: number;
+  actionsCompleted: number;
   todaySpend: number;
   lifetimeSpend: number;
-  estimatedRemainingActions: number;
-  spendSeries?: SpendPoint[];
   recentActivity: ActionRow[];
 };
 
@@ -54,29 +48,10 @@ function actionLabel(type: string) {
   }
 }
 
-function SpendBars({ series, currency }: { series: SpendPoint[]; currency: string }) {
-  const max = Math.max(...series.map((s) => s.spend), 0.001);
-  return (
-    <div className="mt-4 space-y-2 font-mono text-sm">
-      {series.map((s) => {
-        const width = Math.max(2, Math.round((s.spend / max) * 28));
-        return (
-          <div key={s.date} className="flex items-center gap-3 text-[#9aa89a]">
-            <span className="w-24 shrink-0">{s.date.slice(5)}</span>
-            <span className="text-[#35d07f]">{"█".repeat(width)}</span>
-            <span className="text-[#e8f5d8]">
-              {s.spend.toFixed(3)} {currency}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function DashboardLive() {
   const [data, setData] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +59,7 @@ export function DashboardLive() {
       const res = await fetch("/api/employment/status");
       const json = await res.json();
       if (cancelled) return;
+      setLoading(false);
       if (!res.ok) {
         setError(json.error ?? "Unable to load dashboard");
         return;
@@ -98,6 +74,10 @@ export function DashboardLive() {
     };
   }, []);
 
+  if (loading) {
+    return <p className="mt-10 text-[#9aa89a]">Loading dashboard…</p>;
+  }
+
   if (error) {
     return (
       <div className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-6">
@@ -109,21 +89,15 @@ export function DashboardLive() {
     );
   }
 
-  if (!data) {
-    return <p className="mt-10 text-[#9aa89a]">Loading live employment data…</p>;
-  }
+  if (!data) return null;
 
   const balance = data.wallet?.balance ?? 0;
   const currency = data.currency ?? "USDm";
 
   return (
     <div className="mt-10 space-y-8">
-      <div className="inline-flex items-center gap-2 rounded-full border border-[#35d07f]/30 bg-[#35d07f]/10 px-4 py-1.5 text-sm text-[#35d07f]">
-        Payment Currency · {currency}
-      </div>
-
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <Card title="Employment" value={statusLabel(data.status)} description="Current status" />
+        <Card title="Employment Status" value={statusLabel(data.status)} description="Current employment" />
         <Card
           title="Current Balance"
           value={`${balance.toFixed(3)} ${currency}`}
@@ -132,7 +106,7 @@ export function DashboardLive() {
         <Card
           title="Today's Spend"
           value={`${(data.todaySpend ?? 0).toFixed(3)} ${currency}`}
-          description="Charged for completed work today"
+          description="Successful charges today"
         />
         <Card
           title="Lifetime Spend"
@@ -140,37 +114,24 @@ export function DashboardLive() {
           description="All successful charges"
         />
         <Card
-          title="Groups Connected"
-          value={data.groupsConnected ?? 0}
-          description="Groups linked to your account"
-        />
-        <Card
           title="Groups Enabled"
           value={data.groupsEnabled ?? 0}
-          description="Groups with Sentry active"
+          description="Active Telegram groups"
         />
         <Card
-          title="Actions Completed Today"
-          value={data.actionsCompletedToday ?? 0}
-          description="Successful work logged today"
-        />
-        <Card
-          title="Estimated Remaining Actions"
-          value={data.estimatedRemainingActions ?? 0}
-          description="Based on average action cost"
+          title="Actions Completed"
+          value={data.actionsCompleted ?? 0}
+          description="Total completed work"
         />
       </div>
-
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-lg text-[#e8f5d8]">Spending (7 days)</h2>
-        <SpendBars series={data.spendSeries ?? []} currency={currency} />
-      </section>
 
       <section>
         <h2 className="text-lg text-[#e8f5d8]">Recent Activity</h2>
         <ul className="mt-4 space-y-2">
           {(data.recentActivity ?? []).length === 0 ? (
-            <li className="text-sm text-[#9aa89a]">No actions yet.</li>
+            <li className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-sm text-[#9aa89a]">
+              No actions yet. Hire Sentry, fund your wallet, and enable a group to get started.
+            </li>
           ) : (
             data.recentActivity.map((a) => (
               <li

@@ -4174,3 +4174,435 @@ I think this is the cleanest identity model for Sentry. It preserves user privac
 - Deploy + `pnpm contracts:sync`.
 - Wallet **Sync Balance** after on-chain deposits.
 
+---
+
+# CTO Said
+
+This is in excellent shape. At this point, I would **stop implementing product features**. The remaining work should focus on **finishing the product**, not expanding it.
+
+I do, however, want to incorporate your latest wallet architecture before moving on.
+
+---
+
+# Fixes from Prompt 6
+
+## 1. Dual Funding Model
+
+Prompt 6 still leans toward `depositNative()` / `depositERC20()` as the primary funding mechanism.
+
+Update the architecture to explicitly support **two equal funding methods**.
+
+### Method A — Web Deposit
+
+```text id="wdw20j"
+Connect Wallet
+
+↓
+
+Deposit()
+
+↓
+
+Employment Smart Wallet
+```
+
+### Method B — Direct Transfer
+
+```text id="dhjrje"
+Any Wallet
+
+↓
+
+Transfer CELO / USDm / USDC / USDT
+
+↓
+
+Employment Smart Wallet
+
+↓
+
+Sync Balance
+
+↓
+
+Dashboard Updates
+```
+
+Both methods are first-class citizens.
+
+---
+
+## 2. Identity Registration
+
+The summary introduces:
+
+```text id="0w6b1m"
+registerIdentity()
+```
+
+I would make one clarification.
+
+The contract should **not** know anything about:
+
+* Telegram IDs
+* Email addresses
+
+It only receives:
+
+```text id="aqxkmp"
+bytes32 identityHash
+```
+
+The backend is solely responsible for computing:
+
+```text id="3vcgq2"
+keccak256(
+    namespace:value
+)
+```
+
+Examples:
+
+```text id="w4wbs9"
+telegram:12345678
+
+email:alice@example.com
+
+wallet:0xabc...
+```
+
+The contract never stores raw identifiers.
+
+---
+
+# Prompt 7 — Production Readiness, Testing & Submission
+
+## Objective
+
+Freeze the feature set.
+
+This prompt is about making Sentry reliable, professional, and ready for hackathon judging.
+
+No new user-facing features should be introduced.
+
+---
+
+# Smart Wallet Improvements
+
+Finalize the Employment Smart Wallet behavior.
+
+Requirements:
+
+* Every user owns exactly one Employment Smart Wallet.
+* Wallet addresses never change.
+* Users can fund wallets in two ways:
+
+  * Deposit through the web application.
+  * Send supported assets directly to the wallet address.
+* The wallet page must clearly explain both methods.
+* Add a **"Sync Balance"** action that refreshes balances from the blockchain.
+* Balance synchronization must never overwrite newer on-chain balances with stale cached values.
+
+---
+
+# Smart Contract Review
+
+Review the contract for:
+
+* Access control
+* Reentrancy protection
+* Token validation
+* Unsupported token rejection
+* Event completeness
+* Input validation
+
+Ensure events exist for:
+
+```text id="tldmhk"
+IdentityRegistered
+
+Deposited
+
+Withdrawn
+
+Charged
+
+Paused
+
+Resumed
+
+PaymentCurrencyChanged
+
+EmploymentExhausted
+```
+
+---
+
+# Blockchain Synchronization
+
+Implement a lightweight synchronization service.
+
+Responsibilities:
+
+* Refresh wallet balances.
+* Detect direct transfers.
+* Update cached balances.
+* Notify users of successful funding.
+
+Do not continuously poll.
+
+Use scheduled synchronization at a sensible interval plus explicit user-triggered sync.
+
+---
+
+# Frontend Polish
+
+Review every page.
+
+Ensure:
+
+* Consistent spacing.
+* Consistent typography.
+* Responsive layout.
+* Loading states.
+* Empty states.
+* Error messages.
+* Success messages.
+
+Avoid placeholder text.
+
+---
+
+# Wallet Page
+
+Final layout:
+
+```text id="i2ktcw"
+Employment Smart Wallet
+
+Wallet Address
+
+[ Copy ]
+
+[ QR Code ]
+
+Current Currency
+
+Current Balance
+
+Funding Options
+
+1. Deposit from Connected Wallet
+
+2. Send Funds Directly
+
+[ Sync Balance ]
+```
+
+Display a note:
+
+> Funds sent directly to this address will appear after blockchain synchronization.
+
+---
+
+# Dashboard
+
+Review all cards.
+
+Final cards:
+
+```text id="nldg9u"
+Employment Status
+
+Current Balance
+
+Today's Spend
+
+Lifetime Spend
+
+Groups Enabled
+
+Actions Completed
+
+Recent Activity
+```
+
+No additional widgets.
+
+---
+
+# Telegram Review
+
+Verify:
+
+* Bot joins groups correctly.
+* Mention replies work.
+* Welcome messages work.
+* FAQ matching works.
+* Notifications work.
+* Commands:
+
+```text id="j27p3y"
+/start
+
+/help
+
+/mywallet
+
+/balance
+
+/deposit
+```
+
+All commands should return helpful responses.
+
+---
+
+# Testing
+
+Create test cases for:
+
+### Smart Contract
+
+* Deposit CELO
+* Deposit supported stablecoins
+* Reject unsupported tokens
+* Charge user
+* Pause
+* Resume
+* Exhaustion
+* Withdraw
+
+---
+
+### Backend
+
+* Employment lifecycle
+* Wallet creation
+* Identity registration
+* Action recording
+* Billing
+* Balance synchronization
+
+---
+
+### Telegram
+
+* Join group
+* Leave group
+* Mention
+* Welcome
+* FAQ
+* Moderation
+* Notifications
+
+---
+
+# Documentation
+
+Finalize:
+
+* Installation
+* Environment variables
+* Deployment
+* Contract deployment
+* Telegram setup
+* Demo walkthrough
+* Architecture overview
+
+Include a simple architecture diagram.
+
+---
+
+# Demo Checklist
+
+Before submission, verify:
+
+* User hires Sentry.
+* Employment Smart Wallet is created.
+* User funds the wallet (both deposit methods demonstrated if possible).
+* Balance updates.
+* Sentry joins a Telegram group.
+* Mention reply works.
+* FAQ works.
+* Welcome message works.
+* Daily summary runs.
+* ActionRecord created.
+* Successful on-chain charge.
+* Dashboard updates.
+* Celo transaction visible.
+
+---
+
+# Acceptance Criteria
+
+Sentry is considered complete when:
+
+* ✅ All core functionality works without manual intervention.
+* ✅ Smart Wallet funding works via both supported methods.
+* ✅ Only CELO, USDm, USDC, and USDT are accepted.
+* ✅ Employment lifecycle behaves correctly.
+* ✅ Billing is synchronized with successful on-chain charges.
+* ✅ Telegram interactions are reliable.
+* ✅ Dashboard accurately reflects blockchain state.
+* ✅ The application is ready for a live hackathon demonstration.
+
+---
+
+## Final architectural note
+
+From this point onward, **do not expand the scope**.
+
+The project now has a coherent identity:
+
+* **One AI employee**.
+* **One problem domain** (Telegram community management).
+* **One employment model**.
+* **One internal Employment Smart Wallet per user**.
+* **One blockchain (Celo Mainnet)**.
+* **One pricing model (pay per completed work)**.
+
+That level of focus is exactly what tends to produce strong hackathon demos. Every remaining effort should go into reliability, UX, testing, and presentation rather than adding more capabilities.
+
+---
+
+# Agent Session Summary — Prompt 7 (2026-07-15)
+
+## Prompt 6 fixes
+
+- **Dual funding (first-class):** Method A — connect wallet + `depositNativeFor` / `depositERC20For` via wallet UI; Method B — direct transfer + **Sync Balance**.
+- **Identity:** Contract receives only `bytes32 identityHash`; backend computes `keccak256(namespace:value)` (`lib/identity.ts`).
+
+## Smart wallet
+
+- Permanent employment wallet per user (`wallet-provider.ts` deterministic address).
+- `GET /api/wallet/deposit/prepare` — deposit config for web UI.
+- `POST /api/wallet/sync` — explicit user-triggered sync.
+- Safe cache: on-chain read when available; never overwrite cache with failed/zero reads.
+
+## Blockchain sync
+
+- `services/sync.service.ts` — refresh balances, detect deposits, notify users.
+- Scheduler: wallet sync every 5 minutes (not continuous polling).
+
+## Smart contract
+
+- `depositNativeFor` / `depositERC20For` for web deposits to employment wallet.
+- Reentrancy guard on `charge` / `withdraw`.
+- Events: `PaymentCurrencyChanged`, `EmploymentExhausted`, `IdentityRegistered`, etc.
+- `MockERC20.sol` + expanded Hardhat tests (deposit, charge, exhaust, identity, currency).
+
+## Frontend
+
+- **Wallet page:** copy, QR code, dual funding sections, web deposit (viem + MetaMask/MiniPay), sync note.
+- **Dashboard:** Employment Status, Balance, Today/Lifetime Spend, Groups Enabled, Actions Completed, Recent Activity only.
+
+## Testing
+
+- `pnpm test` — backend tests (`tests/backend.test.ts`).
+- `pnpm test:contracts` — Hardhat suite.
+
+## Documentation
+
+- README: architecture diagram (mermaid), dual funding, testing, demo checklist.
+
