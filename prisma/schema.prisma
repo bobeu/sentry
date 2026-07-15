@@ -146,21 +146,41 @@ model ConversationContext {
 }
 
 model ActionRecord {
-  id          String        @id @default(cuid())
+  id          String         @id @default(cuid())
   type        ActionType
   groupId     String?
   group       TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   userId      String?
-  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  completedAt DateTime      @default(now())
-  status      ActionStatus  @default(completed)
-  billable    Boolean       @default(true)
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  completedAt DateTime       @default(now())
+  status      ActionStatus   @default(completed)
+  billable    Boolean        @default(true)
   metadata    Json?
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime       @default(now())
+  charge      ChargeRecord?
 
   @@index([userId, completedAt])
   @@index([groupId, completedAt])
   @@index([completedAt])
+}
+
+enum ChargeStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+model ChargeRecord {
+  id             String       @id @default(cuid())
+  actionRecordId String       @unique
+  actionRecord   ActionRecord @relation(fields: [actionRecordId], references: [id], onDelete: Cascade)
+  amount         Decimal      @db.Decimal(36, 18)
+  status         ChargeStatus @default(pending)
+  transactionHash String?
+  createdAt      DateTime     @default(now())
+
+  @@index([createdAt])
 }
 
 model Employment {

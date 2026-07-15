@@ -12,12 +12,16 @@ type ActionRow = {
   group?: { name: string | null } | null;
 };
 
+type SpendPoint = { date: string; spend: number };
+
 type StatusPayload = {
   status: string;
   wallet: { address: string; balance: number } | null;
   groups: number;
   actionsCompleted: number;
-  billableToday: number;
+  todaySpend: number;
+  estimatedRemainingActions: number;
+  spendSeries?: SpendPoint[];
   recentActivity: ActionRow[];
 };
 
@@ -47,13 +51,32 @@ function actionLabel(type: string) {
   }
 }
 
+function SpendBars({ series }: { series: SpendPoint[] }) {
+  const max = Math.max(...series.map((s) => s.spend), 0.001);
+  return (
+    <div className="mt-4 space-y-2 font-mono text-sm">
+      {series.map((s) => {
+        const width = Math.max(2, Math.round((s.spend / max) * 28));
+        const bar = "█".repeat(width);
+        return (
+          <div key={s.date} className="flex items-center gap-3 text-[#9aa89a]">
+            <span className="w-24 shrink-0">{s.date.slice(5)}</span>
+            <span className="text-[#35d07f]">{bar}</span>
+            <span className="text-[#e8f5d8]">${s.spend.toFixed(3)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DashboardLive() {
   const [data, setData] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function load() {
       const res = await fetch("/api/employment/status");
       const json = await res.json();
       if (cancelled) return;
@@ -62,9 +85,12 @@ export function DashboardLive() {
         return;
       }
       setData(json);
-    })();
+    }
+    void load();
+    const id = setInterval(() => void load(), 15_000);
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, []);
 
@@ -89,9 +115,19 @@ export function DashboardLive() {
     <div className="mt-10 space-y-8">
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Card
-          title="Wallet Balance"
-          value={`$${balance.toFixed(2)}`}
+          title="Today's Spend"
+          value={`$${(data.todaySpend ?? 0).toFixed(3)}`}
+          description="cUSD charged for completed work today"
+        />
+        <Card
+          title="Current Balance"
+          value={`$${balance.toFixed(3)}`}
           description={data.wallet?.address ?? "No smart wallet yet"}
+        />
+        <Card
+          title="Estimated Remaining Actions"
+          value={data.estimatedRemainingActions ?? 0}
+          description="Based on average action cost"
         />
         <Card
           title="Employment Status"
@@ -108,12 +144,12 @@ export function DashboardLive() {
           value={data.actionsCompleted}
           description="All completed work logged"
         />
-        <Card
-          title="Today's Billable Actions"
-          value={data.billableToday}
-          description="Work queued for future billing"
-        />
       </div>
+
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <h2 className="text-lg text-[#e8f5d8]">Spending (7 days)</h2>
+        <SpendBars series={data.spendSeries ?? []} />
+      </section>
 
       <section>
         <h2 className="text-lg text-[#e8f5d8]">Recent Activity</h2>

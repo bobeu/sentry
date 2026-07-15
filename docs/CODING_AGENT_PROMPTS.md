@@ -2148,3 +2148,530 @@ Starts via `instrumentation.ts` and `pnpm scheduler`.
 
 `prisma/migrations/20260715160000_prompt4_actions/` — run `pnpm prisma:migrate` when Postgres is up.
 
+---
+
+# CTO Said
+
+This is excellent progress. The project is still very focused, which is exactly what we wanted.
+
+After reviewing Prompt 4, I only want to make **two corrections** before moving into billing.
+
+---
+
+# Fixes from Prompt 4
+
+## 1. Scheduler frequency
+
+The summary says:
+
+> hourly daily-summary pass
+
+I would change this.
+
+Instead:
+
+* Daily Summary → run once at the configured hour.
+* Conversation Cleanup → every 15 minutes.
+* Reminder Jobs → every 15 minutes.
+* Maintenance → once weekly.
+
+There is no reason to wake the AI every hour just to check whether a summary should be generated.
+
+---
+
+## 2. Spam Moderation
+
+I would make one small behavioral rule.
+
+Sentry should **never delete a message immediately because the AI thinks it's spam.**
+
+Instead:
+
+```text
+Spam Confidence
+
+<70%
+
+↓
+
+Warn
+
+70-90%
+
+↓
+
+Notify Admin
+
+>90%
+
+↓
+
+Delete (only if bot has permission)
+```
+
+That prevents embarrassing false positives.
+
+---
+
+# Prompt 5 — Billing Engine & Smart Contract Integration
+
+## Objective
+
+This prompt introduces **AgentPay**, the financial layer behind Sentry.
+
+By the end of this prompt:
+
+* Every completed ActionRecord can be billed.
+* User balances decrease automatically.
+* Employment pauses automatically when balance reaches zero.
+* The dashboard shows spending in real time.
+
+No new Telegram features should be added.
+
+---
+
+# Core Principle
+
+Sentry charges **only for completed work.**
+
+It never charges for:
+
+* Reading messages
+* Waiting
+* Thinking
+* AI processing
+
+Only successful work.
+
+---
+
+# Billing Flow
+
+```text
+Telegram Event
+        │
+        ▼
+AI completes work
+        │
+        ▼
+ActionRecord
+        │
+        ▼
+Billing Engine
+        │
+        ▼
+Employment Contract
+        │
+        ▼
+Wallet Balance Updated
+```
+
+---
+
+# Smart Contract
+
+Complete `EmploymentContract.sol`.
+
+Implement:
+
+```solidity
+charge()
+
+pause()
+
+resume()
+```
+
+Requirements:
+
+* Only the Sentry service wallet can call `charge()`.
+* Reject charges larger than the available balance.
+* Automatically mark employment as exhausted when balance reaches zero.
+* Emit events for every deposit, withdrawal, charge, pause, and resume.
+
+No staking.
+
+No yield.
+
+No escrow.
+
+No subscriptions.
+
+Keep the contract intentionally small.
+
+---
+
+# Billing Engine
+
+Implement:
+
+```text
+calculateCharge()
+
+chargeUser()
+
+refund()
+
+getPricing()
+```
+
+Pricing should come from configuration, not hardcoded values.
+
+---
+
+# Initial Pricing
+
+Store prices centrally.
+
+Example:
+
+```text
+Mention Reply           0.01 cUSD
+
+FAQ Answer              0.005 cUSD
+
+Welcome                 0.005 cUSD
+
+Summary                 0.05 cUSD
+
+Spam Moderation         0.02 cUSD
+
+Mention Notification    0.01 cUSD
+```
+
+Easy to modify later.
+
+---
+
+# Billing Rules
+
+Only bill when:
+
+```text
+ActionRecord.status == COMPLETED
+
+AND
+
+billable == true
+```
+
+If AI fails
+
+↓
+
+No charge.
+
+---
+
+# Automatic Exhaustion
+
+When balance reaches zero:
+
+```text
+Employment
+
+↓
+
+Exhausted
+
+↓
+
+Disable all Groups
+
+↓
+
+Ignore future work
+
+↓
+
+Notify User
+```
+
+Do not continue working.
+
+---
+
+# Resume
+
+When the user deposits funds:
+
+```text
+Exhausted
+
+↓
+
+Deposit
+
+↓
+
+Resume
+
+↓
+
+Employment Active
+
+↓
+
+Previously enabled groups reactivate automatically
+```
+
+---
+
+# Dashboard
+
+Replace "Today's Billable Actions" with:
+
+```text
+Today's Spend
+
+Current Balance
+
+Estimated Remaining Actions
+```
+
+Estimated Remaining Actions should be based on the average action cost.
+
+---
+
+# Wallet Page
+
+Display:
+
+```text
+Balance
+
+Today's Spend
+
+Lifetime Spend
+
+Deposit
+
+Withdraw
+
+Recent Charges
+```
+
+Recent Charges:
+
+```text
+Reply to Mention
+
+-0.01
+
+Daily Summary
+
+-0.05
+
+Spam Moderation
+
+-0.02
+```
+
+---
+
+# Pricing Page
+
+New page:
+
+```text
+Reply to Mention
+
+0.01
+
+Summary
+
+0.05
+
+Welcome
+
+0.005
+```
+
+Read-only.
+
+No editing.
+
+---
+
+# Database
+
+Add:
+
+```text
+ChargeRecord
+```
+
+Fields:
+
+```text
+ActionRecord
+
+Amount
+
+Status
+
+TransactionHash
+
+CreatedAt
+```
+
+Each ActionRecord may have one ChargeRecord.
+
+---
+
+# APIs
+
+Implement:
+
+```text
+GET /api/billing/pricing
+
+GET /api/billing/history
+
+GET /api/billing/spending
+
+POST /api/wallet/deposit
+
+POST /api/wallet/withdraw
+```
+
+---
+
+# Notifications
+
+Notify users when:
+
+* Balance below 20%.
+* Employment exhausted.
+* Deposit successful.
+* Withdrawal successful.
+
+---
+
+# Dashboard Visualization
+
+Use a simple spending graph.
+
+```text
+$25.00
+
+█████████████
+
+↓
+
+$24.98
+
+↓
+
+$24.94
+
+↓
+
+$24.89
+```
+
+Keep it lightweight.
+
+No complex chart library is necessary.
+
+---
+
+# Security
+
+The backend must:
+
+* Validate every ActionRecord before charging.
+* Prevent duplicate billing.
+* Ignore failed actions.
+* Prevent negative balances.
+* Reject unauthorized charge requests.
+
+---
+
+# Excluded
+
+Do **not** implement:
+
+* Revenue analytics
+* Multiple pricing plans
+* Referral rewards
+* Discount codes
+* Subscriptions
+* Marketplace
+* Multi-currency support
+
+Stay focused.
+
+---
+
+# Acceptance Criteria
+
+At the end of Prompt 5:
+
+* ✅ Every completed ActionRecord results in one charge.
+* ✅ The Employment smart contract updates balances correctly.
+* ✅ Balances decrease after completed work.
+* ✅ Employment automatically pauses when funds are exhausted.
+* ✅ Depositing funds resumes employment.
+* ✅ Groups reactivate automatically after resume.
+* ✅ Users can view spending history and recent charges.
+* ✅ Dashboard reflects real wallet balances and spending.
+
+---
+
+## One final improvement before implementation
+
+I would make one significant simplification compared to our earlier discussions.
+
+**Do not implement streaming payments anymore.**
+
+Originally, AgentPay Stream was based on continuous value streaming. But Sentry has naturally evolved into a **pay-per-completed-work** product. That model is much easier for users to understand ("I pay when Sentry does something useful"), much simpler to implement, and a better fit for the Telegram workflow.
+
+You can still market the underlying technology as inspired by AgentPay Stream, but the MVP should bill discretely per completed action rather than trying to stream value continuously. It keeps the smart contract small, the billing logic straightforward, and the demo much stronger.
+
+---
+
+# Agent Session Summary — Prompt 5 (2026-07-15)
+
+## Prompt 4 fixes
+
+- **Scheduler:** Daily summary still ticks hourly but only runs groups whose `dailySummaryHour` matches (once per group per day). Cleanup every 15m. Reminders every 15m. Maintenance weekly (Sun 03:00 UTC). Removed the redundant daily-report hourly wake.
+- **Spam tiers:** `<70%` warn only · `70–90%` warn + notify admins · `>90%` delete only if bot has permission (else warn). Never deletes on weak confidence.
+
+## Billing (pay-per-completed-work — no streaming)
+
+- `lib/pricing.ts` — central cUSD prices + labels (`getPricing`, `priceFor`, `averageActionCost`).
+- `services/billing.service.ts` — `calculateCharge`, `chargeUser`, `refund`, `getPricing`, `getSpending`, `getHistory`, exhaustion + deposit resume.
+- `ActionService.record` charges exactly once after completed billable actions (duplicate-safe via 1:1 `ChargeRecord`).
+- Failed actions / non-billable → no charge. Insufficient balance → failed charge + Exhausted.
+
+## Smart contract
+
+- `EmploymentContract.sol` complete: `deposit` / `credit` / `withdraw` / `charge` / `pause` / `resume` + events (`Deposited`, `Withdrawn`, `Charged`, `Paused`, `Resumed`, `Exhausted`). Operator-only `charge`. Exhausts + pauses at zero.
+- `blockchain.service.ts` — optional on-chain `charge` / `pause` / `resume` / `credit` via `SENTRY_OPERATOR_KEY` when contract address is synced.
+
+## Exhaustion / resume
+
+- Balance → 0: Employment `Exhausted`, disable group settings for enabled employments, stop work, notify.
+- Deposit while Exhausted/Inactive: Active + previously enabled groups reactivate; notify success.
+- Withdraw + notify; withdraw-to-zero exhausts.
+
+## Database
+
+- `ChargeRecord` (`actionRecordId` unique, `amount`, `status`, `transactionHash`, `createdAt`).
+- Migration: `prisma/migrations/20260715180000_prompt5_billing/`.
+
+## APIs & UI
+
+- `GET /api/billing/pricing|history|spending`
+- `POST /api/wallet/deposit|withdraw`
+- Dashboard: Today's Spend, Current Balance, Estimated Remaining Actions + ASCII 7-day spend bars (15s refresh).
+- Wallet: balance, today/lifetime spend, deposit/withdraw, recent charges.
+- Read-only `/pricing` page + nav link.
+
+## Ops
+
+- Run `pnpm prisma:migrate` (or `prisma:deploy`) when Postgres is available.
+- Sync contract after deploy: `pnpm contracts:sync`. Set `SENTRY_OPERATOR_KEY` for on-chain charges.
+- DB ledger is always updated; on-chain charge is best-effort when operator key + address exist.
+

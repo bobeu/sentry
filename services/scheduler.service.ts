@@ -20,34 +20,19 @@ export class SchedulerService {
       }
     });
 
-    // Daily summaries — check each hour which groups want this UTC hour
+    // Daily summaries — once per group at its configured UTC hour (tick each hour, only matching groups)
     cron.schedule("5 * * * *", async () => {
       const hour = new Date().getUTCHours();
       try {
         await summaryService.runHourlyPass(hour);
-        console.log("[scheduler] daily summaries pass", hour);
+        console.log("[scheduler] daily summaries for hour", hour);
       } catch (err) {
         console.error("[scheduler] summaries", err);
       }
     });
 
-    // Daily reports — lightweight rollup at 00:10 UTC
-    cron.schedule("10 0 * * *", async () => {
-      try {
-        const start = new Date();
-        start.setUTCHours(0, 0, 0, 0);
-        start.setUTCDate(start.getUTCDate() - 1);
-        const count = await prisma.actionRecord.count({
-          where: { completedAt: { gte: start }, status: "completed" },
-        });
-        console.log("[scheduler] daily report actions yesterday:", count);
-      } catch (err) {
-        console.error("[scheduler] reports", err);
-      }
-    });
-
-    // Reminder notifications — 09:00 UTC nudge for paused employment with balance
-    cron.schedule("0 9 * * *", async () => {
+    // Reminder jobs — every 15 minutes
+    cron.schedule("*/15 * * * *", async () => {
       try {
         const paused = await prisma.employment.findMany({
           where: { status: "Paused" },
@@ -59,7 +44,7 @@ export class SchedulerService {
       }
     });
 
-    // Maintenance — Sundays 03:00 UTC
+    // Maintenance — once weekly (Sunday 03:00 UTC)
     cron.schedule("0 3 * * 0", async () => {
       try {
         await contextService.pruneExpired();

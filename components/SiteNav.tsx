@@ -7,6 +7,7 @@ const links = [
   { href: "/groups", label: "Groups" },
   { href: "/employment", label: "Employment" },
   { href: "/wallet", label: "Wallet" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/settings", label: "Settings" },
   { href: "/docs", label: "Documentation" },
   { href: "/login", label: "Sign in" },

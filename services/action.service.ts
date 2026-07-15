@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ActionType, ActionStatus, Prisma } from "@prisma/client";
+import { billingService } from "@/services/billing.service";
 
 export class ActionService {
   async record(input: {
@@ -10,7 +11,7 @@ export class ActionService {
     status?: ActionStatus;
     metadata?: Prisma.InputJsonValue;
   }) {
-    return prisma.actionRecord.create({
+    const action = await prisma.actionRecord.create({
       data: {
         type: input.type,
         groupId: input.groupId ?? null,
@@ -20,6 +21,16 @@ export class ActionService {
         metadata: input.metadata,
       },
     });
+
+    if (action.status === "completed" && action.billable && action.userId) {
+      try {
+        await billingService.chargeUser(action.id);
+      } catch (err) {
+        console.warn("[action] billing failed", action.id, err);
+      }
+    }
+
+    return action;
   }
 
   async listForUser(userId: string, take = 50) {
@@ -47,7 +58,7 @@ export class ActionService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [actionsCompleted, billableToday, recent, groups] = await Promise.all([
+    const [actionsCompleted, billableToday, recent, groups, spending] = await Promise.all([
       prisma.actionRecord.count({ where: { userId, status: "completed" } }),
       prisma.actionRecord.count({
         where: {
@@ -59,9 +70,19 @@ export class ActionService {
       }),
       this.recentForUser(userId, 12),
       prisma.groupEmployment.count({ where: { userId, enabled: true } }),
+      billingService.getSpending(userId),
     ]);
 
-    return { actionsCompleted, billableToday, recent, groups };
+    return {
+      actionsCompleted,
+      billableToday,
+      recent,
+      groups,
+      todaySpend: spending.todaySpend,
+      balance: spending.balance,
+      estimatedRemainingActions: spending.estimatedRemainingActions,
+      spendSeries: spending.series,
+    };
   }
 
   async groupStatsToday(groupId: string) {

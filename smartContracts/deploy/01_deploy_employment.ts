@@ -8,12 +8,12 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   log("----------------------------------------------------");
   log(`Network: ${network.name} (chainId=${network.config.chainId})`);
-  log(`Deployer: ${deployer}`);
+  log(`Deployer/operator: ${deployer}`);
   log("Deploying EmploymentContract...");
 
   const employment = await deploy("EmploymentContract", {
     from: deployer,
-    args: [],
+    args: [deployer],
     log: true,
     waitConfirmations: network.live ? 2 : 1,
   });

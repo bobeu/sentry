@@ -42,6 +42,9 @@ export class EmploymentService {
       groups: stats.groups,
       actionsCompleted: stats.actionsCompleted,
       billableToday: stats.billableToday,
+      todaySpend: stats.todaySpend,
+      estimatedRemainingActions: stats.estimatedRemainingActions,
+      spendSeries: stats.spendSeries,
       recentActivity: stats.recent,
     };
   }

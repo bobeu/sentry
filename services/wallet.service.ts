@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { blockchainService } from "@/services/blockchain.service";
 import { walletProvider } from "@/lib/wallet-provider";
+import { billingService } from "@/services/billing.service";
 
 function toBalanceNumber(value: { toString(): string } | string | number | null | undefined) {
   if (value == null) return 0;
@@ -52,7 +53,7 @@ export class WalletService {
         connected: false,
         address: null as string | null,
         balance: 0,
-        currency: "USD",
+        currency: "cUSD",
         provider: null as string | null,
         onChain: null,
       };
@@ -64,7 +65,7 @@ export class WalletService {
       connected: true,
       address: wallet.address,
       balance: toBalanceNumber(wallet.balance),
-      currency: "USD",
+      currency: "cUSD",
       provider: wallet.provider,
       onChain,
     };
@@ -84,10 +85,17 @@ export class WalletService {
       throw new Error("Smart wallet could not be created");
     }
 
+    const wasExhausted =
+      (await prisma.employment.findUnique({ where: { userId } }))?.status === "Exhausted";
+
     const updated = await prisma.wallet.update({
       where: { id: wallet.id },
       data: { balance: { increment: amount } },
     });
+
+    await blockchainService
+      .creditOnChain(updated.address as `0x${string}`, amount)
+      .catch(() => undefined);
 
     const employment = await prisma.employment.findUnique({ where: { userId } });
     if (
@@ -95,20 +103,54 @@ export class WalletService {
       (employment.status === "Inactive" || employment.status === "Exhausted") &&
       toBalanceNumber(updated.balance) > 0
     ) {
-      await prisma.employment.update({
-        where: { userId },
-        data: {
-          status: "Active",
-          startedAt: employment.startedAt ?? new Date(),
-          pausedAt: null,
-        },
-      });
+      await billingService.resumeAfterDeposit(userId);
     }
+
+    await billingService.notify(
+      userId,
+      `Deposit successful: +$${amount.toFixed(3)} cUSD. Balance $${toBalanceNumber(updated.balance).toFixed(3)}.`,
+    );
 
     return {
       address: updated.address,
       balance: toBalanceNumber(updated.balance),
-      currency: "USD",
+      currency: "cUSD",
+      resumed: wasExhausted,
+    };
+  }
+
+  async recordWithdraw(userId: string, amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Withdrawal amount must be greater than zero");
+    }
+
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new Error("No wallet found");
+
+    const current = toBalanceNumber(wallet.balance);
+    if (amount > current) {
+      throw new Error("Insufficient balance");
+    }
+
+    const updated = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balance: { decrement: amount } },
+    });
+
+    const newBal = toBalanceNumber(updated.balance);
+    if (newBal <= 0) {
+      await billingService.exhaustUser(userId, "withdrawn_to_zero");
+    }
+
+    await billingService.notify(
+      userId,
+      `Withdrawal successful: -$${amount.toFixed(3)} cUSD. Balance $${newBal.toFixed(3)}.`,
+    );
+
+    return {
+      address: updated.address,
+      balance: newBal,
+      currency: "cUSD",
     };
   }
 }

@@ -147,7 +147,8 @@ export function registerHandlers(bot: Telegraf) {
       fromUsername,
     });
 
-    // Moderation
+    // Moderation — never delete on weak confidence
+    // <70% warn · 70–90% notify admin · >90% delete only if permitted
     if (active.group.settings?.spamModeration) {
       const verdict = moderationService.inspect({
         text,
@@ -155,31 +156,69 @@ export function registerHandlers(bot: Telegraf) {
         groupId: active.group.id,
       });
       if (verdict.spam) {
-        try {
-          await ctx.deleteMessage(ctx.message.message_id);
-        } catch {
-          // missing delete permission
-        }
-        await ctx
-          .reply(
-            `Warning: message removed (${verdict.reason ?? "spam"}). Please follow group rules.`,
-          )
-          .catch(() => undefined);
+        const confidence = verdict.confidence ?? 0;
+        let actionTaken: "warn" | "notify_admin" | "delete" = "warn";
 
-        if (active.group.adminTelegramIds) {
-          try {
-            const admins = JSON.parse(active.group.adminTelegramIds) as string[];
-            for (const adminId of admins.slice(0, 5)) {
-              await ctx.telegram
-                .sendMessage(
-                  Number(adminId),
-                  `Moderation in ${active.group.name ?? telegramId}: removed spam (${verdict.reason}) from ${fromUsername ?? fromUserId}`,
-                )
-                .catch(() => undefined);
+        if (confidence < 0.7) {
+          await ctx
+            .reply(
+              `Warning: this message looks suspicious (${verdict.reason ?? "spam"}). Please follow group rules.`,
+            )
+            .catch(() => undefined);
+          actionTaken = "warn";
+        } else if (confidence <= 0.9) {
+          await ctx
+            .reply(
+              `Warning: flagged as possible spam (${verdict.reason ?? "spam"}). Admins have been notified.`,
+            )
+            .catch(() => undefined);
+          if (active.group.adminTelegramIds) {
+            try {
+              const admins = JSON.parse(active.group.adminTelegramIds) as string[];
+              for (const adminId of admins.slice(0, 5)) {
+                await ctx.telegram
+                  .sendMessage(
+                    Number(adminId),
+                    `Moderation in ${active.group.name ?? telegramId}: possible spam (${verdict.reason}, ${(confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
+                  )
+                  .catch(() => undefined);
+              }
+            } catch {
+              // ignore
             }
-          } catch {
-            // ignore
           }
+          actionTaken = "notify_admin";
+        } else {
+          let deleted = false;
+          try {
+            await ctx.deleteMessage(ctx.message.message_id);
+            deleted = true;
+          } catch {
+            // missing delete permission — fall back to warn
+          }
+          await ctx
+            .reply(
+              deleted
+                ? `Warning: message removed (${verdict.reason ?? "spam"}). Please follow group rules.`
+                : `Warning: high-confidence spam (${verdict.reason ?? "spam"}) but bot lacks delete permission.`,
+            )
+            .catch(() => undefined);
+          if (active.group.adminTelegramIds) {
+            try {
+              const admins = JSON.parse(active.group.adminTelegramIds) as string[];
+              for (const adminId of admins.slice(0, 5)) {
+                await ctx.telegram
+                  .sendMessage(
+                    Number(adminId),
+                    `Moderation in ${active.group.name ?? telegramId}: ${deleted ? "removed" : "flagged"} spam (${verdict.reason}) from ${fromUsername ?? fromUserId}`,
+                  )
+                  .catch(() => undefined);
+              }
+            } catch {
+              // ignore
+            }
+          }
+          actionTaken = deleted ? "delete" : "warn";
         }
 
         await actionService.record({
@@ -187,7 +226,11 @@ export function registerHandlers(bot: Telegraf) {
           groupId: active.group.id,
           userId: active.employerUserId,
           billable: true,
-          metadata: { reason: verdict.reason, confidence: verdict.confidence },
+          metadata: {
+            reason: verdict.reason,
+            confidence: verdict.confidence,
+            actionTaken,
+          },
         });
         return;
       }

@@ -11,8 +11,12 @@ export default function WalletPage() {
         Wallet
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Your employment smart wallet is provisioned when you hire Sentry. Address and
-        prepaid balance only — no private keys.
+        Prepaid cUSD balance for pay-per-completed-work. Address and balance only — no
+        private keys. See{" "}
+        <Link href="/pricing" className="text-[#35d07f] hover:underline">
+          pricing
+        </Link>
+        .
       </p>
       <WalletPanel />
     </main>
