@@ -3,6 +3,7 @@ import { contextService } from "@/services/context.service";
 import { aiService } from "@/services/ai.service";
 import { actionService } from "@/services/action.service";
 import { getBot } from "@/services/telegram.service";
+import { logEvent } from "@/lib/logger";
 
 export class SummaryService {
   async generateForGroup(groupId: string) {
@@ -66,6 +67,7 @@ export class SummaryService {
       }
     }
 
+    logEvent("Summary Generated", { groupId, employerId });
     return summary;
   }
 

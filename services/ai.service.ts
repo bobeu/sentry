@@ -1,5 +1,6 @@
 import type { ContextBundle } from "@/services/context.service";
 import { faqService } from "@/services/faq.service";
+import { Errors } from "@/lib/errors";
 
 type ReplyInput = {
   context: ContextBundle;
@@ -7,14 +8,19 @@ type ReplyInput = {
   userName?: string;
 };
 
+const UNCERTAIN = "I don't know based on the available context.";
+
 function systemRules() {
   return [
     "You are Sentry, an AI community employee for Telegram.",
-    "Never invent group rules.",
+    "Give short responses only.",
+    "Never fabricate information.",
+    "Never invent group rules, policies, or facts.",
+    "Always respect the provided group rules when answering.",
     "Never pretend to be human.",
     "Only use provided group context, FAQs, and recent messages.",
-    "If unsure, say exactly: I don't know.",
-    "Keep replies concise.",
+    "Never answer outside the available context.",
+    `If uncertain, say exactly: ${UNCERTAIN}`,
   ].join(" ");
 }
 
@@ -44,32 +50,44 @@ async function callOpenAI(
 ) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw Errors.aiUnavailable();
   }
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-      temperature: 0.3,
-      max_tokens: maxTokens,
-      messages,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`OpenAI error: ${res.status} ${body}`);
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+        temperature: 0.3,
+        max_tokens: maxTokens,
+        messages,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw Errors.aiUnavailable();
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return data.choices?.[0]?.message?.content?.trim() || UNCERTAIN;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw Errors.aiUnavailable();
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return data.choices?.[0]?.message?.content?.trim() || "I don't know.";
 }
 
 export class AiService {
@@ -85,7 +103,7 @@ export class AiService {
       { role: "system", content: systemRules() },
       {
         role: "user",
-        content: `${formatContext(input.context)}\n\nUser (${input.userName ?? "member"}) asked:\n${input.userQuestion}`,
+        content: `${formatContext(input.context)}\n\nUser (${input.userName ?? "member"}) asked:\n${input.userQuestion}\n\nReply in 2-5 short sentences.`,
       },
     ]);
     return { text, viaFaq: false as const };
@@ -97,10 +115,10 @@ export class AiService {
         { role: "system", content: systemRules() },
         {
           role: "user",
-          content: `${formatContext(input.context)}\n\nWrite a short friendly welcome for "${input.memberName}". Max 2 sentences.`,
+          content: `${formatContext(input.context)}\n\nWrite a friendly welcome for "${input.memberName}". Max 1-2 sentences.`,
         },
       ],
-      120,
+      100,
     );
   }
 
@@ -110,10 +128,10 @@ export class AiService {
         { role: "system", content: systemRules() },
         {
           role: "user",
-          content: `${formatContext(context)}\n\nWrite a concise daily summary with sections:\n- Important discussions\n- Questions asked\n- Decisions made\n- Unanswered questions\nKeep under 180 words.`,
+          content: `${formatContext(context)}\n\nWrite a daily summary as 5-10 bullet points covering important discussions, questions, decisions, and unanswered questions.`,
         },
       ],
-      350,
+      400,
     );
   }
 
@@ -127,10 +145,10 @@ export class AiService {
         { role: "system", content: systemRules() },
         {
           role: "user",
-          content: `${formatContext(input.context)}\n\n@${input.mentionedUsername} was mentioned:\n"${input.triggerText}"\n\nWrite a private notification with:\nSummary:\n...\nRecommended action:\n...\nKeep under 100 words.`,
+          content: `${formatContext(input.context)}\n\n@${input.mentionedUsername} was mentioned:\n"${input.triggerText}"\n\nWrite a private notification with Summary and Recommended action. Max 3 sentences.`,
         },
       ],
-      220,
+      180,
     );
   }
 

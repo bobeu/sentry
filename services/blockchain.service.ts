@@ -12,6 +12,15 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
 import { CONTRACTS } from "@/lib/contracts";
+import type { PaymentCurrency } from "@/lib/payment-currency";
+import { Errors } from "@/lib/errors";
+
+const TOKEN_INDEX: Record<PaymentCurrency, number> = {
+  CELO: 0,
+  USDm: 1,
+  USDC: 2,
+  USDT: 3,
+};
 
 const employmentAbi = [
   {
@@ -20,6 +29,13 @@ const employmentAbi = [
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "activePaymentToken",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
   },
   {
     type: "function",
@@ -48,12 +64,19 @@ const employmentAbi = [
   },
   {
     type: "function",
-    name: "credit",
+    name: "registerIdentity",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "account", type: "address" },
-      { name: "amount", type: "uint256" },
+      { name: "identityHash", type: "bytes32" },
+      { name: "wallet", type: "address" },
     ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "setActivePaymentToken",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "token", type: "uint8" }],
     outputs: [],
   },
 ] as const;
@@ -65,11 +88,22 @@ function operatorKey(): Hex | null {
   return key as Hex;
 }
 
-/** Celo Mainnet only. */
+function ownerKey(): Hex | null {
+  const raw = process.env.SENTRY_OWNER_KEY ?? process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
+  if (!raw?.trim()) return null;
+  const key = raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`;
+  return key as Hex;
+}
+
+/** Celo Mainnet only. Blockchain is source of truth for balances and charges. */
 export class BlockchainService {
+  isConfigured() {
+    return Boolean(this.contractAddress() && operatorKey());
+  }
+
   connect() {
     return {
-      connected: true,
+      connected: this.isConfigured(),
       network: "celo-mainnet",
       chainId: 42220,
       employmentContract: CONTRACTS.EmploymentContract.address ?? null,
@@ -102,19 +136,22 @@ export class BlockchainService {
     return { wallet, account, address };
   }
 
-  getBalance(address?: string) {
-    return {
-      address: address ?? "0x0000000000000000000000000000000000000000",
-      balance: "0",
-      currency: "CELO",
-    };
+  private async ownerWallet() {
+    const key = ownerKey();
+    const address = this.contractAddress();
+    if (!key || !address) return null;
+    const account = privateKeyToAccount(key);
+    const wallet = createWalletClient({
+      account,
+      chain: celo,
+      transport: http(process.env.CELO_RPC ?? "https://forno.celo.org"),
+    });
+    return { wallet, account, address };
   }
 
   async getEmploymentBalance(address: string) {
     const contractAddress = this.contractAddress();
-    if (!contractAddress || !isAddress(address)) {
-      return null;
-    }
+    if (!contractAddress || !isAddress(address)) return null;
 
     try {
       const raw = await this.client().readContract({
@@ -123,7 +160,6 @@ export class BlockchainService {
         functionName: "balanceOf",
         args: [address as Address],
       });
-
       return {
         wei: raw.toString(),
         formatted: formatEther(raw),
@@ -134,31 +170,40 @@ export class BlockchainService {
     }
   }
 
-  /** Operator charge for completed work. Returns tx hash or null if unavailable. */
+  async syncBalanceCache(address: Address): Promise<number> {
+    const onChain = await this.getEmploymentBalance(address);
+    if (!onChain) return 0;
+    return Number(onChain.formatted);
+  }
+
+  /** Chain-first charge — throws if unavailable or tx fails. */
   async chargeOnChain(input: {
     account: Address;
-    amountCusd: number;
+    amount: number;
     actionId: Hex;
-  }): Promise<string | null> {
+  }): Promise<string> {
     const op = await this.operatorWallet();
-    if (!op) return null;
+    if (!op) throw Errors.blockchainUnavailable();
 
     const hash = await op.wallet.writeContract({
       address: op.address,
       abi: employmentAbi,
       functionName: "charge",
-      args: [input.account, parseEther(input.amountCusd.toString()), input.actionId],
+      args: [input.account, parseEther(input.amount.toString()), input.actionId],
       account: op.account,
       chain: celo,
     });
-    await this.client().waitForTransactionReceipt({ hash: hash as Hash });
+    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
+    if (receipt.status !== "success") {
+      throw Errors.chargeFailed("Transaction reverted on-chain");
+    }
     return hash;
   }
 
   async pauseOnChain(account: Address): Promise<string | null> {
     const op = await this.operatorWallet();
     if (!op) return null;
-    const hash = await op.wallet.writeContract({
+    return op.wallet.writeContract({
       address: op.address,
       abi: employmentAbi,
       functionName: "pause",
@@ -166,13 +211,12 @@ export class BlockchainService {
       account: op.account,
       chain: celo,
     });
-    return hash;
   }
 
   async resumeOnChain(account: Address): Promise<string | null> {
     const op = await this.operatorWallet();
     if (!op) return null;
-    const hash = await op.wallet.writeContract({
+    return op.wallet.writeContract({
       address: op.address,
       abi: employmentAbi,
       functionName: "resume",
@@ -180,21 +224,32 @@ export class BlockchainService {
       account: op.account,
       chain: celo,
     });
-    return hash;
   }
 
-  async creditOnChain(account: Address, amountCusd: number): Promise<string | null> {
+  async registerIdentityOnChain(identityHash: Hex, wallet: Address): Promise<string | null> {
     const op = await this.operatorWallet();
     if (!op) return null;
-    const hash = await op.wallet.writeContract({
+    return op.wallet.writeContract({
       address: op.address,
       abi: employmentAbi,
-      functionName: "credit",
-      args: [account, parseEther(amountCusd.toString())],
+      functionName: "registerIdentity",
+      args: [identityHash, wallet],
       account: op.account,
       chain: celo,
     });
-    return hash;
+  }
+
+  async setActivePaymentToken(currency: PaymentCurrency): Promise<string | null> {
+    const owner = await this.ownerWallet();
+    if (!owner) return null;
+    return owner.wallet.writeContract({
+      address: owner.address,
+      abi: employmentAbi,
+      functionName: "setActivePaymentToken",
+      args: [TOKEN_INDEX[currency]],
+      account: owner.account,
+      chain: celo,
+    });
   }
 }
 

@@ -16,10 +16,13 @@ type SpendPoint = { date: string; spend: number };
 
 type StatusPayload = {
   status: string;
+  currency: string;
   wallet: { address: string; balance: number } | null;
-  groups: number;
-  actionsCompleted: number;
+  groupsConnected: number;
+  groupsEnabled: number;
+  actionsCompletedToday: number;
   todaySpend: number;
+  lifetimeSpend: number;
   estimatedRemainingActions: number;
   spendSeries?: SpendPoint[];
   recentActivity: ActionRow[];
@@ -35,34 +38,35 @@ function statusLabel(status: string) {
 function actionLabel(type: string) {
   switch (type) {
     case "mention_reply":
-      return "Answered Mention";
+      return "Answered mention";
     case "faq_answer":
       return "Answered FAQ";
     case "daily_summary":
-      return "Generated Summary";
+      return "Generated summary";
     case "spam_moderation":
-      return "Moderated Spam";
+      return "Spam removed";
     case "mention_notification":
-      return "Sent Notification";
+      return "Sent notification";
     case "welcome":
-      return "Welcomed Member";
+      return "Welcomed member";
     default:
       return type;
   }
 }
 
-function SpendBars({ series }: { series: SpendPoint[] }) {
+function SpendBars({ series, currency }: { series: SpendPoint[]; currency: string }) {
   const max = Math.max(...series.map((s) => s.spend), 0.001);
   return (
     <div className="mt-4 space-y-2 font-mono text-sm">
       {series.map((s) => {
         const width = Math.max(2, Math.round((s.spend / max) * 28));
-        const bar = "█".repeat(width);
         return (
           <div key={s.date} className="flex items-center gap-3 text-[#9aa89a]">
             <span className="w-24 shrink-0">{s.date.slice(5)}</span>
-            <span className="text-[#35d07f]">{bar}</span>
-            <span className="text-[#e8f5d8]">${s.spend.toFixed(3)}</span>
+            <span className="text-[#35d07f]">{"█".repeat(width)}</span>
+            <span className="text-[#e8f5d8]">
+              {s.spend.toFixed(3)} {currency}
+            </span>
           </div>
         );
       })}
@@ -110,45 +114,56 @@ export function DashboardLive() {
   }
 
   const balance = data.wallet?.balance ?? 0;
+  const currency = data.currency ?? "USDm";
 
   return (
     <div className="mt-10 space-y-8">
+      <div className="inline-flex items-center gap-2 rounded-full border border-[#35d07f]/30 bg-[#35d07f]/10 px-4 py-1.5 text-sm text-[#35d07f]">
+        Payment Currency · {currency}
+      </div>
+
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <Card
-          title="Today's Spend"
-          value={`$${(data.todaySpend ?? 0).toFixed(3)}`}
-          description="cUSD charged for completed work today"
-        />
+        <Card title="Employment" value={statusLabel(data.status)} description="Current status" />
         <Card
           title="Current Balance"
-          value={`$${balance.toFixed(3)}`}
-          description={data.wallet?.address ?? "No smart wallet yet"}
+          value={`${balance.toFixed(3)} ${currency}`}
+          description={data.wallet?.address ?? "No wallet yet"}
+        />
+        <Card
+          title="Today's Spend"
+          value={`${(data.todaySpend ?? 0).toFixed(3)} ${currency}`}
+          description="Charged for completed work today"
+        />
+        <Card
+          title="Lifetime Spend"
+          value={`${(data.lifetimeSpend ?? 0).toFixed(3)} ${currency}`}
+          description="All successful charges"
+        />
+        <Card
+          title="Groups Connected"
+          value={data.groupsConnected ?? 0}
+          description="Groups linked to your account"
+        />
+        <Card
+          title="Groups Enabled"
+          value={data.groupsEnabled ?? 0}
+          description="Groups with Sentry active"
+        />
+        <Card
+          title="Actions Completed Today"
+          value={data.actionsCompletedToday ?? 0}
+          description="Successful work logged today"
         />
         <Card
           title="Estimated Remaining Actions"
           value={data.estimatedRemainingActions ?? 0}
           description="Based on average action cost"
         />
-        <Card
-          title="Employment Status"
-          value={statusLabel(data.status)}
-          description="Hire, pause, or resume from Employment"
-        />
-        <Card
-          title="Connected Groups"
-          value={data.groups}
-          description="Groups with Sentry enabled"
-        />
-        <Card
-          title="Actions Completed"
-          value={data.actionsCompleted}
-          description="All completed work logged"
-        />
       </div>
 
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="text-lg text-[#e8f5d8]">Spending (7 days)</h2>
-        <SpendBars series={data.spendSeries ?? []} />
+        <SpendBars series={data.spendSeries ?? []} currency={currency} />
       </section>
 
       <section>
@@ -162,11 +177,14 @@ export function DashboardLive() {
                 key={a.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
               >
-                <span className="text-[#e8f5d8]">{actionLabel(a.type)}</span>
                 <span className="text-[#9aa89a]">
-                  {a.group?.name ?? "—"} · {new Date(a.completedAt).toLocaleString()}
-                  {a.billable ? " · billable" : ""}
+                  {new Date(a.completedAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
+                <span className="text-[#e8f5d8]">{actionLabel(a.type)}</span>
+                <span className="text-[#9aa89a]">{a.group?.name ?? "—"}</span>
               </li>
             ))
           )}

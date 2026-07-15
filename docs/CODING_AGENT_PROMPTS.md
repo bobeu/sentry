@@ -2675,3 +2675,1502 @@ You can still market the underlying technology as inspired by AgentPay Stream, b
 - Sync contract after deploy: `pnpm contracts:sync`. Set `SENTRY_OPERATOR_KEY` for on-chain charges.
 - DB ledger is always updated; on-chain charge is best-effort when operator key + address exist.
 
+---
+
+# CTO Said
+
+This is in very good shape.
+
+More importantly, I think we've now reached **feature completeness for the MVP**.
+
+From this point onward, we should **stop adding features** and focus on making Sentry feel like a polished product.
+
+I only have **two fixes** from Prompt 5.
+
+---
+
+# Fixes from Prompt 5
+
+## 1. Remove `credit()`
+
+The summary says:
+
+```solidity
+deposit()
+
+credit()
+
+withdraw()
+```
+
+I don't think `credit()` belongs in the contract.
+
+The contract should expose only user-facing financial operations.
+
+Use:
+
+```solidity
+deposit()
+withdraw()
+charge()
+pause()
+resume()
+balanceOf()
+```
+
+If the backend needs to increase a balance, it should simply call `deposit()`.
+
+Keeping the contract API minimal makes auditing easier.
+
+---
+
+## 2. On-chain charging
+
+The summary says:
+
+> on-chain charge is best-effort
+
+I don't like that wording.
+
+Sentry's financial state should never diverge.
+
+The rule should be:
+
+```text
+Smart Contract
+        │
+        ▼
+Success
+        │
+        ▼
+Update Database
+```
+
+Never:
+
+```text
+Database Updated
+
+↓
+
+Try Blockchain Later
+```
+
+The blockchain is the source of truth.
+
+If an on-chain charge fails,
+
+↓
+
+the ActionRecord should remain
+
+```text
+PendingCharge
+```
+
+and the user should **not** be billed.
+
+---
+
+# Prompt 6 — Product Polish, Reliability & Hackathon Readiness
+
+## Objective
+
+Do **not** introduce new features.
+
+This prompt is about making Sentry production-quality for the hackathon demo.
+
+Focus on:
+
+* reliability
+* UX
+* stability
+* error handling
+* observability
+* documentation
+
+---
+
+# AI Reliability
+
+Improve prompts.
+
+Rules:
+
+* Short responses.
+* Never fabricate information.
+* Always respect group rules.
+* Never answer outside available context.
+* If uncertain:
+
+```text
+I don't know based on the available context.
+```
+
+Limit responses to approximately:
+
+* Mention replies → 2–5 sentences
+* Welcome → 1–2 sentences
+* Summaries → 5–10 bullet points
+
+---
+
+# Telegram Reliability
+
+Handle:
+
+* Bot removed from group
+* Bot loses admin permission
+* Group renamed
+* Bot blocked by user
+* Failed message delivery
+
+Update database state accordingly.
+
+Do not repeatedly retry failed operations.
+
+---
+
+# Smart Contract Reliability
+
+Update the billing flow.
+
+Correct flow:
+
+```text
+Action Completed
+        │
+        ▼
+Create Pending Charge
+        │
+        ▼
+Blockchain charge()
+        │
+        ├──────────────┐
+        │              │
+        ▼              ▼
+Success          Failure
+        │              │
+        ▼              ▼
+Complete      PendingCharge
+```
+
+Never reduce balances in the database before a successful on-chain charge.
+
+The blockchain remains the source of truth.
+
+---
+
+# Error Handling
+
+Every service should return clear errors.
+
+Examples:
+
+* Employment inactive
+* Wallet not funded
+* Bot not enabled
+* AI unavailable
+* Blockchain unavailable
+* Telegram API unavailable
+
+Avoid generic "Internal Server Error" messages where possible.
+
+---
+
+# Dashboard Polish
+
+The dashboard should answer these questions immediately:
+
+### Employment
+
+```text
+Status
+
+Active
+```
+
+---
+
+### Wallet
+
+```text
+Current Balance
+
+Today's Spend
+
+Lifetime Spend
+```
+
+---
+
+### Communities
+
+```text
+Groups Connected
+
+Groups Enabled
+
+Actions Completed Today
+```
+
+---
+
+### Recent Activity
+
+Example:
+
+```text
+09:21
+
+Answered mention
+
+09:24
+
+Welcomed member
+
+09:40
+
+Generated summary
+
+09:46
+
+Spam removed
+```
+
+Newest first.
+
+---
+
+# Group Dashboard
+
+Display:
+
+```text
+Employment
+
+Enabled
+
+Today's Actions
+
+Today's Spend
+
+Last Summary
+
+Recent Mentions
+
+Moderation Events
+```
+
+No unnecessary charts.
+
+---
+
+# Notifications
+
+Implement clear notifications for:
+
+* Employment exhausted
+* Low balance
+* Deposit successful
+* Withdrawal successful
+* Smart contract charge failed
+* Telegram permission lost
+
+---
+
+# Logging
+
+Log only important events.
+
+Examples:
+
+```text
+Employment Started
+
+Employment Paused
+
+Charge Completed
+
+Charge Failed
+
+Bot Joined Group
+
+Bot Removed
+
+Summary Generated
+```
+
+Do not log every incoming message.
+
+---
+
+# Security
+
+Review the project for:
+
+* Missing authentication
+* Unauthorized API access
+* Missing ownership checks
+* Duplicate billing
+* Replay of ActionRecords
+* Invalid group configuration updates
+
+Fix any issues found.
+
+---
+
+# Documentation
+
+Update the README with:
+
+* Project overview
+* Local setup
+* Environment variables
+* Deployment
+* Celo Mainnet deployment
+* Telegram bot setup
+* How billing works
+* Demo guide
+
+---
+
+# Demo Flow
+
+Prepare a smooth 3-minute demo.
+
+Suggested sequence:
+
+1. User signs in.
+2. Hire Sentry.
+3. Deposit cUSD.
+4. Add Sentry to a Telegram group.
+5. Enable Sentry for the group.
+6. Mention Sentry.
+7. Sentry replies.
+8. Dashboard updates with a completed action.
+9. On-chain charge succeeds.
+10. Wallet balance decreases.
+11. Show transaction on Celo.
+12. Generate a daily summary.
+
+Everything should happen without manual database edits.
+
+---
+
+# Final Acceptance Criteria
+
+Sentry should now be able to:
+
+* ✅ Be hired by a user.
+* ✅ Create a Smart Contract Account for that user.
+* ✅ Accept deposits.
+* ✅ Join Telegram groups.
+* ✅ Respond to mentions.
+* ✅ Welcome members.
+* ✅ Answer FAQs.
+* ✅ Moderate spam using confidence thresholds.
+* ✅ Generate daily summaries.
+* ✅ Notify monitored users.
+* ✅ Record completed work.
+* ✅ Charge only after successful completed work.
+* ✅ Settle charges on Celo Mainnet.
+* ✅ Pause automatically when funds are exhausted.
+* ✅ Resume after a successful deposit.
+* ✅ Present a polished dashboard suitable for a live hackathon demonstration.
+
+---
+
+## Stop here
+
+After Prompt 6, I **do not recommend adding more functionality**.
+
+At this point, your highest return on time is:
+
+* polishing prompts,
+* improving AI response quality,
+* reducing latency,
+* making the UI feel premium,
+* testing edge cases,
+* and rehearsing the demo.
+
+Those improvements will have a much greater impact on judges than adding another feature. A polished, reliable Sentry with one clear purpose is much more likely to stand out than a larger product with unfinished capabilities.
+
+---
+
+I **strongly agree** with this change.
+
+In fact, I think it makes Sentry significantly more aligned with the Celo ecosystem. Celo is pushing stablecoin adoption, not just CELO. Supporting **CELO, USDm, USDC, and USDT** makes Sentry feel like a native Celo application.
+
+I would, however, implement it slightly differently.
+
+---
+
+# Revised Payment Architecture
+
+Instead of hardcoding a payment token into the contract, make the contract **currency-aware**.
+
+## Supported Tokens
+
+```text
+CELO (Native)
+
+USDm
+
+USDC
+
+USDT
+```
+
+Only these four.
+
+No arbitrary ERC20 support.
+
+---
+
+# Contract Changes
+
+Replace the current payment logic with a configurable payment asset.
+
+## State
+
+```solidity
+enum PaymentToken {
+    CELO,
+    USDm,
+    USDC,
+    USDT
+}
+
+PaymentToken public activePaymentToken;
+```
+
+Store the token addresses internally.
+
+```solidity
+mapping(PaymentToken => address) public supportedTokens;
+```
+
+Initialize them in the constructor.
+
+---
+
+## Admin Functions
+
+```solidity
+setActivePaymentToken()
+
+setSupportedTokenAddress()
+```
+
+Only Owner/Admin.
+
+The active token determines:
+
+* deposits
+* withdrawals
+* charges
+
+Everything uses the currently selected token.
+
+---
+
+## Deposit
+
+Instead of
+
+```solidity
+deposit()
+```
+
+support
+
+```text
+depositNative()
+
+depositERC20()
+```
+
+Rules:
+
+If
+
+```text
+activePaymentToken == CELO
+```
+
+↓
+
+Accept native CELO only.
+
+Otherwise
+
+↓
+
+Accept only the configured ERC20.
+
+Reject everything else.
+
+---
+
+## Withdraw
+
+Withdraw in the currently active currency.
+
+No conversions.
+
+---
+
+## Charge
+
+Charge using the currently active currency.
+
+No exchange-rate calculations.
+
+---
+
+# Frontend Changes
+
+Wallet Page
+
+Instead of
+
+```text
+Wallet Balance
+
+25
+```
+
+Display
+
+```text
+Wallet Balance
+
+25 USDm
+```
+
+or
+
+```text
+3.2 CELO
+```
+
+depending on the active token.
+
+---
+
+Deposit Dialog
+
+If active token is
+
+CELO
+
+↓
+
+Show
+
+```text
+Deposit CELO
+```
+
+If
+
+USDm
+
+↓
+
+Show
+
+```text
+Deposit USDm
+```
+
+etc.
+
+---
+
+Pricing Page
+
+Instead of
+
+```text
+Reply
+
+0.01
+```
+
+Display
+
+```text
+Reply
+
+0.01 USDm
+```
+
+Always display the active currency.
+
+---
+
+Dashboard
+
+Add a small badge.
+
+Example
+
+```text
+Payment Currency
+
+USDm
+```
+
+or
+
+```text
+Payment Currency
+
+CELO
+```
+
+No dropdown for users.
+
+---
+
+# Admin Dashboard
+
+Create one simple settings page.
+
+```
+Payment Currency
+
+○ CELO
+
+● USDm
+
+○ USDC
+
+○ USDT
+
+[ Save ]
+```
+
+Changing this updates the smart contract.
+
+Only administrators can access this page.
+
+---
+
+# Backend
+
+Billing Service
+
+Should never hardcode
+
+```typescript
+0.01
+```
+
+Instead
+
+```typescript
+price
+
++
+
+currency
+```
+
+Example
+
+```typescript
+{
+    amount: 0.01,
+    currency: "USDm"
+}
+```
+
+---
+
+ChargeRecord
+
+Add
+
+```text
+currency
+```
+
+Field.
+
+Example
+
+```text
+Reply
+
+0.01
+
+USDm
+```
+
+---
+
+Wallet
+
+Add
+
+```text
+activeCurrency
+```
+
+to the wallet model (or retrieve it directly from the contract if you want the blockchain to remain the single source of truth).
+
+---
+
+# API
+
+Add
+
+```text
+GET /api/payment/currency
+```
+
+Returns
+
+```json
+{
+  "currency": "USDm"
+}
+```
+
+Admin
+
+```text
+PATCH /api/payment/currency
+```
+
+Body
+
+```json
+{
+  "currency": "USDC"
+}
+```
+
+---
+
+# One important rule
+
+I would **not** allow each user to choose their own payment token.
+
+Keep it **global**.
+
+If today Sentry operates in
+
+USDm
+
+then
+
+every user
+
+deposits
+
+USDm.
+
+Tomorrow
+
+the admin changes
+
+to
+
+USDC.
+
+Now
+
+everyone
+
+uses
+
+USDC.
+
+This keeps:
+
+* billing simple,
+* pricing simple,
+* UI simple,
+* smart contracts simple,
+* accounting simple.
+
+---
+
+## Add this amendment to Prompt 6
+
+> **Payment Currency Management**
+>
+> The Employment smart contract must support exactly four payment currencies: **CELO (native), USDm, USDC, and USDT**. The contract owner can configure one global active payment currency at any time. All deposits, withdrawals, and charges must use only the currently active currency. Users cannot choose a different currency. The frontend must clearly display the active payment currency on the Dashboard, Wallet, Deposit, Pricing, and Billing pages. The backend, billing engine, and charge records must include the active currency in every financial operation. No currency conversion or exchange-rate logic should be implemented in the MVP.
+
+I think this design is the simplest, easiest to audit, and most appropriate for a hackathon while still showcasing Sentry as a **Celo-native** application built around the ecosystem's core assets.
+
+---
+
+I like this idea **a lot more** than exposing a `deposit()` function.
+
+In fact, I think it's the right architecture.
+
+One of the biggest UX problems in Web3 is asking users to:
+
+> Connect wallet → Approve → Call deposit() → Wait → Confirm.
+
+Instead, your approach makes Sentry behave like a real bank account.
+
+> "Here's your wallet address. Send funds to it."
+
+That's immediately understandable.
+
+## I would change the architecture as follows
+
+### Remove
+
+The smart contract should **not** require:
+
+```solidity
+deposit()
+```
+
+Users should never have to call it.
+
+---
+
+### New Flow
+
+```text
+User
+
+↓
+
+Sentry
+
+↓
+
+"Show my wallet"
+
+↓
+
+0xABC...
+
+↓
+
+User sends CELO / USDm / USDC / USDT
+
+↓
+
+Smart Wallet receives funds
+
+↓
+
+Balance automatically increases
+
+↓
+
+Dashboard updates
+```
+
+Exactly how a normal crypto wallet works.
+
+---
+
+## Smart Wallet
+
+Each Smart Wallet becomes a contract account capable of holding:
+
+* CELO
+* USDm
+* USDC
+* USDT
+
+directly.
+
+The Employment contract then authorizes spending **from that Smart Wallet**.
+
+---
+
+## Balance
+
+Never store balance manually in the database.
+
+Instead:
+
+```text
+Dashboard
+
+↓
+
+Blockchain
+
+↓
+
+Smart Wallet Balance
+```
+
+The database may cache balances for performance, but the blockchain should remain the source of truth.
+
+---
+
+## How Sentry knows a deposit happened
+
+No contract call is needed.
+
+Instead, implement a blockchain listener.
+
+```text
+Celo Mainnet
+
+↓
+
+Transfer detected
+
+↓
+
+Recipient == Smart Wallet
+
+↓
+
+Update cache
+
+↓
+
+Notify user
+
+↓
+
+Employment becomes Active (if previously exhausted)
+```
+
+This can be done by indexing `Transfer` events for supported ERC-20 tokens and native CELO transfers.
+
+---
+
+## Withdrawals
+
+Withdrawals still go through the Smart Wallet.
+
+The Employment contract (or Smart Wallet logic) validates that only the authorized owner can initiate withdrawals.
+
+---
+
+## Charging
+
+Charging remains the same.
+
+```text
+Action Completed
+
+↓
+
+Employment Contract
+
+↓
+
+Charge()
+
+↓
+
+Transfer from Smart Wallet
+
+↓
+
+Treasury Wallet
+```
+
+---
+
+## Dashboard
+
+Instead of a generic Deposit button, show:
+
+```text
+Wallet Address
+
+0xABCD...
+
+[Copy]
+
+[Show QR Code]
+
+Current Currency
+
+USDm
+
+Current Balance
+
+24.62 USDm
+```
+
+This feels much more like a real wallet.
+
+---
+
+## Telegram
+
+Users can simply ask:
+
+> What's my wallet?
+
+or
+
+> Show my deposit address.
+
+Sentry replies:
+
+```text
+Your Sentry Wallet
+
+0xABCD...
+
+Accepted Currency
+
+USDm
+
+Send funds to this address.
+
+Your balance will update automatically after confirmation.
+```
+
+That creates a nice conversational experience.
+
+---
+
+## One architectural improvement I'd make
+
+I would actually **separate the Smart Wallet from the Employment Contract**.
+
+Instead of this:
+
+```text
+Employment Contract
+
+↓
+
+Stores funds
+```
+
+I'd do this:
+
+```text
+User Smart Wallet
+
+↓
+
+Stores assets
+
+↓
+
+Employment Contract
+
+↓
+
+Authorized to charge
+```
+
+This separation is much cleaner because:
+
+* The Smart Wallet's responsibility is **asset custody**.
+* The Employment Contract's responsibility is **employment rules and billing**.
+* Neither contract mixes financial storage with business logic.
+
+It also makes future features—such as spending limits, multiple employees, or different payment strategies—much easier to add without changing where user funds live.
+
+I think this is the strongest architectural decision you've made so far. It makes Sentry feel like a true Web3-native product rather than a traditional application wrapped around a smart contract.
+
+---
+
+# Revised Architecture
+
+There are now **two equally valid funding methods**.
+
+## Method 1 — Explicit Deposit (Web)
+
+This is the traditional Web3 flow.
+
+```text
+External Wallet
+        │
+        ▼
+Connect Wallet
+        │
+        ▼
+Deposit()
+        │
+        ▼
+Employment Smart Wallet
+```
+
+Users:
+
+* connect MetaMask/MiniPay/etc.
+* choose amount
+* click Deposit
+* transaction executes
+* balance updates
+
+This is the familiar UX.
+
+---
+
+## Method 2 — Direct Transfer (No Wallet Connection)
+
+Every user owns a permanent Smart Wallet.
+
+Sentry simply exposes its address.
+
+```text
+Any Wallet
+
+↓
+
+Send CELO / USDm / USDC / USDT
+
+↓
+
+Employment Smart Wallet
+
+↓
+
+Balance updates
+```
+
+No wallet connection.
+
+No frontend interaction.
+
+No deposit screen.
+
+Just send funds.
+
+This is especially nice for Telegram users.
+
+---
+
+# Internal Wallet Identity
+
+This is the part I really like.
+
+Instead of identifying wallets only by blockchain address,
+
+Sentry should maintain an identity mapping.
+
+For example:
+
+```text
+Telegram User
+
+↓
+
+Telegram ID
+
+↓
+
+SHA256
+
+↓
+
+bytes32
+
+↓
+
+Smart Wallet
+```
+
+Likewise:
+
+```text
+Email
+
+↓
+
+SHA256
+
+↓
+
+bytes32
+
+↓
+
+Smart Wallet
+```
+
+or
+
+```text
+Connected Wallet
+
+↓
+
+Wallet Address
+
+↓
+
+Smart Wallet
+```
+
+Everything points to the same Employment Wallet.
+
+---
+
+# Identity Mapping
+
+I would introduce one concept.
+
+```solidity
+Identity
+```
+
+Not User.
+
+Not Wallet.
+
+Identity.
+
+Example
+
+```text
+bytes32 identityHash
+
+↓
+
+Employment Wallet
+```
+
+The backend computes:
+
+```text
+telegram:12345678
+
+↓
+
+SHA-256
+
+↓
+
+bytes32
+```
+
+or
+
+```text
+email:alice@example.com
+
+↓
+
+SHA-256
+
+↓
+
+bytes32
+```
+
+Never store the raw identifier on-chain.
+
+---
+
+# Contract
+
+Instead of
+
+```solidity
+mapping(address => Wallet)
+```
+
+I'd use
+
+```solidity
+mapping(bytes32 => address)
+```
+
+That makes the contract independent of authentication methods.
+
+Later you could support:
+
+* Telegram
+* Email
+* Google
+* Farcaster
+* Wallet
+* MiniPay
+
+without changing the contract.
+
+---
+
+# Funding Detection
+
+Whenever funds arrive,
+
+the backend checks
+
+```text
+Recipient Address
+
+↓
+
+Employment Wallet
+
+↓
+
+Lookup Identity
+
+↓
+
+Update UI
+
+↓
+
+Notify User
+```
+
+Simple.
+
+---
+
+# Frontend
+
+Wallet page becomes:
+
+```text
+Employment Wallet
+
+0xABCD...
+
+[Copy]
+
+[QR Code]
+
+───────────────
+
+Funding Options
+
+① Connect Wallet
+
+Deposit
+
+② Send Funds Directly
+
+Copy Address
+
+Current Balance
+
+24.25 USDm
+```
+
+Very clear.
+
+---
+
+# Telegram
+
+The bot should understand commands like:
+
+```text
+/mywallet
+
+/balance
+
+/deposit
+```
+
+Example:
+
+```
+Your Sentry Employment Wallet
+
+0xABCD...
+
+Accepted Currency
+
+USDm
+
+You can either:
+
+• Send USDm directly to this address.
+
+or
+
+• Visit the dashboard to deposit from a connected wallet.
+
+Current Balance
+
+14.32 USDm
+```
+
+---
+
+# One thing I would change
+
+I would **not use a raw SHA-256 hash alone** as the on-chain identity key.
+
+Instead, namespace the identifier before hashing to avoid collisions between identity types.
+
+Examples:
+
+```text
+telegram:123456789
+email:alice@example.com
+wallet:0xabc123...
+```
+
+Then compute:
+
+```
+keccak256(namespace:value)
+```
+
+and store the resulting `bytes32`.
+
+Using a namespaced hash has several advantages:
+
+* A Telegram ID and an email that happen to produce similar inputs can never collide conceptually.
+* You can support new identity providers later without modifying the contract.
+* The on-chain data never exposes the user's actual Telegram ID or email.
+* The mapping remains deterministic and easy to reproduce off-chain.
+
+I think this is the cleanest identity model for Sentry. It preserves user privacy, keeps the contract simple, and supports both of your funding methods while maintaining a single internal Employment Smart Wallet per user.
+
+---
+
+# Agent Session Summary — Prompt 6 (2026-07-15)
+
+## Prompt 5 fixes
+
+- **Removed `credit()`** from `EmploymentContract.sol`. Funding via `depositNative()` / `depositERC20()` only.
+- **Chain-first billing:** pending `ChargeRecord` → on-chain `charge()` → DB/cache update only after tx success. Failed charges stay `failed`/`pending`; user not billed. Replay protection via `chargedActions` mapping.
+
+## Product polish (no new features)
+
+- **AI reliability:** stricter prompts — short replies, no fabrication, exact uncertainty phrase, 2–5 sentence mentions, 1–2 sentence welcomes, 5–10 bullet summaries, timeout handling.
+- **Telegram reliability:** bot removed → disable group; permission loss → notify; group rename on events; `/mywallet`, `/balance`, `/deposit` commands.
+- **Error handling:** `SentryError` + clear codes (`EMPLOYMENT_INACTIVE`, `WALLET_NOT_FUNDED`, `BLOCKCHAIN_UNAVAILABLE`, `CHARGE_FAILED`, etc.).
+- **Logging:** `lib/logger.ts` — important events only (employment, charges, bot events, summaries).
+- **Dashboard:** employment, balance/spend/lifetime, groups connected/enabled, actions today, currency badge, recent activity with timestamps.
+- **Group dashboard:** today's spend, recent mentions, moderation events.
+- **Wallet page:** copy address, sync balance from chain, funding instructions, currency display.
+- **README:** setup, env vars, deployment, billing, demo guide.
+
+## Payment currency management
+
+- Global currency: **CELO**, **USDm**, **USDC**, **USDT** via `PaymentConfig` + contract `activePaymentToken`.
+- `ChargeRecord.currency`, pricing with currency suffix, currency badge on dashboard/wallet/pricing.
+- `GET/PATCH /api/payment/currency` — admin via `ADMIN_EMAILS`.
+- `/admin/payment` settings page.
+
+## Contract v2
+
+- Multi-currency vault with `PaymentToken` enum, `supportedTokens`, `depositNative`/`depositERC20`, `withdraw`, `charge`, `pause`/`resume`, `registerIdentity`, treasury payouts.
+- Identity hashing: `lib/identity.ts` (`keccak256(namespace:value)`).
+
+## Migration
+
+`prisma/migrations/20260715200000_prompt6_polish/` — run when Postgres is up.
+
+## Ops
+
+- Set `SENTRY_OPERATOR_KEY`, `SENTRY_OWNER_KEY`, `ADMIN_EMAILS`, token addresses.
+- Deploy + `pnpm contracts:sync`.
+- Wallet **Sync Balance** after on-chain deposits.
+

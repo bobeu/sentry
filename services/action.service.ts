@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { ActionType, ActionStatus, Prisma } from "@prisma/client";
 import { billingService } from "@/services/billing.service";
+import { PRICING_LABELS } from "@/lib/pricing";
 
 export class ActionService {
   async record(input: {
@@ -26,7 +27,7 @@ export class ActionService {
       try {
         await billingService.chargeUser(action.id);
       } catch (err) {
-        console.warn("[action] billing failed", action.id, err);
+        console.warn("[action] billing pending/failed", action.id, err);
       }
     }
 
@@ -58,27 +59,30 @@ export class ActionService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [actionsCompleted, billableToday, recent, groups, spending] = await Promise.all([
-      prisma.actionRecord.count({ where: { userId, status: "completed" } }),
-      prisma.actionRecord.count({
-        where: {
-          userId,
-          billable: true,
-          status: "completed",
-          completedAt: { gte: startOfDay },
-        },
-      }),
-      this.recentForUser(userId, 12),
-      prisma.groupEmployment.count({ where: { userId, enabled: true } }),
-      billingService.getSpending(userId),
-    ]);
+    const [actionsCompleted, actionsCompletedToday, recent, groupsConnected, groupsEnabled, spending] =
+      await Promise.all([
+        prisma.actionRecord.count({ where: { userId, status: "completed" } }),
+        prisma.actionRecord.count({
+          where: {
+            userId,
+            status: "completed",
+            completedAt: { gte: startOfDay },
+          },
+        }),
+        this.recentForUser(userId, 12),
+        prisma.groupEmployment.count({ where: { userId } }),
+        prisma.groupEmployment.count({ where: { userId, enabled: true } }),
+        billingService.getSpending(userId),
+      ]);
 
     return {
       actionsCompleted,
-      billableToday,
+      actionsCompletedToday,
       recent,
-      groups,
+      groupsConnected,
+      groupsEnabled,
       todaySpend: spending.todaySpend,
+      lifetimeSpend: spending.lifetimeSpend,
       balance: spending.balance,
       estimatedRemainingActions: spending.estimatedRemainingActions,
       spendSeries: spending.series,
@@ -90,23 +94,55 @@ export class ActionService {
     startOfDay.setHours(0, 0, 0, 0);
     const where = { groupId, completedAt: { gte: startOfDay }, status: "completed" as const };
 
-    const [actionsToday, mentions, spam, summaries] = await Promise.all([
-      prisma.actionRecord.count({ where }),
-      prisma.actionRecord.count({ where: { ...where, type: "mention_reply" } }),
-      prisma.actionRecord.count({ where: { ...where, type: "spam_moderation" } }),
-      prisma.actionRecord.findFirst({
-        where: { groupId, type: "daily_summary" },
-        orderBy: { completedAt: "desc" },
-      }),
-    ]);
+    const [actionsToday, mentions, spam, summaries, spendAgg, recentMentions, moderationEvents] =
+      await Promise.all([
+        prisma.actionRecord.count({ where }),
+        prisma.actionRecord.count({ where: { ...where, type: "mention_reply" } }),
+        prisma.actionRecord.count({ where: { ...where, type: "spam_moderation" } }),
+        prisma.actionRecord.findFirst({
+          where: { groupId, type: "daily_summary" },
+          orderBy: { completedAt: "desc" },
+        }),
+        prisma.chargeRecord.aggregate({
+          where: {
+            status: "succeeded",
+            createdAt: { gte: startOfDay },
+            actionRecord: { groupId },
+          },
+          _sum: { amount: true },
+        }),
+        prisma.actionRecord.findMany({
+          where: { ...where, type: { in: ["mention_reply", "faq_answer"] } },
+          orderBy: { completedAt: "desc" },
+          take: 5,
+        }),
+        prisma.actionRecord.findMany({
+          where: { ...where, type: "spam_moderation" },
+          orderBy: { completedAt: "desc" },
+          take: 5,
+        }),
+      ]);
 
     return {
       actionsToday,
       mentionsHandled: mentions,
       spamRemoved: spam,
+      todaySpend: spendAgg._sum.amount ? Number(spendAgg._sum.amount.toString()) : 0,
       summaryStatus: summaries
         ? `Last summary ${summaries.completedAt.toISOString()}`
         : "No summary yet",
+      recentMentions: recentMentions.map((a) => ({
+        id: a.id,
+        type: a.type,
+        label: PRICING_LABELS[a.type],
+        completedAt: a.completedAt,
+      })),
+      moderationEvents: moderationEvents.map((a) => ({
+        id: a.id,
+        label: PRICING_LABELS[a.type],
+        completedAt: a.completedAt,
+        metadata: a.metadata,
+      })),
     };
   }
 }

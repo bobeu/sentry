@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { ActionType } from "@prisma/client";
-import { averageActionCost, getPricing, priceFor, PRICING_LABELS } from "@/lib/pricing";
+import { averageActionCost, priceFor, PRICING_LABELS } from "@/lib/pricing";
 import { blockchainService } from "@/services/blockchain.service";
+import { paymentService } from "@/services/payment.service";
 import { keccak256, toBytes } from "viem";
+import { Errors } from "@/lib/errors";
+import { logEvent } from "@/lib/logger";
+import { formatAmount } from "@/lib/payment-currency";
 
 function bal(value: { toString(): string } | null | undefined) {
   if (!value) return 0;
@@ -10,8 +14,10 @@ function bal(value: { toString(): string } | null | undefined) {
 }
 
 export class BillingService {
-  getPricing() {
-    return getPricing();
+  async getPricing() {
+    const currency = await paymentService.getActiveCurrency();
+    const { getPricing } = await import("@/lib/pricing");
+    return getPricing(currency);
   }
 
   calculateCharge(type: ActionType) {
@@ -19,10 +25,21 @@ export class BillingService {
   }
 
   async getSpending(userId: string) {
+    const currency = await paymentService.getActiveCurrency();
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [todayAgg, lifetimeAgg, wallet, recentCharges] = await Promise.all([
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    let balance = bal(wallet?.balance);
+    if (wallet && blockchainService.isConfigured()) {
+      balance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance, balanceCachedAt: new Date() },
+      });
+    }
+
+    const [todayAgg, lifetimeAgg, recentCharges] = await Promise.all([
       prisma.chargeRecord.aggregate({
         where: {
           status: "succeeded",
@@ -32,15 +49,11 @@ export class BillingService {
         _sum: { amount: true },
       }),
       prisma.chargeRecord.aggregate({
-        where: {
-          status: "succeeded",
-          actionRecord: { userId },
-        },
+        where: { status: "succeeded", actionRecord: { userId } },
         _sum: { amount: true },
       }),
-      prisma.wallet.findUnique({ where: { userId } }),
       prisma.chargeRecord.findMany({
-        where: { status: "succeeded", actionRecord: { userId } },
+        where: { actionRecord: { userId } },
         orderBy: { createdAt: "desc" },
         take: 20,
         include: { actionRecord: true },
@@ -49,11 +62,9 @@ export class BillingService {
 
     const todaySpend = bal(todayAgg._sum.amount);
     const lifetimeSpend = bal(lifetimeAgg._sum.amount);
-    const balance = bal(wallet?.balance);
     const avg = averageActionCost();
     const estimatedRemaining = avg > 0 ? Math.floor(balance / avg) : 0;
 
-    // Simple spending series for lightweight dashboard graph (last 7 days)
     const series = [];
     for (let i = 6; i >= 0; i--) {
       const day = new Date();
@@ -69,22 +80,20 @@ export class BillingService {
         },
         _sum: { amount: true },
       });
-      series.push({
-        date: day.toISOString().slice(0, 10),
-        spend: bal(agg._sum.amount),
-      });
+      series.push({ date: day.toISOString().slice(0, 10), spend: bal(agg._sum.amount) });
     }
 
     return {
       todaySpend,
       lifetimeSpend,
       balance,
-      currency: "cUSD",
+      currency,
       estimatedRemainingActions: estimatedRemaining,
       averageActionCost: avg,
       recentCharges: recentCharges.map((c) => ({
         id: c.id,
         amount: bal(c.amount),
+        currency: c.currency,
         status: c.status,
         transactionHash: c.transactionHash,
         createdAt: c.createdAt,
@@ -105,6 +114,7 @@ export class BillingService {
     return charges.map((c) => ({
       id: c.id,
       amount: bal(c.amount),
+      currency: c.currency,
       status: c.status,
       transactionHash: c.transactionHash,
       createdAt: c.createdAt,
@@ -115,7 +125,7 @@ export class BillingService {
   }
 
   /**
-   * Bill a completed ActionRecord exactly once.
+   * Chain-first billing: pending charge → on-chain charge → DB success only after chain confirms.
    */
   async chargeUser(actionRecordId: string) {
     const action = await prisma.actionRecord.findUnique({
@@ -124,79 +134,107 @@ export class BillingService {
     });
 
     if (!action) throw new Error("ActionRecord not found");
-    if (action.charge) return action.charge; // prevent duplicate billing
-    if (action.status !== "completed" || !action.billable) {
-      return null;
-    }
-    if (!action.userId || !action.user?.wallet) {
-      return null;
-    }
+    if (action.charge) return action.charge;
+    if (action.status !== "completed" || !action.billable) return null;
+    if (!action.userId || !action.user?.wallet) return null;
 
     const amount = this.calculateCharge(action.type);
     if (amount <= 0) return null;
 
+    const currency = await paymentService.getActiveCurrency();
     const wallet = action.user.wallet;
-    const current = bal(wallet.balance);
-    if (current < amount) {
-      await this.exhaustUser(action.userId, "insufficient_balance_on_charge");
-      await prisma.chargeRecord.create({
-        data: {
-          actionRecordId: action.id,
-          amount,
-          status: "failed",
-        },
-      });
-      throw new Error("Insufficient balance");
-    }
-
     const actionHash = keccak256(toBytes(action.id));
-    let txHash: string | null = null;
-    try {
-      txHash = await blockchainService.chargeOnChain({
-        account: wallet.address as `0x${string}`,
-        amountCusd: amount,
-        actionId: actionHash,
-      });
-    } catch (err) {
-      console.warn("[billing] on-chain charge skipped/failed", err);
-    }
 
-    const [charge] = await prisma.$transaction([
-      prisma.chargeRecord.create({
-        data: {
-          actionRecordId: action.id,
-          amount,
-          status: "succeeded",
-          transactionHash: txHash,
-        },
-      }),
-      prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: { decrement: amount } },
-      }),
-    ]);
-
-    const updatedWallet = await prisma.wallet.findUnique({ where: { id: wallet.id } });
-    const newBal = bal(updatedWallet?.balance);
-
-    const lifetimeAgg = await prisma.chargeRecord.aggregate({
-      where: { status: "succeeded", actionRecord: { userId: action.userId } },
-      _sum: { amount: true },
+    const pending = await prisma.chargeRecord.create({
+      data: {
+        actionRecordId: action.id,
+        amount,
+        currency,
+        status: "pending",
+      },
     });
-    const lifetimeSpend = bal(lifetimeAgg._sum.amount);
-    const funded = newBal + lifetimeSpend;
-    if (funded > 0 && newBal > 0 && newBal / funded < 0.2) {
+
+    logEvent("Charge Pending", { actionId: action.id, amount, currency });
+
+    if (!blockchainService.isConfigured()) {
+      await prisma.chargeRecord.update({
+        where: { id: pending.id },
+        data: {
+          status: "failed",
+          failureReason: "Blockchain not configured",
+        },
+      });
+      logEvent("Charge Failed", { actionId: action.id, reason: "blockchain_unavailable" });
       await this.notify(
         action.userId,
-        `Balance low (<20% of funds used): $${newBal.toFixed(3)} cUSD remaining.`,
+        `Charge pending: blockchain unavailable. Your completed work was not billed yet.`,
       );
+      throw Errors.blockchainUnavailable();
     }
 
-    if (newBal <= 0) {
-      await this.exhaustUser(action.userId, "balance_zero");
+    const chainBalance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+    if (chainBalance < amount) {
+      await prisma.chargeRecord.update({
+        where: { id: pending.id },
+        data: { status: "failed", failureReason: "Insufficient on-chain balance" },
+      });
+      await this.exhaustUser(action.userId, "insufficient_balance_on_charge");
+      throw Errors.walletNotFunded();
     }
 
-    return charge;
+    try {
+      const txHash = await blockchainService.chargeOnChain({
+        account: wallet.address as `0x${string}`,
+        amount,
+        actionId: actionHash,
+      });
+
+      const newBal = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+      const charge = await prisma.$transaction([
+        prisma.chargeRecord.update({
+          where: { id: pending.id },
+          data: { status: "succeeded", transactionHash: txHash },
+        }),
+        prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: newBal, balanceCachedAt: new Date() },
+        }),
+      ]);
+
+      logEvent("Charge Completed", { actionId: action.id, txHash, amount, currency });
+
+      const lifetimeAgg = await prisma.chargeRecord.aggregate({
+        where: { status: "succeeded", actionRecord: { userId: action.userId } },
+        _sum: { amount: true },
+      });
+      const lifetimeSpend = bal(lifetimeAgg._sum.amount);
+      const funded = newBal + lifetimeSpend;
+      if (funded > 0 && newBal > 0 && newBal / funded < 0.2) {
+        await this.notify(
+          action.userId,
+          `Balance low (<20%): ${formatAmount(newBal, currency)} remaining.`,
+        );
+        logEvent("Low Balance", { userId: action.userId, balance: newBal, currency });
+      }
+
+      if (newBal <= 0) {
+        await this.exhaustUser(action.userId, "balance_zero");
+      }
+
+      return charge[0];
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "charge_failed";
+      await prisma.chargeRecord.update({
+        where: { id: pending.id },
+        data: { status: "failed", failureReason: reason },
+      });
+      logEvent("Charge Failed", { actionId: action.id, reason });
+      await this.notify(
+        action.userId,
+        `Smart contract charge failed for ${PRICING_LABELS[action.type]}. Work completed but not billed. Please retry after funding.`,
+      );
+      throw Errors.chargeFailed(reason);
+    }
   }
 
   async refund(chargeId: string) {
@@ -207,20 +245,10 @@ export class BillingService {
     if (!charge || charge.status !== "succeeded") {
       throw new Error("Charge not refundable");
     }
-    const userId = charge.actionRecord.userId;
-    if (!userId) throw new Error("Missing user");
-
-    await prisma.$transaction([
-      prisma.chargeRecord.update({
-        where: { id: chargeId },
-        data: { status: "refunded" },
-      }),
-      prisma.wallet.update({
-        where: { userId },
-        data: { balance: { increment: charge.amount } },
-      }),
-    ]);
-
+    await prisma.chargeRecord.update({
+      where: { id: chargeId },
+      data: { status: "refunded" },
+    });
     return { ok: true };
   }
 
@@ -245,6 +273,7 @@ export class BillingService {
       await blockchainService.pauseOnChain(wallet.address as `0x${string}`).catch(() => undefined);
     }
 
+    logEvent("Employment Exhausted", { userId, reason });
     await this.notify(
       userId,
       `Employment exhausted (${reason}). Sentry stopped working. Deposit funds to resume.`,
@@ -253,7 +282,18 @@ export class BillingService {
 
   async resumeAfterDeposit(userId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet || bal(wallet.balance) <= 0) return;
+    if (!wallet) return;
+
+    const balance =
+      blockchainService.isConfigured()
+        ? await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)
+        : bal(wallet.balance);
+    if (balance <= 0) return;
+
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balance, balanceCachedAt: new Date() },
+    });
 
     await prisma.employment.updateMany({
       where: { userId },
@@ -271,7 +311,12 @@ export class BillingService {
     }
 
     await blockchainService.resumeOnChain(wallet.address as `0x${string}`).catch(() => undefined);
-    await this.notify(userId, "Deposit received. Employment Active — your groups are reactivated.");
+    logEvent("Employment Resumed", { userId });
+    const currency = await paymentService.getActiveCurrency();
+    await this.notify(
+      userId,
+      `Deposit received. Employment Active — balance ${formatAmount(balance, currency)}.`,
+    );
   }
 
   async notify(userId: string, text: string) {
@@ -288,8 +333,14 @@ export class BillingService {
     }
   }
 
-  getStatus() {
-    return { active: true, mode: "pay-per-completed-work", currency: "cUSD" };
+  async getStatus() {
+    const currency = await paymentService.getActiveCurrency();
+    return {
+      active: true,
+      mode: "pay-per-completed-work",
+      currency,
+      chainConfigured: blockchainService.isConfigured(),
+    };
   }
 }
 

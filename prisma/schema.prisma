@@ -54,14 +54,16 @@ model Session {
 }
 
 model Wallet {
-  id        String   @id @default(cuid())
-  address   String   @unique
-  balance   Decimal  @default(0) @db.Decimal(36, 18)
-  provider  String   @default("employment-contract")
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  address         String   @unique
+  balance         Decimal  @default(0) @db.Decimal(36, 18)
+  balanceCachedAt DateTime?
+  identityHash    String?
+  provider        String   @default("employment-contract")
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model TelegramGroup {
@@ -74,6 +76,9 @@ model TelegramGroup {
   description     String?
   purpose         String?
   rules           String?
+  botStatus       String   @default("unknown")
+  botCanDelete    Boolean?
+  lastBotEventAt  DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -172,15 +177,24 @@ enum ChargeStatus {
 }
 
 model ChargeRecord {
-  id             String       @id @default(cuid())
-  actionRecordId String       @unique
-  actionRecord   ActionRecord @relation(fields: [actionRecordId], references: [id], onDelete: Cascade)
-  amount         Decimal      @db.Decimal(36, 18)
-  status         ChargeStatus @default(pending)
+  id              String       @id @default(cuid())
+  actionRecordId  String       @unique
+  actionRecord    ActionRecord @relation(fields: [actionRecordId], references: [id], onDelete: Cascade)
+  amount          Decimal      @db.Decimal(36, 18)
+  currency        String       @default("USDm")
+  status          ChargeStatus @default(pending)
   transactionHash String?
-  createdAt      DateTime     @default(now())
+  failureReason   String?
+  createdAt       DateTime     @default(now())
 
   @@index([createdAt])
+  @@index([status])
+}
+
+model PaymentConfig {
+  id             String   @id @default("global")
+  activeCurrency String   @default("USDm")
+  updatedAt      DateTime @updatedAt
 }
 
 model Employment {

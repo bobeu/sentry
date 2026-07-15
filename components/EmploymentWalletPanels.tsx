@@ -9,14 +9,6 @@ type Employment = {
   pausedAt: string | null;
 };
 
-type ChargeRow = {
-  id: string;
-  amount: number;
-  label: string;
-  createdAt: string;
-  status: string;
-};
-
 export function EmploymentPanel() {
   const [employment, setEmployment] = useState<Employment | null>(null);
   const [status, setStatus] = useState("Inactive");
@@ -104,23 +96,33 @@ export function EmploymentPanel() {
   );
 }
 
+type ChargeRow = {
+  id: string;
+  amount: number;
+  currency: string;
+  label: string;
+  createdAt: string;
+  status: string;
+};
+
 export function WalletPanel() {
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
+  const [currency, setCurrency] = useState("USDm");
   const [todaySpend, setTodaySpend] = useState(0);
   const [lifetimeSpend, setLifetimeSpend] = useState(0);
   const [charges, setCharges] = useState<ChargeRow[]>([]);
-  const [provider, setProvider] = useState<string | null>(null);
-  const [depositAmount, setDepositAmount] = useState("25");
   const [withdrawAmount, setWithdrawAmount] = useState("1");
+  const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function refresh() {
-    const [balRes, spendRes] = await Promise.all([
+    const [balRes, spendRes, currencyRes] = await Promise.all([
       fetch("/api/wallet/balance"),
       fetch("/api/billing/spending"),
+      fetch("/api/payment/currency"),
     ]);
     const balJson = await balRes.json();
     if (!balRes.ok) {
@@ -129,7 +131,6 @@ export function WalletPanel() {
     }
     setAddress(balJson.address);
     setBalance(balJson.balance ?? 0);
-    setProvider(balJson.provider);
     setError(null);
 
     if (spendRes.ok) {
@@ -137,6 +138,11 @@ export function WalletPanel() {
       setTodaySpend(spendJson.todaySpend ?? 0);
       setLifetimeSpend(spendJson.lifetimeSpend ?? 0);
       setCharges(spendJson.recentCharges ?? []);
+      setCurrency(spendJson.currency ?? "USDm");
+    }
+    if (currencyRes.ok) {
+      const c = await currencyRes.json();
+      setCurrency(c.currency ?? "USDm");
     }
   }
 
@@ -144,41 +150,25 @@ export function WalletPanel() {
     void refresh();
   }, []);
 
-  async function ensureWallet() {
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/wallet/create", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Wallet failed");
-      setMessage("Smart wallet ready (no private keys — managed by Sentry employment).");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Wallet failed");
-    } finally {
-      setLoading(false);
-    }
+  async function copyAddress() {
+    if (!address) return;
+    await navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
-  async function deposit(event: FormEvent) {
-    event.preventDefault();
+  async function syncDeposit() {
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const amount = Number(depositAmount);
-      const res = await fetch("/api/wallet/deposit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
-      });
+      const res = await fetch("/api/wallet/deposit", { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Deposit failed");
-      setMessage(`Deposit recorded. New balance $${Number(json.balance).toFixed(3)} cUSD`);
+      if (!res.ok) throw new Error(json.error ?? "Sync failed");
+      setMessage(`Balance synced: ${Number(json.balance).toFixed(3)} ${json.currency}`);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Deposit failed");
+      setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setLoading(false);
     }
@@ -198,7 +188,7 @@ export function WalletPanel() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Withdraw failed");
-      setMessage(`Withdrawal recorded. New balance $${Number(json.balance).toFixed(3)} cUSD`);
+      setMessage(`Withdrawal recorded. Balance ${Number(json.balance).toFixed(3)} ${json.currency}`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdraw failed");
@@ -209,84 +199,92 @@ export function WalletPanel() {
 
   return (
     <div className="mt-8 max-w-2xl space-y-6">
+      <div className="inline-flex rounded-full border border-[#35d07f]/30 bg-[#35d07f]/10 px-4 py-1.5 text-sm text-[#35d07f]">
+        Current Currency · {currency}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#9aa89a]">Balance</p>
           <p className="mt-2 font-[family-name:var(--font-display)] text-2xl text-[#f4f7f0]">
-            ${balance.toFixed(3)}
+            {balance.toFixed(3)} {currency}
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#9aa89a]">Today&apos;s Spend</p>
           <p className="mt-2 font-[family-name:var(--font-display)] text-2xl text-[#f4f7f0]">
-            ${todaySpend.toFixed(3)}
+            {todaySpend.toFixed(3)} {currency}
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#9aa89a]">Lifetime Spend</p>
           <p className="mt-2 font-[family-name:var(--font-display)] text-2xl text-[#f4f7f0]">
-            ${lifetimeSpend.toFixed(3)}
+            {lifetimeSpend.toFixed(3)} {currency}
           </p>
         </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <p className="text-sm uppercase tracking-[0.18em] text-[#9aa89a]">Smart Wallet</p>
+        <p className="text-sm uppercase tracking-[0.18em] text-[#9aa89a]">Employment Wallet</p>
         <p className="mt-3 break-all font-mono text-sm text-[#e8f5d8]">
-          {address ?? "Not provisioned yet — hire Sentry or provision below"}
+          {address ?? "Hire Sentry to provision your wallet"}
         </p>
-        {provider ? (
-          <p className="mt-2 text-xs text-[#9aa89a]">Provider: {provider}</p>
+        {address ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={copyAddress}
+              className="rounded-full border border-white/20 px-4 py-2 text-sm"
+            >
+              {copied ? "Copied" : "Copy Address"}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={syncDeposit}
+              className="rounded-full bg-[#35d07f] px-4 py-2 text-sm font-semibold text-[#061008]"
+            >
+              Sync Balance
+            </button>
+          </div>
         ) : null}
       </div>
 
-      {!address ? (
-        <button
-          type="button"
-          disabled={loading}
-          onClick={ensureWallet}
-          className="rounded-full bg-[#35d07f] px-5 py-2.5 text-sm font-semibold text-[#061008]"
-        >
-          Provision Smart Wallet
-        </button>
-      ) : (
-        <div className="flex flex-wrap gap-6">
-          <form onSubmit={deposit} className="flex flex-wrap items-end gap-3">
-            <label className="text-sm text-[#9aa89a]">
-              Deposit (cUSD)
-              <input
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
-                className="mt-2 block w-40 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-full bg-[#35d07f] px-5 py-2.5 text-sm font-semibold text-[#061008]"
-            >
-              Deposit
-            </button>
-          </form>
-          <form onSubmit={withdraw} className="flex flex-wrap items-end gap-3">
-            <label className="text-sm text-[#9aa89a]">
-              Withdraw (cUSD)
-              <input
-                value={withdrawAmount}
-                onChange={(e) => setWithdrawAmount(e.target.value)}
-                className="mt-2 block w-40 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-full border border-white/20 px-5 py-2.5 text-sm"
-            >
-              Withdraw
-            </button>
-          </form>
-        </div>
-      )}
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-[#9aa89a]">
+        <h2 className="text-lg text-[#e8f5d8]">Funding Options</h2>
+        <ol className="mt-3 list-decimal space-y-2 pl-5">
+          <li>
+            <strong className="text-[#e8f5d8]">Send funds directly</strong> — transfer {currency} to
+            your wallet address above. Click Sync Balance after confirmation.
+          </li>
+          <li>
+            <strong className="text-[#e8f5d8]">Connect wallet (web)</strong> — call{" "}
+            <code className="text-[#35d07f]">depositNative</code> or{" "}
+            <code className="text-[#35d07f]">depositERC20</code> on the Employment contract from
+            your connected wallet.
+          </li>
+        </ol>
+      </section>
+
+      {address ? (
+        <form onSubmit={withdraw} className="flex flex-wrap items-end gap-3">
+          <label className="text-sm text-[#9aa89a]">
+            Withdraw ({currency})
+            <input
+              value={withdrawAmount}
+              onChange={(e) => setWithdrawAmount(e.target.value)}
+              className="mt-2 block w-40 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-full border border-white/20 px-5 py-2.5 text-sm"
+          >
+            Withdraw
+          </button>
+        </form>
+      ) : null}
 
       <section>
         <h2 className="text-lg text-[#e8f5d8]">Recent Charges</h2>
@@ -299,8 +297,13 @@ export function WalletPanel() {
                 key={c.id}
                 className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
               >
-                <span className="text-[#e8f5d8]">{c.label}</span>
-                <span className="font-mono text-red-300">-{c.amount.toFixed(3)}</span>
+                <span className="text-[#e8f5d8]">
+                  {c.label}{" "}
+                  <span className="text-[#9aa89a]">({c.status})</span>
+                </span>
+                <span className="font-mono text-red-300">
+                  -{c.amount.toFixed(3)} {c.currency}
+                </span>
               </li>
             ))
           )}

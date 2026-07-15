@@ -5,6 +5,12 @@ import { aiService } from "@/services/ai.service";
 import { actionService } from "@/services/action.service";
 import { moderationService } from "@/services/moderation.service";
 import { notificationService } from "@/services/notification.service";
+import { blockchainService } from "@/services/blockchain.service";
+import { prisma } from "@/lib/prisma";
+import { logEvent } from "@/lib/logger";
+import { billingService } from "@/services/billing.service";
+
+const UNCERTAIN = "I don't know based on the available context.";
 
 function chatId(ctx: Context) {
   return ctx.chat?.id != null ? String(ctx.chat.id) : null;
@@ -31,16 +37,21 @@ function mentionedBot(text: string, username: string) {
 
 async function resolveActiveEmployer(telegramId: string) {
   const group = await groupService.findActiveGroupByTelegramId(telegramId);
-  if (!group?.settings?.enabled) return null;
+  if (!group?.settings?.enabled || group.botStatus === "removed") return null;
 
-  const activeEmployer = group.employment.find(
-    (link) =>
-      link.enabled &&
-      link.user.employment?.status === "Active" &&
-      Number(link.user.wallet?.balance?.toString() ?? "0") > 0,
-  );
-  if (!activeEmployer) return null;
-  return { group, employerUserId: activeEmployer.userId };
+  for (const link of group.employment) {
+    if (!link.enabled || link.user.employment?.status !== "Active") continue;
+    const wallet = link.user.wallet;
+    if (!wallet) continue;
+    let balance = Number(wallet.balance.toString());
+    if (blockchainService.isConfigured()) {
+      balance = await blockchainService.syncBalanceCache(wallet.address as `0x${string}`);
+    }
+    if (balance > 0) {
+      return { group, employerUserId: link.userId };
+    }
+  }
+  return null;
 }
 
 export function registerHandlers(bot: Telegraf) {
@@ -55,13 +66,33 @@ export function registerHandlers(bot: Telegraf) {
 
     const member = ctx.myChatMember.new_chat_member;
     const status = member.status;
+    const telegramId = String(chat.id);
+
+    if (status === "kicked" || status === "left") {
+      const group = await prisma.telegramGroup.findUnique({ where: { telegramId } });
+      if (group) {
+        await prisma.groupSettings.updateMany({
+          where: { groupId: group.id },
+          data: { enabled: false },
+        });
+        await prisma.telegramGroup.update({
+          where: { id: group.id },
+          data: { botStatus: "removed", lastBotEventAt: new Date() },
+        });
+      }
+      logEvent("Bot Removed", { telegramId });
+      return;
+    }
+
     if (status !== "member" && status !== "administrator") return;
 
     const admins = await ctx.telegram.getChatAdministrators(chat.id).catch(() => []);
     const adminIds = admins.map((a) => String(a.user.id));
+    const me = admins.find((a) => a.user.is_bot);
+    const canDelete = me?.can_delete_messages ?? false;
 
     await groupService.upsertFromTelegram({
-      telegramId: String(chat.id),
+      telegramId,
       name: chat.title,
       adminTelegramIds: adminIds,
       memberCount:
@@ -69,6 +100,34 @@ export function registerHandlers(bot: Telegraf) {
           ? ((chat as { member_count?: number }).member_count ?? null)
           : null,
     });
+
+    await prisma.telegramGroup.updateMany({
+      where: { telegramId },
+      data: {
+        botStatus: status === "administrator" ? "active" : "member",
+        botCanDelete: canDelete,
+        lastBotEventAt: new Date(),
+      },
+    });
+
+    if (status === "member" && !canDelete) {
+      logEvent("Bot Permission Lost", { telegramId, permission: "delete_messages" });
+      for (const link of await prisma.groupEmployment.findMany({
+        where: { group: { telegramId }, enabled: true },
+        include: { user: { include: { settings: true } } },
+      })) {
+        if (link.user.settings?.telegramUserId) {
+          await billingService
+            .notify(
+              link.userId,
+              `Sentry lost delete permission in ${chat.title}. Spam deletion may be limited.`,
+            )
+            .catch(() => undefined);
+        }
+      }
+    }
+
+    logEvent("Bot Joined Group", { telegramId, status });
   });
 
   bot.on("new_chat_members", async (ctx) => {
@@ -265,7 +324,7 @@ export function registerHandlers(bot: Telegraf) {
       });
     } catch (err) {
       console.error("[mention]", err);
-      await ctx.reply("I don't know.");
+      await ctx.reply(UNCERTAIN);
       await actionService.record({
         type: "mention_reply",
         groupId: active.group.id,

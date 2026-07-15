@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { getPricing } from "@/lib/pricing";
+import { billingService } from "@/services/billing.service";
 
-export default function PricingPage() {
-  const pricing = getPricing();
+export default async function PricingPage() {
+  const pricing = await billingService.getPricing();
+  const currency = pricing[0]?.currency ?? "USDm";
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-14">
@@ -13,8 +14,11 @@ export default function PricingPage() {
         Pricing
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Pay per completed work in cUSD. Read-only — Sentry only charges when an action
-        succeeds.
+        Pay per completed work in {currency}. Sentry only charges after successful on-chain
+        settlement.
+      </p>
+      <p className="mt-2 inline-flex rounded-full border border-[#35d07f]/30 bg-[#35d07f]/10 px-4 py-1 text-sm text-[#35d07f]">
+        Payment Currency · {currency}
       </p>
 
       <ul className="mt-10 space-y-3">

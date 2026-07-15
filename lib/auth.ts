@@ -86,4 +86,17 @@ export async function requireSessionUser() {
   return user;
 }
 
+export async function requireAdmin() {
+  const user = await requireSessionUser();
+  const allow = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (allow.length === 0 || !allow.includes(user.email.toLowerCase())) {
+    const { Errors } = await import("@/lib/errors");
+    throw Errors.forbidden();
+  }
+  return user;
+}
+
 export { SESSION_COOKIE };

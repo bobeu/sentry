@@ -16,8 +16,11 @@ export function GroupDetailPanel() {
     actionsToday: 0,
     mentionsHandled: 0,
     spamRemoved: 0,
+    todaySpend: 0,
     summaryStatus: "No summary yet",
     enabled: false,
+    recentMentions: [] as { id: string; label: string; completedAt: string }[],
+    moderationEvents: [] as { id: string; label: string; completedAt: string }[],
   });
   const [settings, setSettings] = useState({
     welcomeMembers: true,
@@ -49,8 +52,11 @@ export function GroupDetailPanel() {
       actionsToday: g.actionsToday ?? 0,
       mentionsHandled: g.mentionsHandled ?? 0,
       spamRemoved: g.spamRemoved ?? 0,
+      todaySpend: g.todaySpend ?? 0,
       summaryStatus: g.summaryStatus ?? "No summary yet",
       enabled: g.enabled ?? false,
+      recentMentions: g.recentMentions ?? [],
+      moderationEvents: g.moderationEvents ?? [],
     });
     setSettings({
       welcomeMembers: g.settings?.welcomeMembers ?? true,
@@ -123,11 +129,61 @@ export function GroupDetailPanel() {
           {name || "Group"}
         </h1>
         <p className="mt-3 text-sm text-[#9aa89a]">
-          Employment {stats.enabled ? "Enabled" : "Disabled"} · Actions today{" "}
-          {stats.actionsToday} · Mentions {stats.mentionsHandled} · Spam removed{" "}
-          {stats.spamRemoved} · {stats.summaryStatus}
+          Employment {stats.enabled ? "Enabled" : "Disabled"} · Today&apos;s actions{" "}
+          {stats.actionsToday} · Today&apos;s spend {stats.todaySpend.toFixed(3)} ·{" "}
+          {stats.summaryStatus}
         </p>
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-[#9aa89a]">Employment</p>
+          <p className="mt-1 text-[#e8f5d8]">{stats.enabled ? "Enabled" : "Disabled"}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-[#9aa89a]">Today&apos;s Actions</p>
+          <p className="mt-1 text-[#e8f5d8]">{stats.actionsToday}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-[#9aa89a]">Today&apos;s Spend</p>
+          <p className="mt-1 text-[#e8f5d8]">{stats.todaySpend.toFixed(3)}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-[#9aa89a]">Last Summary</p>
+          <p className="mt-1 text-sm text-[#e8f5d8]">{stats.summaryStatus}</p>
+        </div>
+      </div>
+
+      <section className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h2 className="text-lg text-[#e8f5d8]">Recent Mentions</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {stats.recentMentions.length === 0 ? (
+              <li className="text-[#9aa89a]">None today.</li>
+            ) : (
+              stats.recentMentions.map((m) => (
+                <li key={m.id} className="rounded-lg border border-white/10 px-3 py-2">
+                  {new Date(m.completedAt).toLocaleTimeString()} · {m.label}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div>
+          <h2 className="text-lg text-[#e8f5d8]">Moderation Events</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {stats.moderationEvents.length === 0 ? (
+              <li className="text-[#9aa89a]">None today.</li>
+            ) : (
+              stats.moderationEvents.map((m) => (
+                <li key={m.id} className="rounded-lg border border-white/10 px-3 py-2">
+                  {new Date(m.completedAt).toLocaleTimeString()} · {m.label}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </section>
 
       <form onSubmit={saveSettings} className="max-w-xl space-y-4">
         <h2 className="text-lg text-[#e8f5d8]">Settings</h2>

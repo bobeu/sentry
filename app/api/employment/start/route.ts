@@ -5,7 +5,7 @@ import { employmentService } from "@/services/employment.service";
 export async function POST() {
   try {
     const user = await requireSessionUser();
-    const result = await employmentService.start(user.id);
+    const result = await employmentService.start(user.id, user.email);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Hire failed";
