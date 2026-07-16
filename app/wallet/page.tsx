@@ -11,8 +11,8 @@ export default function WalletPage() {
         Wallet
       </h1>
       <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Prepaid cUSD balance for pay-per-completed-work. Address and balance only — no
-        private keys. See{" "}
+        Your manager-controlled prepaid wallet has one immutable currency. Set a separate
+        withdrawal destination for payouts; users never hold wallet contract keys. See{" "}
         <Link href="/pricing" className="text-[#35d07f] hover:underline">
           pricing
         </Link>

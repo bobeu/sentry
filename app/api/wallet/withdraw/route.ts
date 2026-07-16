@@ -7,6 +7,21 @@ const bodySchema = z.object({
   amount: z.number().positive(),
 });
 
+export async function GET() {
+  try {
+    const user = await requireSessionUser();
+    return NextResponse.json({
+      withdrawals: await walletService.getWithdrawalHistory(user.id),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Withdrawals failed";
+    return NextResponse.json(
+      { error: message },
+      { status: message === "Unauthorized" ? 401 : 400 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const user = await requireSessionUser();

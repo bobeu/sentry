@@ -31,6 +31,7 @@ enum ActionStatus {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  withdrawalAddress String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -43,6 +44,7 @@ model User {
   sessions        Session[]
   actions         ActionRecord[]
   settlements     Settlement[]
+  withdrawals     Withdrawal[]
 }
 
 model Session {
@@ -60,6 +62,7 @@ model Wallet {
   balance         Decimal  @default(0) @db.Decimal(36, 18)
   balanceCachedAt DateTime?
   identityHash    String?
+  walletCurrency  String   @default("USDm")
   provider        String   @default("employment-contract")
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -67,6 +70,7 @@ model Wallet {
   updatedAt       DateTime @updatedAt
 
   settlements Settlement[]
+  withdrawals Withdrawal[]
 }
 
 model TelegramGroup {
@@ -167,6 +171,13 @@ enum SettlementStatus {
   failed
 }
 
+enum WithdrawalStatus {
+  pending
+  submitted
+  succeeded
+  failed
+}
+
 model ActionRecord {
   id          String         @id @default(cuid())
   type        ActionType
@@ -225,10 +236,30 @@ model Settlement {
   @@index([status])
 }
 
-model PaymentConfig {
-  id             String   @id @default("global")
-  activeCurrency String   @default("USDm")
-  updatedAt      DateTime @updatedAt
+model PaymentCurrencyConfig {
+  currency     String   @id
+  enabled      Boolean  @default(true)
+  tokenAddress String?
+  updatedAt    DateTime @updatedAt
+}
+
+model Withdrawal {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId        String
+  wallet          Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Decimal          @db.Decimal(36, 18)
+  currency        String
+  destination     String
+  transactionHash String?
+  status          WithdrawalStatus @default(pending)
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 model Employment {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   emailIdentityHash,
   identityHash,
+  identityUserKey,
   telegramIdentityHash,
 } from "../lib/identity";
 import { priceFor, averageActionCost, getPricing, PRICING_AMOUNTS } from "../lib/pricing";
@@ -23,6 +24,12 @@ describe("identity", () => {
     const tg = telegramIdentityHash("12345678");
     const email = emailIdentityHash("12345678");
     assert.notEqual(tg, email);
+  });
+
+  it("derives a stable non-custodial on-chain user key", () => {
+    const hash = emailIdentityHash("alice@example.com");
+    assert.equal(identityUserKey(hash), identityUserKey(hash));
+    assert.match(identityUserKey(hash), /^0x[a-fA-F0-9]{40}$/);
   });
 });
 

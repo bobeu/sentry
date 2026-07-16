@@ -35,6 +35,7 @@ contract EmploymentManager is Ownable, Pausable {
      */
     struct Employment {
         address wallet;
+        address withdrawalDestination;
         uint64 lastSettlementAt;
         EmploymentStatus status;
     }
@@ -45,9 +46,6 @@ contract EmploymentManager is Ownable, Pausable {
     /// @notice Account authorized to manage employment and execute settlements.
     address public operator;
 
-    /// @notice Asset used for new settlements.
-    Token public activePaymentToken;
-
     /// @notice Employment indexed by user.
     mapping(address user => Employment employment) public employments;
 
@@ -56,6 +54,7 @@ contract EmploymentManager is Ownable, Pausable {
 
     /// @notice On-chain replay protection for settlement identifiers.
     mapping(bytes32 settlementId => bool settled) public settledBatches;
+    mapping(bytes32 withdrawalId => bool completed) public completedWithdrawals;
 
     /// @notice Emitted when an employment is registered and activated.
     /// @param user User who owns the employment.
@@ -88,10 +87,17 @@ contract EmploymentManager is Ownable, Pausable {
         uint256 settlementFee
     );
 
-    /// @notice Emitted when the active payment token changes.
-    /// @param previousToken Previous token.
-    /// @param newToken New token.
-    event PaymentCurrencyChanged(Token indexed previousToken, Token indexed newToken);
+    event WithdrawalDestinationUpdated(
+        address indexed user,
+        address indexed previousDestination,
+        address indexed newDestination
+    );
+    event WithdrawalCompleted(
+        address indexed user,
+        address indexed destination,
+        bytes32 indexed withdrawalId,
+        uint256 amount
+    );
 
     /// @notice Emitted when the settlement operator changes.
     /// @param previousOperator Previous operator.
@@ -126,10 +132,13 @@ contract EmploymentManager is Ownable, Pausable {
 
     /// @notice Service amount must be greater than zero.
     error InvalidAmount();
+    error InvalidWithdrawalId();
+    error WithdrawalAlreadyCompleted();
+    error WithdrawalDestinationNotSet();
 
     /// @dev Restricts operator functions.
     modifier onlyOperator() {
-        if (msg.sender != operator) revert UnauthorizedOperator();
+        if (_msgSender() != operator) revert UnauthorizedOperator();
         _;
     }
 
@@ -149,7 +158,6 @@ contract EmploymentManager is Ownable, Pausable {
         }
         operator = initialOperator;
         treasury = initialTreasury;
-        activePaymentToken = Token.USDm;
         emit OperatorUpdated(address(0), initialOperator);
         emit TreasuryUpdated(address(0), initialTreasury);
     }
@@ -171,29 +179,19 @@ contract EmploymentManager is Ownable, Pausable {
         if (wallet.code.length == 0) revert InvalidWallet();
 
         SentryWallet sentryWallet = SentryWallet(payable(wallet));
-        if (sentryWallet.manager() != address(this) || sentryWallet.owner() != user) {
+        if (sentryWallet.manager() != address(this)) {
             revert InvalidWallet();
         }
 
         employments[user] = Employment({
             wallet: wallet,
+            withdrawalDestination: address(0),
             lastSettlementAt: uint64(block.timestamp),
             status: EmploymentStatus.Active
         });
         userOfWallet[wallet] = user;
 
         emit EmploymentRegistered(user, wallet);
-    }
-
-    /**
-     * @notice Changes the asset used for settlements.
-     * @param token New payment token.
-     */
-    function setPaymentToken(Token token) external onlyOwner {
-        Token previousToken = activePaymentToken;
-        if (token == previousToken) return;
-        activePaymentToken = token;
-        emit PaymentCurrencyChanged(previousToken, token);
     }
 
     /**
@@ -245,29 +243,63 @@ contract EmploymentManager is Ownable, Pausable {
         uint256 serviceAmount,
         uint256 settlementFee
     ) external onlyOperator whenNotPaused {
+        _settle(user, settlementId, serviceAmount, settlementFee);
+    }
+
+    function setWithdrawalDestination(
+        address user,
+        address destination
+    ) external onlyOperator whenNotPaused {
+        if (destination == address(0)) revert ZeroAddress();
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        address previousDestination = employment.withdrawalDestination;
+        if (previousDestination == destination) return;
+        employment.withdrawalDestination = destination;
+        emit WithdrawalDestinationUpdated(user, previousDestination, destination);
+    }
+
+    function withdraw(
+        address user,
+        bytes32 withdrawalId,
+        uint256 amount
+    ) external onlyOperator whenNotPaused {
+        _withdraw(user, withdrawalId, amount);
+    }
+
+    function settleAndWithdraw(
+        address user,
+        bytes32 settlementId,
+        uint256 serviceAmount,
+        uint256 settlementFee,
+        bytes32 withdrawalId,
+        uint256 withdrawalAmount
+    ) external onlyOperator whenNotPaused {
+        _settle(user, settlementId, serviceAmount, settlementFee);
+        _withdraw(user, withdrawalId, withdrawalAmount);
+    }
+
+    function _settle(
+        address user,
+        bytes32 settlementId,
+        uint256 serviceAmount,
+        uint256 settlementFee
+    ) private {
         if (settlementId == bytes32(0)) revert InvalidSettlementId();
         if (serviceAmount == 0) revert InvalidAmount();
         if (settledBatches[settlementId]) revert AlreadySettled();
-
         Employment storage employment = employments[user];
         if (employment.wallet == address(0) || userOfWallet[employment.wallet] != user) {
             revert InvalidWallet();
         }
         if (employment.status != EmploymentStatus.Active) revert InvalidStatus();
-
-        uint256 total = serviceAmount + settlementFee;
-
-        // Effects precede interaction; a failed wallet transfer reverts these writes.
         settledBatches[settlementId] = true;
         employment.lastSettlementAt = uint64(block.timestamp);
-
         SentryWallet(payable(employment.wallet)).executeSettlement(
-            SentryWallet.Token(uint8(activePaymentToken)),
             treasury,
-            total,
+            serviceAmount + settlementFee,
             settlementId
         );
-
         emit SettlementCompleted(
             user,
             employment.wallet,
@@ -275,6 +307,23 @@ contract EmploymentManager is Ownable, Pausable {
             serviceAmount,
             settlementFee
         );
+    }
+
+    function _withdraw(address user, bytes32 withdrawalId, uint256 amount) private {
+        if (withdrawalId == bytes32(0)) revert InvalidWithdrawalId();
+        if (amount == 0) revert InvalidAmount();
+        if (completedWithdrawals[withdrawalId]) revert WithdrawalAlreadyCompleted();
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        address destination = employment.withdrawalDestination;
+        if (destination == address(0)) revert WithdrawalDestinationNotSet();
+        completedWithdrawals[withdrawalId] = true;
+        SentryWallet(payable(employment.wallet)).withdrawTo(
+            destination,
+            amount,
+            withdrawalId
+        );
+        emit WithdrawalCompleted(user, destination, withdrawalId, amount);
     }
 
     /**

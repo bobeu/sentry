@@ -1,16 +1,20 @@
+import { isAddress, keccak256, toBytes, type Address, type Hex } from "viem";
 import { prisma } from "@/lib/prisma";
 import { blockchainService } from "@/services/blockchain.service";
 import { walletProvider } from "@/lib/wallet-provider";
 import { billingService } from "@/services/billing.service";
 import { paymentService } from "@/services/payment.service";
-import { emailIdentityHash, identityHash } from "@/lib/identity";
+import { emailIdentityHash, identityHash, identityUserKey } from "@/lib/identity";
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
-import { formatAmount } from "@/lib/payment-currency";
+import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
 
-function toBalanceNumber(value: { toString(): string } | string | number | null | undefined) {
-  if (value == null) return 0;
-  return Number(value.toString());
+function number(value: { toString(): string } | string | number | null | undefined) {
+  return value == null ? 0 : Number(value.toString());
+}
+
+function walletUserKey(identityHashValue: string): Address {
+  return identityUserKey(identityHashValue as Hex);
 }
 
 export class WalletService {
@@ -18,25 +22,35 @@ export class WalletService {
     return prisma.wallet.findUnique({ where: { userId } });
   }
 
-  async ensureSmartWallet(userId: string, email?: string) {
+  async ensureSmartWallet(
+    userId: string,
+    email?: string,
+    requestedCurrency?: PaymentCurrency,
+  ) {
     const existing = await prisma.wallet.findUnique({ where: { userId } });
     if (existing) {
       return {
         id: existing.id,
         address: existing.address,
-        balance: toBalanceNumber(existing.balance),
+        balance: number(existing.balance),
         provider: existing.provider,
         identityHash: existing.identityHash,
+        currency: existing.walletCurrency as PaymentCurrency,
       };
     }
 
-    const hash = email
-      ? emailIdentityHash(email)
-      : (identityHash("wallet", userId) as string);
+    const currency = requestedCurrency ?? (await paymentService.getDefaultCurrency());
+    await paymentService.assertEnabled(currency);
+    const hash = email ? emailIdentityHash(email) : identityHash("wallet", userId);
+    const userKey = identityUserKey(hash);
     const smart = await walletProvider.ensureSmartWallet({
       userId,
-      identityHash: hash as `0x${string}`,
+      identityHash: hash,
+      userKey,
+      currency,
     });
+
+    await blockchainService.registerEmploymentOnChain(userKey, smart.address);
 
     const wallet = await prisma.wallet.create({
       data: {
@@ -45,6 +59,7 @@ export class WalletService {
         provider: smart.provider,
         balance: 0,
         identityHash: hash,
+        walletCurrency: currency,
       },
     });
 
@@ -54,22 +69,19 @@ export class WalletService {
       balance: 0,
       provider: wallet.provider,
       identityHash: wallet.identityHash,
+      currency,
     };
   }
 
   async syncBalanceFromChain(userId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) return null;
-
-    const currency = await paymentService.getActiveCurrency();
-    const cached = toBalanceNumber(wallet.balance);
-
+    const currency = wallet.walletCurrency as PaymentCurrency;
+    const cached = number(wallet.balance);
     const onChain = blockchainService.isConfigured()
-      ? await blockchainService.syncBalanceCache(wallet.address as `0x${string}`)
+      ? await blockchainService.syncBalanceCache(wallet.address as Address)
       : null;
-
-    // Blockchain is source of truth when readable; never replace cache with failed/stale zero reads.
-    const balance = onChain !== null ? onChain : cached;
+    const balance = onChain ?? cached;
 
     if (onChain !== null && onChain !== cached) {
       await prisma.wallet.update({
@@ -77,70 +89,80 @@ export class WalletService {
         data: { balance: onChain, balanceCachedAt: new Date() },
       });
     }
-
     return { balance, currency, address: wallet.address };
   }
 
   async getBalance(userId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    const currency = await paymentService.getActiveCurrency();
-
     if (!wallet) {
       return {
         connected: false,
-        address: null as string | null,
+        address: null,
         balance: 0,
-        currency,
-        provider: null as string | null,
+        currency: await paymentService.getDefaultCurrency(),
+        provider: null,
         onChain: null,
       };
     }
 
     const synced = await this.syncBalanceFromChain(userId);
     const ledger = await billingService.getBalanceLedger(userId);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { withdrawalAddress: true },
+    });
 
     return {
       connected: true,
       address: wallet.address,
-      balance: synced?.balance ?? toBalanceNumber(wallet.balance),
+      balance: synced?.balance ?? number(wallet.balance),
       onChainBalance: ledger.onChainBalance,
       outstandingCharges: ledger.outstandingCharges,
       availableBalance: ledger.availableBalance,
       withdrawableBalance: ledger.withdrawableBalance,
-      currency,
+      currency: wallet.walletCurrency,
+      withdrawalAddress: user?.withdrawalAddress ?? null,
       provider: wallet.provider,
-      onChain: synced
-        ? { formatted: synced.balance.toString(), wei: null, contract: null }
-        : null,
       identityHash: wallet.identityHash,
     };
   }
 
-  /** Sync balance after on-chain deposit detected or manual refresh. */
   async handleDepositDetected(userId: string, previousBalance: number) {
     const synced = await this.syncBalanceFromChain(userId);
     if (!synced) return null;
-
-    const currency = synced.currency;
     if (synced.balance > previousBalance) {
       const delta = synced.balance - previousBalance;
-      logEvent("Deposit Detected", { userId, delta, currency });
+      logEvent("Deposit Detected", { userId, delta, currency: synced.currency });
       await billingService.notify(
         userId,
-        `Deposit successful: +${formatAmount(delta, currency)}. Balance ${formatAmount(synced.balance, currency)}.`,
+        `Deposit successful: +${formatAmount(delta, synced.currency)}. Balance ${formatAmount(synced.balance, synced.currency)}.`,
       );
-
       const employment = await prisma.employment.findUnique({ where: { userId } });
       if (
         employment &&
-        (employment.status === "Inactive" || employment.status === "Exhausted") &&
-        synced.balance > 0
+        (employment.status === "Inactive" || employment.status === "Exhausted")
       ) {
         await billingService.resumeAfterDeposit(userId);
       }
     }
-
     return synced;
+  }
+
+  async setWithdrawalAddress(userId: string, destination: string) {
+    if (!isAddress(destination)) throw new Error("Invalid withdrawal address");
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { withdrawalAddress: destination },
+    });
+
+    if (wallet?.identityHash && blockchainService.isConfigured()) {
+      await blockchainService.setWithdrawalDestination(
+        walletUserKey(wallet.identityHash),
+        destination,
+      );
+    }
+    return { withdrawalAddress: destination };
   }
 
   async recordWithdraw(userId: string, amount: number) {
@@ -148,64 +170,133 @@ export class WalletService {
       throw new Error("Withdrawal amount must be greater than zero");
     }
 
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw Errors.walletNotFunded();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { wallet: true, employment: true },
+    });
+    if (!user?.wallet) throw Errors.walletNotFunded();
+    if (!user.withdrawalAddress || !isAddress(user.withdrawalAddress)) {
+      throw new Error("Set a valid withdrawal destination first");
+    }
+    if (!user.wallet.identityHash) throw new Error("Wallet identity is missing");
 
-    const ledger = await billingService.getBalanceLedger(userId);
-
-    if (amount > ledger.withdrawableBalance) {
-      throw Errors.walletNotFunded();
+    const before = await billingService.getBalanceLedger(userId);
+    if (amount > before.withdrawableBalance) {
+      throw new Error(
+        `Maximum withdrawal is ${formatAmount(before.withdrawableBalance, before.currency)}`,
+      );
     }
 
-    const current = ledger.onChainBalance;
+    if (before.outstandingCharges > 0) {
+      const settlement = await billingService.settleEmployment(userId);
+      if (!settlement || settlement.status === "failed") {
+        throw new Error("Outstanding charges must settle before withdrawal");
+      }
+    }
 
-    // Withdrawal executes on-chain via user's wallet calling contract withdraw — MVP records intent
-    const newBal = current - amount;
-    const currency = await paymentService.getActiveCurrency();
+    const afterSettlement = await billingService.getBalanceLedger(userId);
+    if (amount > afterSettlement.onChainBalance) throw Errors.walletNotFunded();
 
-    await prisma.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: newBal, balanceCachedAt: new Date() },
+    const withdrawal = await prisma.withdrawal.create({
+      data: {
+        userId,
+        walletId: user.wallet.id,
+        amount,
+        currency: user.wallet.walletCurrency,
+        destination: user.withdrawalAddress,
+        status: "pending",
+      },
     });
 
-    if (newBal <= 0 && ledger.outstandingCharges <= 0) {
-      await billingService.exhaustUser(userId, "withdrawn_to_zero");
+    try {
+      await prisma.withdrawal.update({
+        where: { id: withdrawal.id },
+        data: { status: "submitted" },
+      });
+      const userKey = walletUserKey(user.wallet.identityHash);
+      await blockchainService.setWithdrawalDestination(
+        userKey,
+        user.withdrawalAddress as Address,
+      );
+      const txHash = await blockchainService.withdrawOnChain(
+        userKey,
+        keccak256(toBytes(withdrawal.id)),
+        amount,
+      );
+      const newBalance =
+        (await blockchainService.syncBalanceCache(user.wallet.address as Address)) ??
+        afterSettlement.onChainBalance - amount;
+
+      await prisma.$transaction([
+        prisma.withdrawal.update({
+          where: { id: withdrawal.id },
+          data: {
+            status: "succeeded",
+            transactionHash: txHash,
+            completedAt: new Date(),
+          },
+        }),
+        prisma.wallet.update({
+          where: { id: user.wallet.id },
+          data: { balance: newBalance, balanceCachedAt: new Date() },
+        }),
+      ]);
+
+      logEvent("Withdrawal Completed", {
+        userId,
+        amount,
+        currency: user.wallet.walletCurrency,
+        destination: user.withdrawalAddress,
+        txHash,
+      });
+      return {
+        id: withdrawal.id,
+        address: user.wallet.address,
+        destination: user.withdrawalAddress,
+        balance: newBalance,
+        currency: user.wallet.walletCurrency,
+        transactionHash: txHash,
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Withdrawal failed";
+      await prisma.withdrawal.update({
+        where: { id: withdrawal.id },
+        data: { status: "failed", failureReason: reason },
+      });
+      throw error;
     }
-
-    logEvent("Withdrawal Completed", { userId, amount, currency });
-    await billingService.notify(
-      userId,
-      `Withdrawal recorded: -${formatAmount(amount, currency)}. Balance ${formatAmount(newBal, currency)}.`,
-    );
-
-    return { address: wallet.address, balance: newBal, currency };
   }
 
-  /** Deposit instructions for Method A (web) and Method B (direct transfer). */
   async getDepositConfig(userId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw Errors.walletNotFunded();
-
-    const currency = await paymentService.getActiveCurrency();
-    const contract = blockchainService.getContractAddress();
-    const isCelo = currency === "CELO";
+    const currency = wallet.walletCurrency as PaymentCurrency;
+    const tokenAddress =
+      currency === "CELO"
+        ? null
+        : await blockchainService.getWalletTokenAddress(wallet.address as Address);
 
     return {
       employmentWallet: wallet.address,
-      contract,
       currency,
+      tokenAddress,
       methodA: {
-        description: "Connect wallet and deposit via the Employment contract",
-        functionName: isCelo ? "depositNativeFor" : "depositERC20For",
-        args: isCelo ? [wallet.address] : [wallet.address, "amount"],
-        payable: isCelo,
+        description: "Transfer the wallet's configured currency directly to SentryWallet",
+        type: currency === "CELO" ? "native-transfer" : "erc20-transfer",
       },
       methodB: {
-        description: "Send supported assets then click Sync Balance",
-        note: "Funds sent directly to your employment wallet address appear after blockchain synchronization.",
+        description: "Send funds to the SentryWallet address, then sync balance",
         employmentWallet: wallet.address,
       },
     };
+  }
+
+  async getWithdrawalHistory(userId: string) {
+    return prisma.withdrawal.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    });
   }
 }
 

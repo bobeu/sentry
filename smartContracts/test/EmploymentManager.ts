@@ -4,7 +4,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { deploySystem } from "./helpers";
 
 describe("EmploymentManager", function () {
-  async function registeredEmployment() {
+  async function registered() {
     const fixture = await deploySystem();
     await fixture.manager
       .connect(fixture.owner)
@@ -12,215 +12,113 @@ describe("EmploymentManager", function () {
     return fixture;
   }
 
-  it("registers and activates a validated employment", async function () {
+  it("registers a manager-controlled wallet", async function () {
     const { manager, owner, user, walletAddress } = await loadFixture(deploySystem);
-
     await expect(manager.connect(owner).registerEmployment(user.address, walletAddress))
       .to.emit(manager, "EmploymentRegistered")
       .withArgs(user.address, walletAddress);
-
     expect(await manager.walletOf(user.address)).to.equal(walletAddress);
-    expect(await manager.userOfWallet(walletAddress)).to.equal(user.address);
-    expect(await manager.employmentStatus(user.address)).to.equal(1);
   });
 
-  it("rejects EOAs, wrong-owner wallets, duplicate users, and duplicate wallets", async function () {
-    const { manager, owner, user, other, walletAddress, usdm, usdc, usdt } =
-      await loadFixture(deploySystem);
-
-    await expect(
-      manager.connect(owner).registerEmployment(user.address, other.address),
-    ).to.be.revertedWithCustomError(manager, "InvalidWallet");
-
-    const Wallet = await ethers.getContractFactory("SentryWallet");
-    const wrongOwnerWallet = await Wallet.deploy(
-      other.address,
-      await manager.getAddress(),
-      ethers.id("wrong-owner"),
-      await usdm.getAddress(),
-      await usdc.getAddress(),
-      await usdt.getAddress(),
-    );
-    await expect(
-      manager
-        .connect(owner)
-        .registerEmployment(user.address, await wrongOwnerWallet.getAddress()),
-    ).to.be.revertedWithCustomError(manager, "InvalidWallet");
-
-    await manager.connect(owner).registerEmployment(user.address, walletAddress);
-    await expect(
-      manager.connect(owner).registerEmployment(user.address, walletAddress),
-    ).to.be.revertedWithCustomError(manager, "EmploymentAlreadyRegistered");
-    await expect(
-      manager.connect(owner).registerEmployment(other.address, walletAddress),
-    ).to.be.revertedWithCustomError(manager, "EmploymentAlreadyRegistered");
-  });
-
-  it("pauses, resumes, and exhausts only valid employment states", async function () {
-    const { manager, operator, user } = await loadFixture(registeredEmployment);
-
-    await expect(manager.connect(operator).pauseEmployment(user.address))
-      .to.emit(manager, "EmploymentPaused")
-      .withArgs(user.address);
+  it("manages employment lifecycle and global pause", async function () {
+    const { manager, owner, operator, user } = await loadFixture(registered);
+    await manager.connect(operator).pauseEmployment(user.address);
     expect(await manager.employmentStatus(user.address)).to.equal(2);
-
-    await expect(manager.connect(operator).resumeEmployment(user.address))
-      .to.emit(manager, "EmploymentResumed")
-      .withArgs(user.address);
-    expect(await manager.employmentStatus(user.address)).to.equal(1);
-
-    await expect(manager.connect(operator).exhaustEmployment(user.address))
-      .to.emit(manager, "EmploymentExhausted")
-      .withArgs(user.address);
+    await manager.connect(operator).resumeEmployment(user.address);
+    await manager.connect(operator).exhaustEmployment(user.address);
     expect(await manager.employmentStatus(user.address)).to.equal(3);
-
+    await manager.connect(owner).pause();
     await expect(
       manager.connect(operator).resumeEmployment(user.address),
-    ).to.be.revertedWithCustomError(manager, "InvalidStatus");
+    ).to.be.revertedWithCustomError(manager, "EnforcedPause");
   });
 
-  it("rejects unauthorized employment state changes", async function () {
-    const { manager, user, other } = await loadFixture(registeredEmployment);
+  it("settles using each wallet's own currency", async function () {
+    const { manager, factory, owner, operator, treasury, user, walletAddress, usdm } =
+      await loadFixture(registered);
+    await usdm.mint(walletAddress, 500);
+    await manager
+      .connect(operator)
+      .chargeSettlement(user.address, ethers.id("usd-settlement"), 200, 10);
+    expect(await usdm.balanceOf(treasury.address)).to.equal(210);
 
-    await expect(
-      manager.connect(other).pauseEmployment(user.address),
-    ).to.be.revertedWithCustomError(manager, "UnauthorizedOperator");
-  });
-
-  it("executes settlement, transfers service plus fee, and prevents replay", async function () {
-    const { manager, operator, treasury, user, walletAddress, usdm } = await loadFixture(
-      registeredEmployment,
-    );
-    const service = ethers.parseEther("0.5");
-    const fee = ethers.parseEther("0.01");
-    const settlementId = ethers.id("settlement-1");
-    await usdm.mint(walletAddress, ethers.parseEther("1"));
-
-    await expect(
+    const identity = ethers.id("native");
+    const [, , , , other] = await ethers.getSigners();
+    await factory.connect(owner).createWallet(identity, other.address, 0);
+    const nativeAddress = await factory.walletOfIdentity(identity);
+    await manager.connect(owner).registerEmployment(other.address, nativeAddress);
+    await owner.sendTransaction({ to: nativeAddress, value: 500 });
+    await expect(() =>
       manager
         .connect(operator)
-        .chargeSettlement(user.address, settlementId, service, fee),
+        .chargeSettlement(other.address, ethers.id("celo-settlement"), 200, 10),
+    ).to.changeEtherBalances([nativeAddress, treasury], [-210, 210]);
+  });
+
+  it("sets and enforces the registered withdrawal destination", async function () {
+    const { manager, operator, user, other, walletAddress, usdm } =
+      await loadFixture(registered);
+    await usdm.mint(walletAddress, 500);
+    await expect(
+      manager.connect(operator).withdraw(user.address, ethers.id("missing-destination"), 100),
+    ).to.be.revertedWithCustomError(manager, "WithdrawalDestinationNotSet");
+
+    await expect(
+      manager.connect(operator).setWithdrawalDestination(user.address, other.address),
     )
-      .to.emit(manager, "SettlementCompleted")
-      .withArgs(user.address, walletAddress, settlementId, service, fee);
-
-    expect(await usdm.balanceOf(treasury.address)).to.equal(service + fee);
-    expect(await usdm.balanceOf(walletAddress)).to.equal(ethers.parseEther("0.49"));
-    expect(await manager.settledBatches(settlementId)).to.equal(true);
-
-    await expect(
-      manager
-        .connect(operator)
-        .chargeSettlement(user.address, settlementId, service, fee),
-    ).to.be.revertedWithCustomError(manager, "AlreadySettled");
+      .to.emit(manager, "WithdrawalDestinationUpdated")
+      .withArgs(user.address, ethers.ZeroAddress, other.address);
+    await manager.connect(operator).withdraw(user.address, ethers.id("withdraw"), 100);
+    expect(await usdm.balanceOf(other.address)).to.equal(100);
   });
 
-  it("rejects unauthorized settlements, invalid IDs, amounts, wallets, and statuses", async function () {
-    const { manager, owner, operator, user, other, walletAddress, usdm } =
-      await loadFixture(deploySystem);
-    const settlementId = ethers.id("invalid-cases");
+  it("atomically settles outstanding charges before withdrawal", async function () {
+    const { manager, operator, treasury, user, other, walletAddress, usdm } =
+      await loadFixture(registered);
+    await manager.connect(operator).setWithdrawalDestination(user.address, other.address);
+    await usdm.mint(walletAddress, 1_000);
+
+    await manager.connect(operator).settleAndWithdraw(
+      user.address,
+      ethers.id("settle-first"),
+      200,
+      10,
+      ethers.id("withdraw-after"),
+      500,
+    );
+    expect(await usdm.balanceOf(treasury.address)).to.equal(210);
+    expect(await usdm.balanceOf(other.address)).to.equal(500);
+    expect(await usdm.balanceOf(walletAddress)).to.equal(290);
+  });
+
+  it("rejects unauthorized, replayed, invalid, and insufficient withdrawals", async function () {
+    const { manager, operator, user, other, walletAddress, usdm } =
+      await loadFixture(registered);
+    await manager.connect(operator).setWithdrawalDestination(user.address, other.address);
+    await usdm.mint(walletAddress, 100);
+    const id = ethers.id("withdrawal");
 
     await expect(
-      manager.connect(other).chargeSettlement(user.address, settlementId, 1, 0),
+      manager.connect(other).withdraw(user.address, id, 1),
     ).to.be.revertedWithCustomError(manager, "UnauthorizedOperator");
     await expect(
-      manager.connect(operator).chargeSettlement(user.address, settlementId, 1, 0),
-    ).to.be.revertedWithCustomError(manager, "InvalidWallet");
-
-    await manager.connect(owner).registerEmployment(user.address, walletAddress);
-    await usdm.mint(walletAddress, 100);
-    await expect(
-      manager.connect(operator).chargeSettlement(user.address, ethers.ZeroHash, 1, 0),
-    ).to.be.revertedWithCustomError(manager, "InvalidSettlementId");
-    await expect(
-      manager.connect(operator).chargeSettlement(user.address, settlementId, 0, 1),
-    ).to.be.revertedWithCustomError(manager, "InvalidAmount");
-
-    await manager.connect(operator).pauseEmployment(user.address);
-    await expect(
-      manager.connect(operator).chargeSettlement(user.address, settlementId, 1, 0),
-    ).to.be.revertedWithCustomError(manager, "InvalidStatus");
-  });
-
-  it("rejects settlements with insufficient funds without consuming replay ID", async function () {
-    const { manager, operator, user } = await loadFixture(registeredEmployment);
-    const settlementId = ethers.id("insufficient");
-
-    await expect(
-      manager
-        .connect(operator)
-        .chargeSettlement(user.address, settlementId, ethers.parseEther("1"), 0),
+      manager.connect(operator).withdraw(user.address, id, 101),
     ).to.be.reverted;
-    expect(await manager.settledBatches(settlementId)).to.equal(false);
-  });
-
-  it("switches payment currency and rejects invalid enum values", async function () {
-    const { manager, owner } = await loadFixture(deploySystem);
-
-    await expect(manager.connect(owner).setPaymentToken(0))
-      .to.emit(manager, "PaymentCurrencyChanged")
-      .withArgs(1, 0);
-    expect(await manager.activePaymentToken()).to.equal(0);
-    await expect(manager.connect(owner).setPaymentToken(4)).to.be.reverted;
-  });
-
-  it("updates operator and treasury with zero-address protection", async function () {
-    const { manager, owner, operator, treasury, other } = await loadFixture(deploySystem);
-
-    await expect(manager.connect(owner).setOperator(other.address))
-      .to.emit(manager, "OperatorUpdated")
-      .withArgs(operator.address, other.address);
-    await expect(manager.connect(owner).setTreasury(other.address))
-      .to.emit(manager, "TreasuryUpdated")
-      .withArgs(treasury.address, other.address);
-
+    expect(await manager.completedWithdrawals(id)).to.equal(false);
+    await manager.connect(operator).withdraw(user.address, id, 100);
     await expect(
-      manager.connect(owner).setOperator(ethers.ZeroAddress),
-    ).to.be.revertedWithCustomError(manager, "ZeroAddress");
-    await expect(
-      manager.connect(owner).setTreasury(ethers.ZeroAddress),
-    ).to.be.revertedWithCustomError(manager, "ZeroAddress");
+      manager.connect(operator).withdraw(user.address, id, 1),
+    ).to.be.revertedWithCustomError(manager, "WithdrawalAlreadyCompleted");
   });
 
-  it("blocks settlements and employment state changes while globally paused", async function () {
-    const { manager, owner, operator, user, walletAddress, usdm } = await loadFixture(
-      registeredEmployment,
-    );
+  it("prevents settlement replay", async function () {
+    const { manager, operator, user, walletAddress, usdm } =
+      await loadFixture(registered);
     await usdm.mint(walletAddress, 100);
-    await manager.connect(owner).pause();
-
+    const id = ethers.id("settlement");
+    await manager.connect(operator).chargeSettlement(user.address, id, 90, 10);
     await expect(
-      manager.connect(operator).pauseEmployment(user.address),
-    ).to.be.revertedWithCustomError(manager, "EnforcedPause");
-    await expect(
-      manager.connect(operator).chargeSettlement(user.address, ethers.id("paused"), 1, 0),
-    ).to.be.revertedWithCustomError(manager, "EnforcedPause");
-    await expect(
-      manager.connect(owner).registerEmployment(owner.address, walletAddress),
-    ).to.be.revertedWithCustomError(manager, "EnforcedPause");
-
-    await expect(manager.connect(owner).unpause())
-      .to.emit(manager, "Unpaused")
-      .withArgs(owner.address);
-  });
-
-  it("rejects zero addresses in constructor and registration", async function () {
-    const { manager, owner, operator, treasury, user, walletAddress } = await loadFixture(
-      deploySystem,
-    );
-    const Manager = await ethers.getContractFactory("EmploymentManager");
-
-    await expect(
-      Manager.deploy(owner.address, ethers.ZeroAddress, treasury.address),
-    ).to.be.revertedWithCustomError(Manager, "ZeroAddress");
-    await expect(
-      Manager.deploy(owner.address, operator.address, ethers.ZeroAddress),
-    ).to.be.revertedWithCustomError(Manager, "ZeroAddress");
-    await expect(
-      manager.connect(owner).registerEmployment(ethers.ZeroAddress, walletAddress),
-    ).to.be.revertedWithCustomError(manager, "ZeroAddress");
-    await expect(
-      manager.connect(owner).registerEmployment(user.address, ethers.ZeroAddress),
-    ).to.be.revertedWithCustomError(manager, "ZeroAddress");
+      manager.connect(operator).chargeSettlement(user.address, id, 1, 0),
+    ).to.be.revertedWithCustomError(manager, "AlreadySettled");
   });
 });

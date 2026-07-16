@@ -25,7 +25,7 @@ export async function deploySystem() {
   );
 
   const identityHash = ethers.id("email:user@example.com");
-  await factory.connect(owner).createWallet(identityHash, user.address);
+  await factory.connect(owner).createWallet(identityHash, user.address, 1);
   const walletAddress = await factory.walletOfIdentity(identityHash);
   const wallet = await ethers.getContractAt("SentryWallet", walletAddress);
 

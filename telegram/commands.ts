@@ -1,7 +1,6 @@
 import type { Telegraf } from "telegraf";
 import { prisma } from "@/lib/prisma";
 import { walletService } from "@/services/wallet.service";
-import { paymentService } from "@/services/payment.service";
 import { formatAmount } from "@/lib/payment-currency";
 
 async function walletMessage(telegramUserId: string) {
@@ -18,7 +17,7 @@ async function walletMessage(telegramUserId: string) {
     return "Hire Sentry in the dashboard to provision your employment wallet.";
   }
 
-  const currency = await paymentService.getActiveCurrency();
+  const currency = wallet.walletCurrency as import("@/lib/payment-currency").PaymentCurrency;
   const synced = await walletService.syncBalanceFromChain(settings.user.id);
   const balance = synced?.balance ?? Number(wallet.balance.toString());
 

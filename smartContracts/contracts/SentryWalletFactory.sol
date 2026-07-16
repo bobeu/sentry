@@ -11,21 +11,39 @@ import {SentryWallet} from "./SentryWallet.sol";
  *      would add salt/init-code complexity without improving the one-wallet invariants.
  */
 contract SentryWalletFactory is Ownable {
+    enum Token {
+        CELO,
+        USDm,
+        USDC,
+        USDT
+    }
+
+    struct CurrencyConfig {
+        address tokenAddress;
+        bool enabled;
+    }
+
     /// @notice Emitted after a wallet is created and indexed.
     /// @param identityHash Identity commitment assigned to the wallet.
-    /// @param walletOwner Owner authorized to withdraw and sign.
+    /// @param userKey Stable user identifier.
+    /// @param currency Immutable wallet currency.
     /// @param wallet Deployed SentryWallet address.
     event WalletCreated(
         bytes32 indexed identityHash,
-        address indexed walletOwner,
+        address indexed userKey,
+        Token currency,
         address indexed wallet
     );
 
-    /// @notice Emitted when token addresses for future wallets are updated.
-    /// @param usdm New USDm address.
-    /// @param usdc New USDC address.
-    /// @param usdt New USDT address.
-    event SupportedTokensUpdated(address indexed usdm, address indexed usdc, address indexed usdt);
+    /// @notice Emitted when a currency is enabled or disabled for future wallets.
+    /// @param currency Currency configuration changed.
+    /// @param enabled New enabled state.
+    event CurrencyEnabled(Token indexed currency, bool enabled);
+    event TokenAddressUpdated(
+        Token indexed currency,
+        address indexed previousAddress,
+        address indexed newAddress
+    );
 
     /// @notice An identity already has a wallet.
     error IdentityAlreadyRegistered();
@@ -38,24 +56,19 @@ contract SentryWalletFactory is Ownable {
 
     /// @notice Identity hash cannot be zero.
     error InvalidIdentity();
+    error CurrencyDisabled();
+    error InvalidTokenConfig();
 
     /// @notice EmploymentManager assigned to every deployed wallet.
     address public immutable manager;
 
-    /// @notice USDm address used by wallets created after the latest update.
-    address public usdm;
-
-    /// @notice USDC address used by wallets created after the latest update.
-    address public usdc;
-
-    /// @notice USDT address used by wallets created after the latest update.
-    address public usdt;
+    mapping(Token currency => CurrencyConfig config) public currencies;
 
     /// @notice Wallet indexed by identity commitment.
     mapping(bytes32 identityHash => address wallet) public walletOfIdentity;
 
     /// @notice Wallet indexed by owner.
-    mapping(address walletOwner => address wallet) public walletOfOwner;
+    mapping(address userKey => address wallet) public walletOfUser;
 
     /// @notice Identity commitment indexed by wallet.
     mapping(address wallet => bytes32 identityHash) public identityOfWallet;
@@ -77,35 +90,47 @@ contract SentryWalletFactory is Ownable {
     ) Ownable(initialOwner) {
         _validateAddresses(employmentManager, usdm_, usdc_, usdt_);
         manager = employmentManager;
-        usdm = usdm_;
-        usdc = usdc_;
-        usdt = usdt_;
+        currencies[Token.CELO] = CurrencyConfig(address(0), true);
+        currencies[Token.USDm] = CurrencyConfig(usdm_, true);
+        currencies[Token.USDC] = CurrencyConfig(usdc_, true);
+        currencies[Token.USDT] = CurrencyConfig(usdt_, true);
     }
 
     /**
      * @notice Creates and indexes a wallet.
      * @param identityHash Identity commitment for the user.
-     * @param walletOwner Owner of the new wallet.
+     * @param userKey Stable on-chain user identifier.
+     * @param currency Immutable currency selected for the wallet.
      * @return wallet Address of the deployed wallet.
      */
     function createWallet(
         bytes32 identityHash,
-        address walletOwner
+        address userKey,
+        Token currency
     ) external onlyOwner returns (address wallet) {
-        if (walletOwner == address(0)) revert ZeroAddress();
+        if (userKey == address(0)) revert ZeroAddress();
         if (identityHash == bytes32(0)) revert InvalidIdentity();
         if (walletOfIdentity[identityHash] != address(0)) revert IdentityAlreadyRegistered();
-        if (walletOfOwner[walletOwner] != address(0)) revert OwnerAlreadyRegistered();
+        if (walletOfUser[userKey] != address(0)) revert OwnerAlreadyRegistered();
 
-        wallet = address(
-            new SentryWallet(walletOwner, manager, identityHash, usdm, usdc, usdt)
-        );
+        CurrencyConfig memory config = currencies[currency];
+        if (!config.enabled) revert CurrencyDisabled();
+        if (currency != Token.CELO && config.tokenAddress == address(0)) {
+            revert InvalidTokenConfig();
+        }
+
+        wallet = address(new SentryWallet(
+            manager,
+            identityHash,
+            SentryWallet.Token(uint8(currency)),
+            config.tokenAddress
+        ));
 
         walletOfIdentity[identityHash] = wallet;
-        walletOfOwner[walletOwner] = wallet;
+        walletOfUser[userKey] = wallet;
         identityOfWallet[wallet] = identityHash;
 
-        emit WalletCreated(identityHash, walletOwner, wallet);
+        emit WalletCreated(identityHash, userKey, currency, wallet);
     }
 
     /**
@@ -127,31 +152,31 @@ contract SentryWalletFactory is Ownable {
     }
 
     /**
-     * @notice Resolves a wallet from its owner.
-     * @param walletOwner Owner to query.
+     * @notice Resolves a wallet from its stable user key.
+     * @param userKey User key to query.
      * @return wallet Registered wallet or zero address.
      */
-    function walletFromOwner(address walletOwner) external view returns (address wallet) {
-        return walletOfOwner[walletOwner];
+    function walletFromUser(address userKey) external view returns (address wallet) {
+        return walletOfUser[userKey];
     }
 
-    /**
-     * @notice Updates token addresses copied into subsequently created wallets.
-     * @dev Existing wallets retain their original token configuration.
-     * @param usdm_ New USDm address.
-     * @param usdc_ New USDC address.
-     * @param usdt_ New USDT address.
-     */
-    function updateSupportedTokens(
-        address usdm_,
-        address usdc_,
-        address usdt_
-    ) external onlyOwner {
-        _validateAddresses(manager, usdm_, usdc_, usdt_);
-        usdm = usdm_;
-        usdc = usdc_;
-        usdt = usdt_;
-        emit SupportedTokensUpdated(usdm_, usdc_, usdt_);
+    function setCurrencyEnabled(Token currency, bool enabled) external onlyOwner {
+        CurrencyConfig storage config = currencies[currency];
+        if (currency != Token.CELO && config.tokenAddress == address(0)) {
+            revert InvalidTokenConfig();
+        }
+        if (config.enabled == enabled) return;
+        config.enabled = enabled;
+        emit CurrencyEnabled(currency, enabled);
+    }
+
+    function updateTokenAddress(Token currency, address newAddress) external onlyOwner {
+        if (currency == Token.CELO || newAddress == address(0)) revert InvalidTokenConfig();
+        CurrencyConfig storage config = currencies[currency];
+        address previousAddress = config.tokenAddress;
+        if (previousAddress == newAddress) return;
+        config.tokenAddress = newAddress;
+        emit TokenAddressUpdated(currency, previousAddress, newAddress);
     }
 
     /**

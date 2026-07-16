@@ -24,6 +24,8 @@ export function EmploymentPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [currency, setCurrency] = useState("USDm");
+  const [currencies, setCurrencies] = useState<string[]>(["USDm"]);
 
   async function refresh() {
     const res = await fetch("/api/employment/status");
@@ -39,6 +41,17 @@ export function EmploymentPanel() {
 
   useEffect(() => {
     void refresh();
+    void fetch("/api/payment/currency")
+      .then((res) => res.json())
+      .then((json) => {
+        const enabled = (json.currencies ?? [])
+          .filter((item: { enabled: boolean }) => item.enabled)
+          .map((item: { currency: string }) => item.currency);
+        if (enabled.length) {
+          setCurrencies(enabled);
+          setCurrency(enabled.includes("USDm") ? "USDm" : enabled[0]);
+        }
+      });
   }, []);
 
   async function run(path: string) {
@@ -46,7 +59,11 @@ export function EmploymentPanel() {
     setMessage(null);
     setError(null);
     try {
-      const res = await fetch(path, { method: "POST" });
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: path.endsWith("/start") ? JSON.stringify({ currency }) : undefined,
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Request failed");
       setMessage(json.message ?? `Status: ${json.employment?.status ?? "updated"}`);
@@ -73,6 +90,20 @@ export function EmploymentPanel() {
       </div>
 
       <div className="flex flex-wrap gap-3">
+        {!employment ? (
+          <select
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value)}
+            className="rounded-full border border-white/20 bg-[#101510] px-4 py-2.5 text-sm"
+            aria-label="Wallet currency"
+          >
+            {currencies.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <button
           type="button"
           disabled={loading}
@@ -107,28 +138,21 @@ export function EmploymentPanel() {
 
 type DepositConfig = {
   employmentWallet: string;
-  contract: string | null;
   currency: string;
-  methodA: { functionName: string; payable: boolean };
+  tokenAddress: string | null;
+  methodA: { type: "native-transfer" | "erc20-transfer" };
 };
 
 const DEPOSIT_ABI = [
   {
     type: "function",
-    name: "depositNativeFor",
-    stateMutability: "payable",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "depositERC20For",
+    name: "transfer",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "account", type: "address" },
+      { name: "to", type: "address" },
       { name: "amount", type: "uint256" },
     ],
-    outputs: [],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -142,6 +166,7 @@ export function WalletPanel() {
   const [currency, setCurrency] = useState("USDm");
   const [depositAmount, setDepositAmount] = useState("1");
   const [withdrawAmount, setWithdrawAmount] = useState("1");
+  const [withdrawalAddress, setWithdrawalAddress] = useState("");
   const [depositConfig, setDepositConfig] = useState<DepositConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -165,6 +190,7 @@ export function WalletPanel() {
     setOutstanding(balJson.outstandingCharges ?? 0);
     setWithdrawable(balJson.withdrawableBalance ?? balJson.availableBalance ?? 0);
     setCurrency(balJson.currency ?? "USDm");
+    setWithdrawalAddress(balJson.withdrawalAddress ?? "");
     setError(null);
 
     if (spendRes.ok) {
@@ -223,8 +249,8 @@ export function WalletPanel() {
 
   async function webDeposit(event: FormEvent) {
     event.preventDefault();
-    if (!depositConfig?.contract) {
-      setError("Contract not configured. Use direct transfer + Sync Balance.");
+    if (!depositConfig) {
+      setError("Wallet deposit configuration is unavailable.");
       return;
     }
     const eth = (window as unknown as { ethereum?: unknown }).ethereum;
@@ -242,25 +268,21 @@ export function WalletPanel() {
       const publicClient = createPublicClient({ chain: celo, transport });
       const [account] = await client.requestAddresses();
       const amount = parseEther(depositAmount);
-      const contract = depositConfig.contract as Address;
       const employmentWallet = depositConfig.employmentWallet as Address;
 
       let hash: Hash;
       if (depositConfig.currency === "CELO") {
-        hash = await client.writeContract({
-          address: contract,
-          abi: DEPOSIT_ABI,
-          functionName: "depositNativeFor",
-          args: [employmentWallet],
+        hash = await client.sendTransaction({
+          to: employmentWallet,
           value: amount,
           account,
-          chain: celo,
         });
       } else {
+        if (!depositConfig.tokenAddress) throw new Error("Token address is not configured");
         hash = await client.writeContract({
-          address: contract,
+          address: depositConfig.tokenAddress as Address,
           abi: DEPOSIT_ABI,
-          functionName: "depositERC20For",
+          functionName: "transfer",
           args: [employmentWallet, amount],
           account,
           chain: celo,
@@ -302,6 +324,25 @@ export function WalletPanel() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdraw failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveDestination() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/wallet/destination", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ withdrawalAddress }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Destination update failed");
+      setMessage("Withdrawal destination updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Destination update failed");
     } finally {
       setLoading(false);
     }
@@ -360,7 +401,7 @@ export function WalletPanel() {
         <ol className="mt-3 space-y-3 text-sm text-[#b7c4b5]">
           <li>
             <span className="text-[#e8f5d8]">① Deposit from Connected Wallet</span>
-            {address && depositConfig?.contract ? (
+            {address && depositConfig ? (
               <form onSubmit={webDeposit} className="mt-2 flex flex-wrap items-end gap-2">
                 <label className="text-xs text-[#9aa89a]">
                   Amount
@@ -424,7 +465,27 @@ export function WalletPanel() {
         </div>
 
         {address ? (
-          <form onSubmit={withdraw} className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-[#9aa89a]">
+                Withdrawal destination
+                <input
+                  value={withdrawalAddress}
+                  onChange={(event) => setWithdrawalAddress(event.target.value)}
+                  placeholder="0x…"
+                  className="mt-1 block w-72 rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono text-sm outline-none focus:border-[#35d07f]"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={saveDestination}
+                disabled={loading}
+                className="rounded-full border border-white/20 px-4 py-2 text-xs disabled:opacity-40"
+              >
+                Save destination
+              </button>
+            </div>
+            <form onSubmit={withdraw} className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-[#9aa89a]">
               Withdraw (max {withdrawable.toFixed(4)})
               <input
@@ -440,7 +501,8 @@ export function WalletPanel() {
             >
               Withdraw
             </button>
-          </form>
+            </form>
+          </div>
         ) : null}
       </div>
 

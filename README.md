@@ -6,13 +6,13 @@ An AI employee for Telegram that businesses and individuals hire to monitor conv
 
 Sentry is a pay-per-completed-work product:
 
-1. User hires Sentry → **SentryWalletFactory** deploys a permanent `SentryWallet`.
+1. User selects an enabled currency and hires Sentry → **SentryWalletFactory** deploys a permanent, manager-controlled `SentryWallet`.
 2. User funds the wallet (**web deposit** or **direct transfer** + sync).
 3. Sentry joins Telegram groups and performs billable work.
 4. Completed work accumulates as **outstanding charges** off-chain; batch **settlements** settle on-chain via `chargeSettlement()`.
 5. **Available balance** = on-chain balance − outstanding charges. Work stops when available balance is exhausted.
 
-Supported payment currencies (global, admin-configured): **CELO**, **USDm**, **USDC**, **USDT**.
+Supported payment currencies: **CELO**, **USDm**, **USDC**, **USDT**. Each wallet keeps one immutable currency; admins enable/disable currencies only for future wallets.
 
 ## Architecture
 
@@ -43,10 +43,18 @@ flowchart TB
 
 | Method | Flow |
 |--------|------|
-| **A — Web deposit** | Connect wallet → transfer CELO or supported ERC20 to `SentryWallet` → auto sync |
+| **A — Web deposit** | Connect wallet → transfer the wallet's immutable CELO or ERC20 currency directly to `SentryWallet` → auto sync |
 | **B — Direct transfer** | Send CELO / USDm / USDC / USDT to `SentryWallet` → **Sync Balance** |
 
 Scheduled sync runs every 5 minutes; users can also trigger `/api/wallet/sync`.
+
+## Custody and withdrawals
+
+- `SentryWallet` is controlled only by `EmploymentManager`; users and the backend never own wallet keys.
+- Users register a separate EVM withdrawal destination (MiniPay, MetaMask, Valora, Safe, etc.).
+- Withdrawable balance is wallet balance minus outstanding charges and the estimated settlement fee.
+- If charges are outstanding, the backend settles them before asking `EmploymentManager` to transfer the remainder.
+- Every settlement and withdrawal has independent replay protection and database history.
 
 ## Local setup
 
@@ -76,7 +84,8 @@ Point Telegram webhook to `POST /api/telegram`.
 | `CELO_RPC` | Celo Mainnet RPC |
 | `SENTRY_OPERATOR_KEY` | Operator key for on-chain charges |
 | `SENTRY_OWNER_KEY` | Owner key for admin contract calls |
-| `CELO_USDM_ADDRESS` / `USDC` / `USDT` | ERC-20 addresses on Celo |
+| `EMPLOYMENT_MANAGER_ADDRESS` / `SENTRY_WALLET_FACTORY_ADDRESS` | Deployed custody contracts |
+| `CELO_USDM_ADDRESS` / `USDC` / `USDT` | ERC-20 addresses used for future wallets |
 | `ADMIN_EMAILS` | Comma-separated admin emails |
 | `DEMO_MODE` | Set `true` to scale pricing down 100× for judge demos |
 | `SETTLEMENT_MONETARY_THRESHOLD` | Batch settle when outstanding charges reach this amount |
@@ -99,7 +108,7 @@ cd smartContracts && pnpm install && pnpm compile && pnpm deploy-celo
 cd .. && pnpm contracts:sync
 ```
 
-Deploys `EmploymentManager` and `SentryWalletFactory`, then syncs their ABIs to `lib/contracts/`. The factory creates one owner-controlled `SentryWallet` per identity. `MockERC20` remains test-only and is never deployed.
+Deploys `EmploymentManager` and `SentryWalletFactory`, then syncs their ABIs to `lib/contracts/`. The factory creates one manager-controlled, single-currency `SentryWallet` per identity. `MockERC20` remains test-only and is never deployed.
 
 ## Demo checklist
 

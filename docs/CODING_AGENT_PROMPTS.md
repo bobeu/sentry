@@ -6000,3 +6000,443 @@ The goal is to leave the smart contract layer in a production-quality state that
 - Contracts: `EmploymentManager.sol`, `SentryWallet.sol`, `SentryWalletFactory.sol`, test-only `MockERC20.sol`.
 - Tests: `EmploymentManager.ts`, `SentryWallet.ts`, `SentryWalletFactory.ts`, `Integration.ts`, `helpers.ts`.
 - Tooling/docs: deployment script, `sync-data.js`, contract env example, package scripts, README.
+
+---
+
+# CTO Said:
+
+# Prompt 10 — Multi-Currency Wallet Architecture & Manager-Controlled Custody
+
+## Objective
+
+Refine the smart contract architecture to align with the finalized Sentry payment model.
+
+This prompt supersedes previous assumptions where:
+
+* a single global payment currency exists, and
+* users directly own and withdraw from their Sentry Wallet.
+
+The architecture below becomes the new source of truth.
+
+---
+
+# 1. Payment Currency Model
+
+Remove the concept of a single global active payment currency.
+
+Instead, the system supports multiple accepted payment currencies simultaneously.
+
+Initially supported:
+
+* CELO
+* USDm
+* USDC
+* USDT
+
+Each supported currency has an independent enabled/disabled state.
+
+Example:
+
+```text
+CELO   → Enabled
+USDm   → Enabled
+USDC   → Enabled
+USDT   → Disabled
+```
+
+---
+
+## Admin Controls
+
+The owner/admin can:
+
+* Enable a payment currency.
+* Disable a payment currency.
+* Update the token contract address (ERC20 currencies).
+
+Disabling a currency only affects **future wallet creation**.
+
+It must **never** affect existing wallets.
+
+---
+
+# 2. Wallet Currency
+
+Every Sentry Wallet permanently stores its payment currency during deployment.
+
+Example:
+
+```text
+Wallet A → USDm
+
+Wallet B → CELO
+
+Wallet C → USDC
+```
+
+Once created:
+
+The wallet currency is immutable.
+
+It can never be changed.
+
+---
+
+# 3. Wallet Creation
+
+During wallet creation:
+
+Validate that the selected currency is currently enabled.
+
+If disabled:
+
+Reject wallet creation.
+
+After deployment:
+
+Even if the admin disables that currency later:
+
+The deployed wallet must continue operating normally.
+
+---
+
+# 4. Remove Global Currency Switching
+
+Delete every remaining reference to:
+
+```solidity
+activePaymentToken
+```
+
+throughout the contracts.
+
+Settlement uses the wallet's own configured currency.
+
+Not a global variable.
+
+---
+
+# 5. Manager-Controlled Custody
+
+This is the most important architectural change.
+
+Users no longer become the owner of Sentry Wallets.
+
+Instead:
+
+Every newly created Sentry Wallet is owned by the EmploymentManager.
+
+The EmploymentManager becomes the only entity capable of:
+
+* withdrawing funds,
+* executing settlements,
+* transferring balances.
+
+The backend never directly owns user funds.
+
+The backend communicates only with EmploymentManager.
+
+---
+
+# 6. User Withdrawals
+
+Users cannot call SentryWallet directly.
+
+Every withdrawal request originates from:
+
+* Web Dashboard
+* Telegram Bot
+
+Flow:
+
+```text
+User
+
+↓
+
+Withdraw Request
+
+↓
+
+Backend
+
+↓
+
+Outstanding Charges Calculated
+
+↓
+
+Settlement (if required)
+
+↓
+
+Remaining Balance
+
+↓
+
+EmploymentManager
+
+↓
+
+SentryWallet
+
+↓
+
+Funds sent to user's destination wallet
+```
+
+The wallet should expose only manager-authorized withdrawal functions.
+
+---
+
+# 7. Outstanding Charges
+
+Outstanding Charges remain an off-chain accounting concept.
+
+During withdrawal:
+
+The backend calculates:
+
+```text
+Withdrawable Balance
+
+=
+
+Wallet Balance
+
+−
+
+Outstanding Charges
+
+−
+
+Estimated Settlement Fee
+```
+
+If Outstanding Charges exist:
+
+EmploymentManager first settles them.
+
+Only then should remaining funds be transferred to the user's destination wallet.
+
+Users must never be able to bypass outstanding charges.
+
+---
+
+# 8. Destination Wallet
+
+Every user profile should have a withdrawal destination.
+
+This is independent of the Sentry Wallet.
+
+Examples:
+
+* MiniPay
+* MetaMask
+* Valora
+* Safe
+* Any EVM wallet
+
+Users may update their destination wallet through the dashboard.
+
+The Sentry Wallet remains unchanged.
+
+---
+
+# 9. SentryWallet Changes
+
+Refactor SentryWallet accordingly.
+
+It should:
+
+* permanently store its payment currency,
+* permanently store its identity hash,
+* permanently know its EmploymentManager,
+* remove owner-controlled withdrawal,
+* expose only manager-authorized:
+
+  * executeSettlement()
+  * withdrawTo()
+
+Users never interact with the contract directly.
+
+---
+
+# 10. EmploymentManager Changes
+
+EmploymentManager becomes responsible for:
+
+* settlement authorization,
+* withdrawal authorization,
+* treasury payments,
+* payment currency validation,
+* replay protection,
+* employment lifecycle.
+
+EmploymentManager should never store user balances.
+
+The wallet remains the sole custodian of funds.
+
+---
+
+# 11. SentryWalletFactory Changes
+
+During deployment:
+
+Validate:
+
+* currency enabled,
+* identity unused,
+* user does not already own a Sentry Wallet.
+
+Deploy:
+
+```text
+SentryWallet
+```
+
+with:
+
+* identity hash,
+* immutable payment currency,
+* EmploymentManager,
+* supported token addresses.
+
+Register mappings.
+
+---
+
+# 12. Backend Changes
+
+Update all APIs.
+
+Remove assumptions that users own the wallet.
+
+Withdrawal endpoints should now:
+
+1. Calculate outstanding charges.
+2. Trigger settlement if required.
+3. Withdraw remaining balance through EmploymentManager.
+4. Transfer funds to the user's registered destination wallet.
+5. Record settlement and withdrawal.
+
+---
+
+# 13. Database
+
+Add (if not already present):
+
+```text
+withdrawalAddress
+
+walletCurrency
+```
+
+`walletCurrency` is immutable after wallet creation.
+
+`withdrawalAddress` is user-editable.
+
+---
+
+# 14. Tests
+
+Completely update the contract tests.
+
+Add coverage for:
+
+## Multi-Currency
+
+* create wallet with CELO
+* create wallet with USDm
+* create wallet with USDC
+* reject disabled currency
+* existing wallet still works after currency disabled
+
+---
+
+## Withdrawals
+
+* withdraw without outstanding charges
+* withdraw with outstanding charges
+* settlement executed before withdrawal
+* unauthorized withdrawal
+* incorrect destination wallet
+* insufficient funds
+
+---
+
+## Settlement
+
+* settlement uses wallet currency
+* duplicate settlement rejected
+* settlement replay rejected
+
+---
+
+## Factory
+
+* immutable wallet currency
+* duplicate identity rejection
+* duplicate wallet rejection
+
+---
+
+# 15. Deliverables
+
+Provide:
+
+* updated contract architecture summary,
+* deployment changes,
+* updated ABI sync,
+* migration notes,
+* rewritten test summary,
+* coverage report.
+
+The final architecture should satisfy the following principles:
+
+* Sentry Wallets are true on-chain smart wallets.
+* Each wallet has one immutable payment currency.
+* Multiple payment currencies may coexist across the platform.
+* Existing wallets are unaffected by future currency policy changes.
+* Users never interact directly with wallet contracts.
+* EmploymentManager is the only contract authorized to move user funds.
+* Outstanding charges are always reconciled before withdrawals.
+* The blockchain remains the source of truth for assets, while the backend remains the source of truth for unsettled work.
+
+---
+
+# Agent Session Summary — Prompt 10: Multi-Currency Manager-Controlled Custody
+
+## Architecture delivered
+
+- Removed the global active payment token from `EmploymentManager`.
+- Every `SentryWallet` now stores an immutable currency, identity hash, manager, and selected ERC20 address (zero for CELO).
+- Removed user/owner withdrawals from `SentryWallet`; only `EmploymentManager` can call `executeSettlement` and `withdrawTo`.
+- Added factory currency policies with independent enable/disable state and token-address updates for future wallets only.
+- Existing wallets retain their original currency and token address after future factory policy changes.
+- Added manager withdrawal destinations, withdrawal replay protection, and an atomic `settleAndWithdraw` path.
+
+## Backend and database
+
+- Added immutable `Wallet.walletCurrency`, editable `User.withdrawalAddress`, per-currency configuration, and persisted `Withdrawal` history.
+- Replaced global-currency reads throughout wallet, billing, employment, Telegram, and blockchain services with each wallet's currency.
+- Wallet provisioning now validates an enabled currency, deploys through `SentryWalletFactory`, and registers the wallet with `EmploymentManager`.
+- Withdrawal requests reserve outstanding charges and the estimated settlement fee, settle pending work first, then submit the remaining transfer through `EmploymentManager`.
+- Added destination and withdrawal-history APIs plus dashboard controls for currency selection, direct CELO/ERC20 funding, destination updates, and manager-executed withdrawals.
+- Updated admin payment controls to independently enable currencies and update ERC20 addresses.
+
+## Deployment, ABI, and migration notes
+
+- Updated application bindings to `EmploymentManager` and `SentryWalletFactory`; `sync-data.js` remains configured for those two contracts.
+- Added `20260716110000_multi_currency_custody`, which replaces the global payment config and creates currency policy and withdrawal records.
+- Existing legacy user-owned wallet deployments cannot be upgraded in place; they must be re-provisioned under the new factory/manager architecture before production migration.
+
+## Tests and validation
+
+- Smart-contract compile: passed.
+- Rewritten contract tests: **20 passing**.
+- Backend tests: **9 passing**.
+- Solidity coverage: **85.85% statements**, **51.18% branches**, **88.24% functions**, **87.59% lines**.
+- `SentryWallet.sol`: **100% statements/functions/lines**.
+- Local Hardhat deployment succeeded for `EmploymentManager` and `SentryWalletFactory`.
+- The production build/type-check commands were aborted after stalling in the local Windows environment without diagnostics; contract compilation and both test suites completed successfully.

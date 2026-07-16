@@ -22,62 +22,27 @@ const TOKEN_INDEX: Record<PaymentCurrency, number> = {
   USDT: 3,
 };
 
-const employmentAbi = [
+const walletAbi = [
   {
     type: "function",
-    name: "balanceOf",
+    name: "balance",
     stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
+    inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
-    name: "activePaymentToken",
+    name: "paymentCurrency",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint8" }],
   },
   {
     type: "function",
-    name: "charge",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "account", type: "address" },
-      { name: "amount", type: "uint256" },
-      { name: "actionId", type: "bytes32" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "pause",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "resume",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "registerIdentity",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "identityHash", type: "bytes32" },
-      { name: "wallet", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setActivePaymentToken",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "token", type: "uint8" }],
-    outputs: [],
+    name: "tokenAddress",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
   },
 ] as const;
 
@@ -86,47 +51,120 @@ const factoryAbi = [
     type: "function",
     name: "createWallet",
     stateMutability: "nonpayable",
-    inputs: [{ name: "identityHash", type: "bytes32" }],
+    inputs: [
+      { name: "identityHash", type: "bytes32" },
+      { name: "userKey", type: "address" },
+      { name: "currency", type: "uint8" },
+    ],
     outputs: [{ name: "wallet", type: "address" }],
   },
   {
     type: "function",
-    name: "walletFor",
+    name: "walletOfIdentity",
     stateMutability: "view",
     inputs: [{ name: "identityHash", type: "bytes32" }],
     outputs: [{ name: "", type: "address" }],
   },
+  {
+    type: "function",
+    name: "setCurrencyEnabled",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "currency", type: "uint8" },
+      { name: "enabled", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "updateTokenAddress",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "currency", type: "uint8" },
+      { name: "newAddress", type: "address" },
+    ],
+    outputs: [],
+  },
 ] as const;
 
-function operatorKey(): Hex | null {
-  const raw = process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
+const managerAbi = [
+  {
+    type: "function",
+    name: "registerEmployment",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "wallet", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "chargeSettlement",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "settlementId", type: "bytes32" },
+      { name: "serviceAmount", type: "uint256" },
+      { name: "settlementFee", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "setWithdrawalDestination",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "destination", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "withdrawalId", type: "bytes32" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "pauseEmployment",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resumeEmployment",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "user", type: "address" }],
+    outputs: [],
+  },
+] as const;
+
+function key(name: "owner" | "operator"): Hex | null {
+  const raw =
+    name === "owner"
+      ? process.env.SENTRY_OWNER_KEY ?? process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY
+      : process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
   if (!raw?.trim()) return null;
-  const key = raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`;
-  return key as Hex;
+  return (raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`) as Hex;
 }
 
-function ownerKey(): Hex | null {
-  const raw = process.env.SENTRY_OWNER_KEY ?? process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
-  if (!raw?.trim()) return null;
-  const key = raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`;
-  return key as Hex;
+function configuredAddress(
+  envName: string,
+  contract: { address?: Address; addresses: Record<string, string> },
+): Address | null {
+  const candidate = process.env[envName] ?? contract.address ?? contract.addresses["42220"];
+  return candidate && isAddress(candidate) ? (candidate as Address) : null;
 }
 
-/** Celo Mainnet only. Blockchain is source of truth for balances and charges. */
 export class BlockchainService {
-  isConfigured() {
-    return Boolean(this.contractAddress() && operatorKey());
-  }
-
-  connect() {
-    return {
-      connected: this.isConfigured(),
-      network: "celo-mainnet",
-      chainId: 42220,
-      employmentContract: CONTRACTS.EmploymentContract.address ?? null,
-    };
-  }
-
   private client() {
     return createPublicClient({
       chain: celo,
@@ -134,63 +172,71 @@ export class BlockchainService {
     });
   }
 
-  private contractAddress(): Address | null {
-    const addr = CONTRACTS.EmploymentContract.address;
-    if (!addr || !isAddress(addr)) return null;
-    return addr;
+  private managerAddress() {
+    return configuredAddress(
+      "EMPLOYMENT_MANAGER_ADDRESS",
+      CONTRACTS.EmploymentManager as {
+        address?: Address;
+        addresses: Record<string, string>;
+      },
+    );
   }
 
-  private factoryAddress(): Address | null {
-    const addr = CONTRACTS.EmploymentWalletFactory?.address;
-    if (!addr || !isAddress(addr)) return null;
-    return addr;
+  private factoryAddress() {
+    return configuredAddress(
+      "SENTRY_WALLET_FACTORY_ADDRESS",
+      CONTRACTS.SentryWalletFactory as {
+        address?: Address;
+        addresses: Record<string, string>;
+      },
+    );
+  }
+
+  private walletClient(kind: "owner" | "operator", address: Address | null) {
+    const privateKey = key(kind);
+    if (!privateKey || !address) return null;
+    const account = privateKeyToAccount(privateKey);
+    return {
+      account,
+      address,
+      wallet: createWalletClient({
+        account,
+        chain: celo,
+        transport: http(process.env.CELO_RPC ?? "https://forno.celo.org"),
+      }),
+    };
+  }
+
+  isConfigured() {
+    return Boolean(this.managerAddress() && key("operator"));
   }
 
   isFactoryConfigured() {
-    return Boolean(this.factoryAddress() && operatorKey());
+    return Boolean(this.factoryAddress() && key("owner"));
   }
 
-  private async operatorWallet() {
-    const key = operatorKey();
-    const address = this.contractAddress();
-    if (!key || !address) return null;
-    const account = privateKeyToAccount(key);
-    const wallet = createWalletClient({
-      account,
-      chain: celo,
-      transport: http(process.env.CELO_RPC ?? "https://forno.celo.org"),
-    });
-    return { wallet, account, address };
-  }
-
-  private async ownerWallet() {
-    const key = ownerKey();
-    const address = this.contractAddress();
-    if (!key || !address) return null;
-    const account = privateKeyToAccount(key);
-    const wallet = createWalletClient({
-      account,
-      chain: celo,
-      transport: http(process.env.CELO_RPC ?? "https://forno.celo.org"),
-    });
-    return { wallet, account, address };
+  connect() {
+    return {
+      connected: this.isConfigured(),
+      network: "celo-mainnet",
+      chainId: 42220,
+      employmentManager: this.managerAddress(),
+      walletFactory: this.factoryAddress(),
+    };
   }
 
   async getEmploymentBalance(address: string) {
-    const contractAddress = this.contractAddress();
-    if (!contractAddress || !isAddress(address)) return null;
-
+    if (!isAddress(address)) return null;
     try {
       const raw = await this.client().readContract({
-        address: contractAddress,
-        abi: employmentAbi,
-        functionName: "balanceOf",
-        args: [address as Address],
+        address: address as Address,
+        abi: walletAbi,
+        functionName: "balance",
       });
       return {
         wei: raw.toString(),
         formatted: formatEther(raw),
-        contract: contractAddress,
+        contract: address,
       };
     } catch {
       return null;
@@ -198,205 +244,207 @@ export class BlockchainService {
   }
 
   async syncBalanceCache(address: Address): Promise<number | null> {
-    const onChain = await this.getEmploymentBalance(address);
-    if (!onChain) return null;
-    return Number(onChain.formatted);
+    const balance = await this.getEmploymentBalance(address);
+    return balance ? Number(balance.formatted) : null;
   }
 
-  /** Chain-first charge — throws if unavailable or tx fails. */
-  async chargeOnChain(input: {
-    account: Address;
-    amount: number;
-    actionId: Hex;
-  }): Promise<string> {
-    const op = await this.operatorWallet();
-    if (!op) throw Errors.blockchainUnavailable();
-
-    const hash = await op.wallet.writeContract({
-      address: op.address,
-      abi: employmentAbi,
-      functionName: "charge",
-      args: [input.account, parseEther(input.amount.toString()), input.actionId],
-      account: op.account,
-      chain: celo,
-    });
-    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
-    if (receipt.status !== "success") {
-      throw Errors.chargeFailed("Transaction reverted on-chain");
+  async getWalletTokenAddress(address: Address): Promise<Address | null> {
+    try {
+      const token = await this.client().readContract({
+        address,
+        abi: walletAbi,
+        functionName: "tokenAddress",
+      });
+      return token === "0x0000000000000000000000000000000000000000"
+        ? null
+        : (token as Address);
+    } catch {
+      return null;
     }
-    return hash;
   }
 
-  /** Batch settlement — service revenue + fee in one on-chain transfer. */
-  async chargeSettlementOnChain(input: {
-    account: Address;
-    totalAmount: number;
-    settlementId: Hex;
-  }): Promise<string> {
-    const op = await this.operatorWallet();
-    if (!op) throw Errors.blockchainUnavailable();
-
-    const hash = await op.wallet.writeContract({
-      address: op.address,
-      abi: [
-        ...employmentAbi,
-        {
-          type: "function",
-          name: "chargeSettlement",
-          stateMutability: "nonpayable",
-          inputs: [
-            { name: "account", type: "address" },
-            { name: "totalAmount", type: "uint256" },
-            { name: "settlementId", type: "bytes32" },
-          ],
-          outputs: [],
-        },
-      ] as const,
-      functionName: "chargeSettlement",
-      args: [input.account, parseEther(input.totalAmount.toString()), input.settlementId],
-      account: op.account,
-      chain: celo,
-    });
-    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
-    if (receipt.status !== "success") {
-      throw Errors.chargeFailed("Settlement transaction reverted on-chain");
-    }
-    return hash;
-  }
-
-  async pauseOnChain(account: Address): Promise<string | null> {
-    const op = await this.operatorWallet();
-    if (!op) return null;
-    return op.wallet.writeContract({
-      address: op.address,
-      abi: employmentAbi,
-      functionName: "pause",
-      args: [account],
-      account: op.account,
-      chain: celo,
-    });
-  }
-
-  async resumeOnChain(account: Address): Promise<string | null> {
-    const op = await this.operatorWallet();
-    if (!op) return null;
-    return op.wallet.writeContract({
-      address: op.address,
-      abi: employmentAbi,
-      functionName: "resume",
-      args: [account],
-      account: op.account,
-      chain: celo,
-    });
-  }
-
-  async registerIdentityOnChain(identityHash: Hex, wallet: Address): Promise<string | null> {
-    const op = await this.operatorWallet();
-    if (!op) return null;
-    return op.wallet.writeContract({
-      address: op.address,
-      abi: employmentAbi,
-      functionName: "registerIdentity",
-      args: [identityHash, wallet],
-      account: op.account,
-      chain: celo,
-    });
-  }
-
-  /** Deploy or fetch employment wallet from factory (idempotent). */
-  async ensureEmploymentWallet(identityHash: Hex): Promise<Address> {
+  async ensureSentryWallet(input: {
+    identityHash: Hex;
+    userKey: Address;
+    currency: PaymentCurrency;
+  }): Promise<Address> {
     const factory = this.factoryAddress();
-    const op = await this.operatorWallet();
-    if (!factory || !op) throw Errors.blockchainUnavailable();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
 
     const existing = await this.client().readContract({
       address: factory,
       abi: factoryAbi,
-      functionName: "walletFor",
-      args: [identityHash],
+      functionName: "walletOfIdentity",
+      args: [input.identityHash],
     });
-
-    if (existing && existing !== "0x0000000000000000000000000000000000000000") {
+    if (existing !== "0x0000000000000000000000000000000000000000") {
       return existing as Address;
     }
 
-    const hash = await op.wallet.writeContract({
+    const hash = await owner.wallet.writeContract({
       address: factory,
       abi: factoryAbi,
       functionName: "createWallet",
-      args: [identityHash],
-      account: op.account,
-      chain: celo,
-    });
-    const receipt = await this.client().waitForTransactionReceipt({ hash: hash as Hash });
-    if (receipt.status !== "success") {
-      throw Errors.blockchainUnavailable();
-    }
-
-    const wallet = await this.client().readContract({
-      address: factory,
-      abi: factoryAbi,
-      functionName: "walletFor",
-      args: [identityHash],
-    });
-    if (!wallet || wallet === "0x0000000000000000000000000000000000000000") {
-      throw Errors.blockchainUnavailable();
-    }
-    return wallet as Address;
-  }
-
-  async setActivePaymentToken(currency: PaymentCurrency): Promise<string | null> {
-    const owner = await this.ownerWallet();
-    if (!owner) return null;
-    return owner.wallet.writeContract({
-      address: owner.address,
-      abi: employmentAbi,
-      functionName: "setActivePaymentToken",
-      args: [TOKEN_INDEX[currency]],
+      args: [input.identityHash, input.userKey, TOKEN_INDEX[input.currency]],
       account: owner.account,
       chain: celo,
     });
+    await this.requireSuccess(hash);
+    return (await this.client().readContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "walletOfIdentity",
+      args: [input.identityHash],
+    })) as Address;
   }
 
-  getContractAddress(): Address | null {
-    return this.contractAddress();
+  async registerEmploymentOnChain(userKey: Address, walletAddress: Address) {
+    const manager = this.managerAddress();
+    const owner = this.walletClient("owner", manager);
+    if (!manager || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName: "registerEmployment",
+      args: [userKey, walletAddress],
+      account: owner.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
   }
 
-  getDepositAbi() {
-    return [
-      ...employmentAbi,
-      {
-        type: "function",
-        name: "depositNativeFor",
-        stateMutability: "payable",
-        inputs: [{ name: "account", type: "address" }],
-        outputs: [],
-      },
-      {
-        type: "function",
-        name: "depositERC20For",
-        stateMutability: "nonpayable",
-        inputs: [
-          { name: "account", type: "address" },
-          { name: "amount", type: "uint256" },
-        ],
-        outputs: [],
-      },
-      {
-        type: "function",
-        name: "depositNative",
-        stateMutability: "payable",
-        inputs: [],
-        outputs: [],
-      },
-      {
-        type: "function",
-        name: "depositERC20",
-        stateMutability: "nonpayable",
-        inputs: [{ name: "amount", type: "uint256" }],
-        outputs: [],
-      },
-    ] as const;
+  async chargeSettlementOnChain(input: {
+    userKey: Address;
+    serviceAmount: number;
+    settlementFee: number;
+    settlementId: Hex;
+  }) {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator) throw Errors.blockchainUnavailable();
+    const hash = await operator.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName: "chargeSettlement",
+      args: [
+        input.userKey,
+        input.settlementId,
+        parseEther(input.serviceAmount.toString()),
+        parseEther(input.settlementFee.toString()),
+      ],
+      account: operator.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async setWithdrawalDestination(userKey: Address, destination: Address) {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator) throw Errors.blockchainUnavailable();
+    const hash = await operator.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName: "setWithdrawalDestination",
+      args: [userKey, destination],
+      account: operator.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async withdrawOnChain(userKey: Address, withdrawalId: Hex, amount: number) {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator) throw Errors.blockchainUnavailable();
+    const hash = await operator.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName: "withdraw",
+      args: [userKey, withdrawalId, parseEther(amount.toString())],
+      account: operator.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async pauseOnChain(userKey: Address) {
+    return this.writeEmploymentState("pauseEmployment", userKey);
+  }
+
+  async resumeOnChain(userKey: Address) {
+    return this.writeEmploymentState("resumeEmployment", userKey);
+  }
+
+  async setCurrencyEnabled(currency: PaymentCurrency, enabled: boolean) {
+    const factory = this.factoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "setCurrencyEnabled",
+      args: [TOKEN_INDEX[currency], enabled],
+      account: owner.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async updateTokenAddress(currency: PaymentCurrency, tokenAddress: Address) {
+    const factory = this.factoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: factoryAbi,
+      functionName: "updateTokenAddress",
+      args: [TOKEN_INDEX[currency], tokenAddress],
+      account: owner.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  getManagerAddress() {
+    return this.managerAddress();
+  }
+
+  getFactoryAddress() {
+    return this.factoryAddress();
+  }
+
+  private async writeEmploymentState(
+    functionName: "pauseEmployment" | "resumeEmployment",
+    userKey: Address,
+  ) {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator) throw Errors.blockchainUnavailable();
+    const hash = await operator.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName,
+      args: [userKey],
+      account: operator.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  private async requireSuccess(hash: Hash) {
+    const receipt = await this.client().waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") {
+      throw Errors.chargeFailed("Transaction reverted on-chain");
+    }
   }
 }
 

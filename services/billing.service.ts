@@ -6,7 +6,8 @@ import { paymentService } from "@/services/payment.service";
 import { keccak256, toBytes } from "viem";
 import { Errors } from "@/lib/errors";
 import { logEvent } from "@/lib/logger";
-import { formatAmount } from "@/lib/payment-currency";
+import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
+import { identityUserKey } from "@/lib/identity";
 import {
   getSettlementConfig,
   settlementIntervalMs,
@@ -23,12 +24,12 @@ export type BalanceLedger = {
   outstandingCharges: number;
   availableBalance: number;
   withdrawableBalance: number;
-  currency: string;
+  currency: PaymentCurrency;
 };
 
 export class BillingService {
   async getPricing() {
-    const currency = await paymentService.getActiveCurrency();
+    const currency = await paymentService.getDefaultCurrency();
     const { getPricing } = await import("@/lib/pricing");
     return getPricing(currency);
   }
@@ -66,18 +67,22 @@ export class BillingService {
   }
 
   async getBalanceLedger(userId: string): Promise<BalanceLedger> {
-    const currency = await paymentService.getActiveCurrency();
-    const [onChainBalance, employment] = await Promise.all([
+    const [onChainBalance, employment, wallet] = await Promise.all([
       this.syncOnChainBalance(userId),
       prisma.employment.findUnique({ where: { userId } }),
+      prisma.wallet.findUnique({ where: { userId } }),
     ]);
+    const currency =
+      (wallet?.walletCurrency as PaymentCurrency | undefined) ??
+      (await paymentService.getDefaultCurrency());
     const outstandingCharges = bal(employment?.outstandingCharges);
     const availableBalance = Math.max(0, onChainBalance - outstandingCharges);
+    const feeReserve = outstandingCharges > 0 ? this.estimateSettlementFee() : 0;
     return {
       onChainBalance,
       outstandingCharges,
       availableBalance,
-      withdrawableBalance: availableBalance,
+      withdrawableBalance: Math.max(0, availableBalance - feeReserve),
       currency,
     };
   }
@@ -239,7 +244,7 @@ export class BillingService {
   }
 
   async getHistory(userId: string, take = 50) {
-    const [settlements, outstanding] = await Promise.all([
+    const [settlements, outstanding, withdrawals] = await Promise.all([
       prisma.settlement.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
@@ -253,6 +258,11 @@ export class BillingService {
         orderBy: { createdAt: "desc" },
         take,
         include: { actionRecord: { include: { group: true } } },
+      }),
+      prisma.withdrawal.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take,
       }),
     ]);
 
@@ -279,6 +289,16 @@ export class BillingService {
         type: c.actionRecord.type,
         groupName: c.actionRecord.group?.name ?? null,
       })),
+      withdrawals: withdrawals.map((withdrawal) => ({
+        id: withdrawal.id,
+        amount: bal(withdrawal.amount),
+        currency: withdrawal.currency,
+        destination: withdrawal.destination,
+        status: withdrawal.status,
+        transactionHash: withdrawal.transactionHash,
+        createdAt: withdrawal.createdAt,
+        completedAt: withdrawal.completedAt,
+      })),
     };
   }
 
@@ -297,7 +317,7 @@ export class BillingService {
     const amount = this.calculateCharge(action.type);
     if (amount <= 0) return null;
 
-    const currency = await paymentService.getActiveCurrency();
+    const currency = action.user.wallet.walletCurrency as PaymentCurrency;
     const wallet = action.user.wallet;
 
     const ledgerBefore = await this.getBalanceLedger(action.userId);
@@ -391,7 +411,7 @@ export class BillingService {
     const serviceAmount = pendingCharges.reduce((sum, c) => sum + bal(c.amount), 0);
     const settlementFee = this.estimateSettlementFee();
     const totalAmount = serviceAmount + settlementFee;
-    const currency = await paymentService.getActiveCurrency();
+    const currency = wallet.walletCurrency as PaymentCurrency;
 
     const settlement = await prisma.settlement.create({
       data: {
@@ -439,8 +459,9 @@ export class BillingService {
       });
 
       const txHash = await blockchainService.chargeSettlementOnChain({
-        account: wallet.address as `0x${string}`,
-        totalAmount,
+        userKey: identityUserKey(wallet.identityHash as `0x${string}`),
+        serviceAmount,
+        settlementFee,
         settlementId: settlementHash,
       });
 
@@ -612,8 +633,10 @@ export class BillingService {
     }
 
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (wallet) {
-      await blockchainService.pauseOnChain(wallet.address as `0x${string}`).catch(() => undefined);
+    if (wallet?.identityHash) {
+      await blockchainService
+        .pauseOnChain(identityUserKey(wallet.identityHash as `0x${string}`))
+        .catch(() => undefined);
     }
 
     logEvent("Employment Exhausted", { userId, reason });
@@ -648,8 +671,10 @@ export class BillingService {
     }
 
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (wallet) {
-      await blockchainService.resumeOnChain(wallet.address as `0x${string}`).catch(() => undefined);
+    if (wallet?.identityHash) {
+      await blockchainService
+        .resumeOnChain(identityUserKey(wallet.identityHash as `0x${string}`))
+        .catch(() => undefined);
     }
 
     logEvent("Employment Resumed", { userId });
@@ -674,12 +699,12 @@ export class BillingService {
   }
 
   async getStatus() {
-    const currency = await paymentService.getActiveCurrency();
+    const currencies = await paymentService.getEnabledCurrencies();
     const config = getSettlementConfig();
     return {
       active: true,
       mode: "prepaid-settlement",
-      currency,
+      currencies,
       chainConfigured: blockchainService.isConfigured(),
       settlement: config,
     };

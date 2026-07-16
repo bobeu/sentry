@@ -1,5 +1,6 @@
 import type { Address, Hex } from "viem";
 import { blockchainService } from "@/services/blockchain.service";
+import type { PaymentCurrency } from "@/lib/payment-currency";
 
 export type SmartWallet = {
   address: Address;
@@ -8,11 +9,16 @@ export type SmartWallet = {
 
 export interface WalletProvider {
   readonly name: string;
-  ensureSmartWallet(input: { userId: string; identityHash: Hex }): Promise<SmartWallet>;
+  ensureSmartWallet(input: {
+    userId: string;
+    identityHash: Hex;
+    userKey: Address;
+    currency: PaymentCurrency;
+  }): Promise<SmartWallet>;
 }
 
 /**
- * Deploys a real EmploymentWallet via EmploymentWalletFactory (one per identity, permanent).
+ * Deploys a manager-controlled SentryWallet with one immutable currency.
  */
 export class EmploymentFactoryWalletProvider implements WalletProvider {
   readonly name = "employment-wallet-factory";
@@ -20,9 +26,11 @@ export class EmploymentFactoryWalletProvider implements WalletProvider {
   async ensureSmartWallet(input: {
     userId: string;
     identityHash: Hex;
+    userKey: Address;
+    currency: PaymentCurrency;
   }): Promise<SmartWallet> {
-    const address = await blockchainService.ensureEmploymentWallet(input.identityHash);
-    return { address, provider: this.name };
+    const address = await blockchainService.ensureSentryWallet(input);
+    return { address, provider: "sentry-wallet-factory" };
   }
 }
 

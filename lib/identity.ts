@@ -1,4 +1,4 @@
-import { keccak256, toBytes } from "viem";
+import { getAddress, keccak256, toBytes, type Address, type Hex } from "viem";
 
 /** Namespaced identity hash for on-chain registration. */
 export function identityHash(namespace: "email" | "telegram" | "wallet", value: string) {
@@ -17,4 +17,9 @@ export function emailIdentityHash(email: string) {
 
 export function telegramIdentityHash(telegramUserId: string) {
   return identityHash("telegram", telegramUserId);
+}
+
+/** Stable address-shaped on-chain identifier. It is never used as a custody key. */
+export function identityUserKey(hash: Hex): Address {
+  return getAddress(`0x${hash.slice(-40)}`);
 }

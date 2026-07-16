@@ -3,7 +3,9 @@ import type { EmploymentStatus } from "@prisma/client";
 import { walletService } from "@/services/wallet.service";
 import { actionService } from "@/services/action.service";
 import { billingService } from "@/services/billing.service";
-import { paymentService } from "@/services/payment.service";
+import type { PaymentCurrency } from "@/lib/payment-currency";
+import { blockchainService } from "@/services/blockchain.service";
+import { identityUserKey } from "@/lib/identity";
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
 
@@ -16,8 +18,8 @@ export class EmploymentService {
   async getStatus(userId: string) {
     let employment = await prisma.employment.findUnique({ where: { userId } });
     const walletRow = await prisma.wallet.findUnique({ where: { userId } });
-    const currency = await paymentService.getActiveCurrency();
     const ledger = await billingService.getBalanceLedger(userId);
+    const currency = ledger.currency;
     const settlement = await billingService.getSettlementStatus(userId);
 
     if (employment?.status === "Active" && ledger.availableBalance <= 0) {
@@ -64,8 +66,8 @@ export class EmploymentService {
     };
   }
 
-  async start(userId: string, email?: string) {
-    const wallet = await walletService.ensureSmartWallet(userId, email);
+  async start(userId: string, email?: string, currency?: PaymentCurrency) {
+    const wallet = await walletService.ensureSmartWallet(userId, email, currency);
     const ledger = await billingService.getBalanceLedger(userId);
     const nextStatus: EmploymentStatus = ledger.availableBalance > 0 ? "Active" : "Inactive";
 
@@ -111,6 +113,12 @@ export class EmploymentService {
       where: { userId },
       data: { status: "Paused", pausedAt: new Date() },
     });
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (wallet?.identityHash && blockchainService.isConfigured()) {
+      await blockchainService.pauseOnChain(
+        identityUserKey(wallet.identityHash as `0x${string}`),
+      );
+    }
 
     logEvent("Employment Paused", { userId });
     return {
@@ -150,6 +158,12 @@ export class EmploymentService {
         startedAt: employment.startedAt ?? new Date(),
       },
     });
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (wallet?.identityHash && blockchainService.isConfigured()) {
+      await blockchainService.resumeOnChain(
+        identityUserKey(wallet.identityHash as `0x${string}`),
+      );
+    }
 
     logEvent("Employment Resumed", { userId });
     return {
