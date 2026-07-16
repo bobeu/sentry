@@ -8,12 +8,13 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 /**
  * @title SentryWallet
  * @notice Manager-controlled custody for one identity and one immutable payment currency.
- * @dev Users cannot move wallet funds directly. EmploymentManager is the sole authority.
+ * @dev Users never move funds directly. EmploymentManager is the sole settlement and withdrawal authority.
+ *      Wallet lifecycle (Provisioning → Active → Locked → Archived) is independent of employment status.
  */
 contract SentryWallet is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    /// @notice Assets supported by the wallet.
+    /// @notice Supported payment assets.
     enum Token {
         CELO,
         USDm,
@@ -21,10 +22,21 @@ contract SentryWallet is ReentrancyGuard {
         USDT
     }
 
+    /// @notice Wallet lifecycle states managed by EmploymentManager.
+    enum WalletStatus {
+        Provisioning,
+        Active,
+        Locked,
+        Archived
+    }
+
+    /// @notice Immutable implementation version for indexers and future factory routing.
+    uint256 public constant VERSION = 1;
+
     /// @notice Private identity commitment associated with this wallet.
     bytes32 public immutable identityHash;
 
-    /// @notice Manager authorized to execute settlements.
+    /// @notice Manager authorized to settle, withdraw, and manage lifecycle.
     address public immutable manager;
 
     /// @notice Currency permanently assigned when the wallet is deployed.
@@ -33,16 +45,25 @@ contract SentryWallet is ReentrancyGuard {
     /// @notice ERC20 contract for paymentCurrency, or zero for native CELO.
     address public immutable tokenAddress;
 
+    /// @notice Current wallet lifecycle state.
+    WalletStatus public status;
+
     /// @notice Emitted when native CELO is received.
-    /// @param from Sender of the funds.
-    /// @param amount Amount received.
     event NativeReceived(address indexed from, uint256 amount);
 
+    /// @notice Emitted when funds are deposited or synchronized into the wallet.
+    /// @param wallet This wallet address.
+    /// @param from Funding source.
+    /// @param amount Amount received in the wallet currency.
+    /// @param currency Immutable wallet currency.
+    event WalletFunded(
+        address indexed wallet,
+        address indexed from,
+        uint256 amount,
+        Token currency
+    );
+
     /// @notice Emitted after the manager executes a user withdrawal.
-    /// @param to Recipient of the withdrawal.
-    /// @param token Asset withdrawn.
-    /// @param amount Amount withdrawn.
-    /// @param withdrawalId Unique withdrawal identifier.
     event Withdrawal(
         address indexed to,
         Token indexed token,
@@ -51,10 +72,6 @@ contract SentryWallet is ReentrancyGuard {
     );
 
     /// @notice Emitted after the manager executes a settlement.
-    /// @param treasury Settlement recipient.
-    /// @param token Settled asset.
-    /// @param amount Total settlement amount.
-    /// @param settlementId Unique settlement identifier.
     event SettlementExecuted(
         address indexed treasury,
         Token indexed token,
@@ -62,30 +79,33 @@ contract SentryWallet is ReentrancyGuard {
         bytes32 indexed settlementId
     );
 
-    /// @notice Caller is not the employment manager.
+    /// @notice Emitted when wallet lifecycle changes.
+    event WalletStatusChanged(
+        WalletStatus indexed previousStatus,
+        WalletStatus indexed newStatus
+    );
+
     error UnauthorizedManager();
-
-    /// @notice Address argument cannot be zero.
     error ZeroAddress();
-
-    /// @notice Identity hash cannot be zero.
     error InvalidIdentity();
-
-    /// @notice Amount must be greater than zero.
     error InvalidAmount();
-
-    /// @notice Native CELO transfer failed.
     error NativeTransferFailed();
+    error InvalidTokenConfig();
+    error InvalidWalletStatus();
 
-    /// @dev Restricts settlement execution to EmploymentManager.
     modifier onlyManager() {
         if (msg.sender != manager) revert UnauthorizedManager();
         _;
     }
 
+    modifier onlyActive() {
+        if (status != WalletStatus.Active) revert InvalidWalletStatus();
+        _;
+    }
+
     /**
      * @notice Creates a manager-controlled wallet for one identity and currency.
-     * @param employmentManager Manager authorized to settle funds.
+     * @param employmentManager Manager authorized to settle funds and manage lifecycle.
      * @param identityHash_ Namespaced identity commitment.
      * @param currency_ Immutable wallet currency.
      * @param tokenAddress_ ERC20 address, or zero for CELO.
@@ -105,12 +125,14 @@ contract SentryWallet is ReentrancyGuard {
         identityHash = identityHash_;
         paymentCurrency = currency_;
         tokenAddress = tokenAddress_;
+        status = WalletStatus.Provisioning;
     }
 
-    /// @notice Accepts native CELO transfers.
+    /// @notice Accepts native CELO transfers for CELO wallets.
     receive() external payable {
         if (paymentCurrency != Token.CELO) revert InvalidTokenConfig();
         emit NativeReceived(msg.sender, msg.value);
+        emit WalletFunded(address(this), msg.sender, msg.value, paymentCurrency);
     }
 
     /// @notice Returns the balance of the wallet's immutable currency.
@@ -119,21 +141,51 @@ contract SentryWallet is ReentrancyGuard {
         return IERC20(tokenAddress).balanceOf(address(this));
     }
 
+    /// @notice Activates a newly provisioned wallet.
+    function activate() external onlyManager {
+        if (status != WalletStatus.Provisioning) revert InvalidWalletStatus();
+        _setStatus(WalletStatus.Active);
+    }
+
+    /// @notice Locks an active wallet to block settlements and withdrawals.
+    function lockWallet() external onlyManager {
+        if (status != WalletStatus.Active) revert InvalidWalletStatus();
+        _setStatus(WalletStatus.Locked);
+    }
+
+    /// @notice Unlocks a locked wallet.
+    function unlockWallet() external onlyManager {
+        if (status != WalletStatus.Locked) revert InvalidWalletStatus();
+        _setStatus(WalletStatus.Active);
+    }
+
+    /// @notice Archives a wallet permanently.
+    function archiveWallet() external onlyManager {
+        if (status == WalletStatus.Archived) revert InvalidWalletStatus();
+        _setStatus(WalletStatus.Archived);
+    }
+
+    /**
+     * @notice Records an ERC20 funding event after backend synchronization.
+     * @param from Funding source observed off-chain or on-chain.
+     * @param amount Amount credited in the wallet currency.
+     */
+    function notifyFunding(address from, uint256 amount) external onlyManager {
+        if (amount == 0) revert InvalidAmount();
+        emit WalletFunded(address(this), from, amount, paymentCurrency);
+    }
+
     /**
      * @notice Transfers an authorized batch settlement to the treasury.
      * @dev Replay protection and employment validation are enforced by EmploymentManager.
-     * @param treasury Settlement recipient.
-     * @param amount Service amount plus settlement fee.
-     * @param settlementId Unique settlement identifier.
      */
     function executeSettlement(
         address treasury,
         uint256 amount,
         bytes32 settlementId
-    ) external onlyManager nonReentrant {
+    ) external onlyManager onlyActive nonReentrant {
         if (treasury == address(0)) revert ZeroAddress();
         if (amount == 0) revert InvalidAmount();
-
         _transfer(treasury, amount);
         emit SettlementExecuted(treasury, paymentCurrency, amount, settlementId);
     }
@@ -148,15 +200,19 @@ contract SentryWallet is ReentrancyGuard {
         address destination,
         uint256 amount,
         bytes32 withdrawalId
-    ) external onlyManager nonReentrant {
+    ) external onlyManager onlyActive nonReentrant {
         if (destination == address(0)) revert ZeroAddress();
         if (amount == 0) revert InvalidAmount();
         _transfer(destination, amount);
         emit Withdrawal(destination, paymentCurrency, amount, withdrawalId);
     }
 
-    /// @notice Token configuration does not match the selected currency.
-    error InvalidTokenConfig();
+    function _setStatus(WalletStatus newStatus) private {
+        WalletStatus previousStatus = status;
+        if (previousStatus == newStatus) revert InvalidWalletStatus();
+        status = newStatus;
+        emit WalletStatusChanged(previousStatus, newStatus);
+    }
 
     function _transfer(address destination, uint256 amount) private {
         if (paymentCurrency == Token.CELO) {

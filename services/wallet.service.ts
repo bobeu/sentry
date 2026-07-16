@@ -60,6 +60,7 @@ export class WalletService {
         balance: 0,
         identityHash: hash,
         walletCurrency: currency,
+        walletStatus: "Active",
       },
     });
 
@@ -88,6 +89,15 @@ export class WalletService {
         where: { id: wallet.id },
         data: { balance: onChain, balanceCachedAt: new Date() },
       });
+      if (wallet.identityHash && onChain > cached) {
+        await blockchainService
+          .notifyWalletFunding(
+            walletUserKey(wallet.identityHash),
+            wallet.address as Address,
+            onChain - cached,
+          )
+          .catch(() => undefined);
+      }
     }
     return { balance, currency, address: wallet.address };
   }
@@ -109,7 +119,7 @@ export class WalletService {
     const ledger = await billingService.getBalanceLedger(userId);
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { withdrawalAddress: true },
+      select: { withdrawalAddress: true, pendingWithdrawalAddress: true },
     });
 
     return {
@@ -121,7 +131,9 @@ export class WalletService {
       availableBalance: ledger.availableBalance,
       withdrawableBalance: ledger.withdrawableBalance,
       currency: wallet.walletCurrency,
+      walletStatus: wallet.walletStatus,
       withdrawalAddress: user?.withdrawalAddress ?? null,
+      pendingWithdrawalAddress: user?.pendingWithdrawalAddress ?? null,
       provider: wallet.provider,
       identityHash: wallet.identityHash,
     };
@@ -150,19 +162,55 @@ export class WalletService {
 
   async setWithdrawalAddress(userId: string, destination: string) {
     if (!isAddress(destination)) throw new Error("Invalid withdrawal address");
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
     await prisma.user.update({
       where: { id: userId },
-      data: { withdrawalAddress: destination },
+      data: { pendingWithdrawalAddress: destination },
+    });
+    logEvent("Withdrawal Destination Pending", { userId, destination });
+    await billingService.notify(
+      userId,
+      `Confirm your new withdrawal destination ${destination} before it becomes active.`,
+    );
+    return {
+      pendingWithdrawalAddress: destination,
+      withdrawalAddress: (
+        await prisma.user.findUnique({
+          where: { id: userId },
+          select: { withdrawalAddress: true },
+        })
+      )?.withdrawalAddress ?? null,
+      confirmationRequired: true,
+    };
+  }
+
+  async confirmWithdrawalAddress(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { wallet: true },
+    });
+    if (!user?.pendingWithdrawalAddress || !isAddress(user.pendingWithdrawalAddress)) {
+      throw new Error("No pending withdrawal destination to confirm");
+    }
+    if (!user.wallet?.identityHash) throw new Error("Wallet identity is missing");
+
+    const destination = user.pendingWithdrawalAddress as Address;
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        withdrawalAddress: destination,
+        pendingWithdrawalAddress: null,
+      },
     });
 
-    if (wallet?.identityHash && blockchainService.isConfigured()) {
+    if (blockchainService.isConfigured()) {
       await blockchainService.setWithdrawalDestination(
-        walletUserKey(wallet.identityHash),
+        walletUserKey(user.wallet.identityHash),
         destination,
       );
     }
-    return { withdrawalAddress: destination };
+
+    logEvent("Withdrawal Destination Confirmed", { userId, destination });
+    return { withdrawalAddress: destination, pendingWithdrawalAddress: null };
   }
 
   async recordWithdraw(userId: string, amount: number) {
@@ -175,8 +223,11 @@ export class WalletService {
       include: { wallet: true, employment: true },
     });
     if (!user?.wallet) throw Errors.walletNotFunded();
+    if (user.pendingWithdrawalAddress) {
+      throw new Error("Confirm the pending withdrawal destination before withdrawing");
+    }
     if (!user.withdrawalAddress || !isAddress(user.withdrawalAddress)) {
-      throw new Error("Set a valid withdrawal destination first");
+      throw new Error("Set and confirm a valid withdrawal destination first");
     }
     if (!user.wallet.identityHash) throw new Error("Wallet identity is missing");
 

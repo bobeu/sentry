@@ -32,6 +32,7 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   withdrawalAddress String?
+  pendingWithdrawalAddress String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -63,6 +64,7 @@ model Wallet {
   balanceCachedAt DateTime?
   identityHash    String?
   walletCurrency  String   @default("USDm")
+  walletStatus    String   @default("Provisioning")
   provider        String   @default("employment-contract")
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)

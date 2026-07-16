@@ -7,8 +7,10 @@ import {SentryWallet} from "./SentryWallet.sol";
 
 /**
  * @title EmploymentManager
- * @notice Coordinates employment state and authorized batch settlements.
- * @dev The manager never holds user funds; each SentryWallet transfers directly to treasury.
+ * @notice Coordinates employment state, settlement authorization, and withdrawal authorization.
+ * @dev Never holds user funds. Each SentryWallet custodies assets and transfers directly to
+ *      treasury or the registered destination. Settlement and withdrawal replay protection
+ *      uses unique identifiers supplied by the backend.
  */
 contract EmploymentManager is Ownable, Pausable {
     /// @notice Employment lifecycle states.
@@ -53,8 +55,10 @@ contract EmploymentManager is Ownable, Pausable {
     mapping(address wallet => address user) public userOfWallet;
 
     /// @notice On-chain replay protection for settlement identifiers.
+    /// @notice Replay protection for settlement identifiers.
     mapping(bytes32 settlementId => bool settled) public settledBatches;
-    mapping(bytes32 withdrawalId => bool completed) public completedWithdrawals;
+    /// @notice Replay protection for withdrawal identifiers.
+    mapping(bytes32 withdrawalId => bool processed) public processedWithdrawals;
 
     /// @notice Emitted when an employment is registered and activated.
     /// @param user User who owns the employment.
@@ -133,7 +137,7 @@ contract EmploymentManager is Ownable, Pausable {
     /// @notice Service amount must be greater than zero.
     error InvalidAmount();
     error InvalidWithdrawalId();
-    error WithdrawalAlreadyCompleted();
+    error WithdrawalAlreadyProcessed();
     error WithdrawalDestinationNotSet();
 
     /// @dev Restricts operator functions.
@@ -190,8 +194,41 @@ contract EmploymentManager is Ownable, Pausable {
             status: EmploymentStatus.Active
         });
         userOfWallet[wallet] = user;
+        SentryWallet(payable(wallet)).activate();
 
         emit EmploymentRegistered(user, wallet);
+    }
+
+    /// @notice Locks a user's wallet without changing employment status.
+    function lockWallet(address user) external onlyOperator whenNotPaused {
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        SentryWallet(payable(employment.wallet)).lockWallet();
+    }
+
+    /// @notice Unlocks a user's wallet.
+    function unlockWallet(address user) external onlyOperator whenNotPaused {
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        SentryWallet(payable(employment.wallet)).unlockWallet();
+    }
+
+    /// @notice Archives a user's wallet permanently.
+    function archiveWallet(address user) external onlyOwner {
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        SentryWallet(payable(employment.wallet)).archiveWallet();
+    }
+
+    /// @notice Records an ERC20 funding event after backend synchronization.
+    function notifyWalletFunding(
+        address user,
+        address from,
+        uint256 amount
+    ) external onlyOperator whenNotPaused {
+        Employment storage employment = employments[user];
+        if (employment.wallet == address(0)) revert InvalidWallet();
+        SentryWallet(payable(employment.wallet)).notifyFunding(from, amount);
     }
 
     /**
@@ -312,12 +349,12 @@ contract EmploymentManager is Ownable, Pausable {
     function _withdraw(address user, bytes32 withdrawalId, uint256 amount) private {
         if (withdrawalId == bytes32(0)) revert InvalidWithdrawalId();
         if (amount == 0) revert InvalidAmount();
-        if (completedWithdrawals[withdrawalId]) revert WithdrawalAlreadyCompleted();
+        if (processedWithdrawals[withdrawalId]) revert WithdrawalAlreadyProcessed();
         Employment storage employment = employments[user];
         if (employment.wallet == address(0)) revert InvalidWallet();
         address destination = employment.withdrawalDestination;
         if (destination == address(0)) revert WithdrawalDestinationNotSet();
-        completedWithdrawals[withdrawalId] = true;
+        processedWithdrawals[withdrawalId] = true;
         SentryWallet(payable(employment.wallet)).withdrawTo(
             destination,
             amount,

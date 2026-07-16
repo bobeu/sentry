@@ -145,6 +145,17 @@ const managerAbi = [
     inputs: [{ name: "user", type: "address" }],
     outputs: [],
   },
+  {
+    type: "function",
+    name: "notifyWalletFunding",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "from", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 function key(name: "owner" | "operator"): Hex | null {
@@ -379,6 +390,22 @@ export class BlockchainService {
 
   async resumeOnChain(userKey: Address) {
     return this.writeEmploymentState("resumeEmployment", userKey);
+  }
+
+  async notifyWalletFunding(userKey: Address, from: Address, amount: number) {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator) return null;
+    const hash = await operator.wallet.writeContract({
+      address: manager,
+      abi: managerAbi,
+      functionName: "notifyWalletFunding",
+      args: [userKey, from, parseEther(amount.toString())],
+      account: operator.account,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
   }
 
   async setCurrencyEnabled(currency: PaymentCurrency, enabled: boolean) {

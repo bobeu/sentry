@@ -6,9 +6,9 @@ import {SentryWallet} from "./SentryWallet.sol";
 
 /**
  * @title SentryWalletFactory
- * @notice Deploys exactly one SentryWallet for each identity and owner.
- * @dev Uses CREATE deliberately: wallet addresses are persisted and never inferred, so CREATE2
- *      would add salt/init-code complexity without improving the one-wallet invariants.
+ * @notice Deploys exactly one SentryWallet for each identity and user key.
+ * @dev Uses CREATE deliberately. Future wallet implementations only require updating
+ *      `walletVersion` and the deployment target in this factory — no in-place upgrades.
  */
 contract SentryWalletFactory is Ownable {
     enum Token {
@@ -61,6 +61,9 @@ contract SentryWalletFactory is Ownable {
 
     /// @notice EmploymentManager assigned to every deployed wallet.
     address public immutable manager;
+
+    /// @notice Version of SentryWallet deployed by this factory.
+    uint256 public walletVersion = 1;
 
     mapping(Token currency => CurrencyConfig config) public currencies;
 

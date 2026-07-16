@@ -13,10 +13,11 @@ export async function GET() {
     const user = await requireSessionUser();
     const row = await prisma.user.findUnique({
       where: { id: user.id },
-      select: { withdrawalAddress: true },
+      select: { withdrawalAddress: true, pendingWithdrawalAddress: true },
     });
     return NextResponse.json({
       withdrawalAddress: row?.withdrawalAddress ?? null,
+      pendingWithdrawalAddress: row?.pendingWithdrawalAddress ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Destination failed";
@@ -36,6 +37,20 @@ export async function PUT(request: Request) {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Destination update failed";
+    return NextResponse.json(
+      { error: message },
+      { status: message === "Unauthorized" ? 401 : 400 },
+    );
+  }
+}
+
+/** Confirms a pending withdrawal destination and syncs it on-chain. */
+export async function POST() {
+  try {
+    const user = await requireSessionUser();
+    return NextResponse.json(await walletService.confirmWithdrawalAddress(user.id));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Destination confirmation failed";
     return NextResponse.json(
       { error: message },
       { status: message === "Unauthorized" ? 401 : 400 },

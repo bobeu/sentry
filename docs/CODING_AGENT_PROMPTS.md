@@ -6440,3 +6440,327 @@ The final architecture should satisfy the following principles:
 - `SentryWallet.sol`: **100% statements/functions/lines**.
 - Local Hardhat deployment succeeded for `EmploymentManager` and `SentryWalletFactory`.
 - The production build/type-check commands were aborted after stalling in the local Windows environment without diagnostics; contract compilation and both test suites completed successfully.
+
+---
+
+# CTO Said
+
+# Prompt 11 — Final Smart Contract Refinements
+
+## Objective
+
+This prompt contains the final refinements to the Sentry smart contract architecture.
+
+**Do not redesign the architecture.**
+
+The architecture is considered complete.
+
+This prompt only improves maintainability, safety, upgradeability, and test coverage.
+
+---
+
+# 1. Wallet Versioning
+
+Add versioning support.
+
+Every wallet should expose:
+
+```solidity
+uint256 public constant VERSION = 1;
+```
+
+The factory should expose:
+
+```solidity
+uint256 public walletVersion;
+```
+
+Future wallet implementations should only require updating the factory.
+
+Do not implement upgrades.
+
+Only prepare the architecture.
+
+---
+
+# 2. Wallet Lifecycle
+
+Introduce:
+
+```solidity
+enum WalletStatus {
+    Provisioning,
+    Active,
+    Locked,
+    Archived
+}
+```
+
+This lifecycle belongs to the wallet.
+
+It is independent of EmploymentStatus.
+
+Examples:
+
+Provisioning
+
+↓
+
+Wallet created
+
+↓
+
+Active
+
+↓
+
+Locked
+
+↓
+
+Archived
+
+Employment may change independently.
+
+The backend should synchronize wallet state where appropriate.
+
+---
+
+# 3. WalletFunded Event
+
+Add:
+
+```solidity
+event WalletFunded(
+    address indexed wallet,
+    address indexed from,
+    uint256 amount,
+    PaymentCurrency currency
+);
+```
+
+Whenever funds are successfully synchronized or deposited.
+
+This simplifies indexing.
+
+---
+
+# 4. Withdrawal Replay Protection
+
+Current settlement replay protection is correct.
+
+Implement similar protection for withdrawals.
+
+Example:
+
+```solidity
+mapping(bytes32 => bool) processedWithdrawals;
+```
+
+Every withdrawal receives:
+
+```solidity
+withdrawalId
+```
+
+Reject duplicate withdrawals.
+
+The backend may safely retry failed requests without risking duplicate payouts.
+
+---
+
+# 5. Withdrawal Destination Confirmation
+
+Users may update:
+
+```text
+withdrawalAddress
+```
+
+However,
+
+the address should not become active immediately.
+
+Implement:
+
+Pending Withdrawal Address
+
+↓
+
+Confirmation
+
+↓
+
+Active Withdrawal Address
+
+Confirmation may occur through:
+
+* Telegram
+* Email
+* Dashboard confirmation
+
+The smart contract does not need to know about this.
+
+This is backend logic only.
+
+---
+
+# 6. Settlement Fee Buffer
+
+The current gas estimate is not deterministic.
+
+Implement:
+
+```text
+Estimated Settlement Fee
+
+×
+
+Configurable Buffer
+```
+
+Example:
+
+```text
+10%
+```
+
+The buffer must be configurable.
+
+Never hardcode it.
+
+This protects against gas fluctuations.
+
+---
+
+# 7. Branch Coverage
+
+Current branch coverage is too low.
+
+Increase contract branch coverage to at least:
+
+```text
+80%
+```
+
+Add tests covering:
+
+* duplicate withdrawals
+* duplicate settlements
+* unsupported currencies
+* disabled currencies
+* paused manager
+* invalid employment status
+* invalid wallet
+* insufficient balance
+* settlement failure
+* withdrawal failure
+* unauthorized manager
+* unauthorized factory
+* zero address
+* invalid identity
+* duplicate identity
+* duplicate wallet
+* invalid destination
+* manager pause/unpause
+* emergency paths
+
+Do not chase 100%.
+
+Target realistic production coverage.
+
+---
+
+# 8. Documentation
+
+Update NatSpec where necessary.
+
+Document:
+
+* wallet lifecycle
+* settlement lifecycle
+* manager authority
+* payment currency policy
+* replay protection
+* withdrawal flow
+
+---
+
+# 9. Final Security Review
+
+Perform one final review of:
+
+* replay protection
+* access control
+* settlement authorization
+* withdrawal authorization
+* duplicate wallet creation
+* duplicate settlements
+* duplicate withdrawals
+* unsupported token handling
+* zero-address validation
+* event consistency
+
+Fix any issue discovered.
+
+---
+
+# Deliverables
+
+Provide:
+
+* updated implementation summary
+* security review summary
+* branch coverage report
+* files modified
+* final production readiness assessment
+
+This prompt should be treated as the final smart contract refinement before feature freeze. After completing it, no further architectural changes should be made unless they fix a verified bug or security issue.
+
+---
+
+# Agent Session Summary — Prompt 11: Final Smart Contract Refinements
+
+## Implementation summary
+
+- Added wallet versioning: `SentryWallet.VERSION = 1` and `SentryWalletFactory.walletVersion`.
+- Introduced wallet lifecycle (`Provisioning → Active → Locked → Archived`) independent of employment status, managed through EmploymentManager (`activate` on registration, `lockWallet`, `unlockWallet`, `archiveWallet`).
+- Added `WalletFunded` for native CELO deposits and manager-notified ERC20 funding sync.
+- Renamed withdrawal replay map to `processedWithdrawals` with `WithdrawalAlreadyProcessed` for safe backend retries.
+- Backend withdrawal destinations now use pending → confirm → active flow (dashboard/API); only confirmed destinations sync on-chain.
+- Settlement fee estimates apply a configurable buffer via `SETTLEMENT_FEE_BUFFER_PERCENT` (default 10%).
+- Expanded NatSpec for lifecycle, manager authority, currency policy, and replay protection.
+
+## Security review summary
+
+- Access control: manager-only wallet fund movement; owner/operator separation retained; factory create restricted to owner.
+- Replay protection: settlements and withdrawals both use effects-before-interactions with unique IDs; failed transfers revert and leave IDs reusable.
+- Duplicate wallet/identity creation remains rejected at the factory.
+- Zero-address and invalid-identity validation covered for constructors and admin setters.
+- Locked/Archived wallets cannot settle or withdraw; pause blocks operator employment/settlement paths.
+- Destination confirmation is backend-only by design; on-chain destination updates occur only after confirmation.
+- No architectural redesigns; refinements only.
+
+## Branch coverage report
+
+| Metric | Result |
+|--------|--------|
+| Statements | **100%** |
+| Branches | **80%** |
+| Functions | **100%** |
+| Lines | **98.82%** |
+| Contract tests | **31 passing** |
+| Backend tests | **10 passing** |
+
+## Files modified
+
+- Contracts: `SentryWallet.sol`, `SentryWalletFactory.sol`, `EmploymentManager.sol`, `mocks/RejectEther.sol`
+- Tests: `SentryWallet.ts`, `SentryWalletFactory.ts`, `EmploymentManager.ts`, `BranchCoverage.ts`, `tests/backend.test.ts`
+- Backend: `wallet.service.ts`, `blockchain.service.ts`, `billing.service.ts`, `settlement-config.ts`, destination API, wallet UI
+- Schema/migration: `pendingWithdrawalAddress`, `walletStatus`
+- Docs/env: README, `.env.example`, this summary
+
+## Production readiness assessment
+
+The smart-contract architecture is feature-frozen for refinements. Versioning prepares future factory-routed deployments without in-place upgrades. Lifecycle, funding events, withdrawal replay protection, destination confirmation, and buffered settlement fees are in place. Coverage meets the 80% branch target with full statement/function coverage. Remaining risk is operational (correct operator keys, confirmed destinations, and fee buffer tuning under live gas conditions), not architectural.
+

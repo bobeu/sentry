@@ -9,7 +9,7 @@ import {
 import { priceFor, averageActionCost, getPricing, PRICING_AMOUNTS } from "../lib/pricing";
 import { isDemoMode } from "../lib/demo-mode";
 import { isPaymentCurrency, formatAmount } from "../lib/payment-currency";
-import { getSettlementConfig } from "../lib/settlement-config";
+import { bufferedSettlementFee, getSettlementConfig } from "../lib/settlement-config";
 
 describe("identity", () => {
   it("hashes namespaced email without exposing raw value on-chain shape", () => {
@@ -71,5 +71,16 @@ describe("settlement config", () => {
     assert.ok(config.actionThreshold >= 1);
     assert.ok(config.intervalMinutes >= 1);
     assert.ok(config.feeEstimate > 0);
+    assert.ok(config.feeBufferPercent > 0);
+  });
+
+  it("applies a configurable settlement fee buffer", () => {
+    const prevEstimate = process.env.SETTLEMENT_FEE_ESTIMATE;
+    const prevBuffer = process.env.SETTLEMENT_FEE_BUFFER_PERCENT;
+    process.env.SETTLEMENT_FEE_ESTIMATE = "0.01";
+    process.env.SETTLEMENT_FEE_BUFFER_PERCENT = "10";
+    assert.ok(Math.abs(bufferedSettlementFee() - 0.011) < 1e-12);
+    process.env.SETTLEMENT_FEE_ESTIMATE = prevEstimate;
+    process.env.SETTLEMENT_FEE_BUFFER_PERCENT = prevBuffer;
   });
 });

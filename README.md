@@ -92,6 +92,7 @@ Point Telegram webhook to `POST /api/telegram`.
 | `SETTLEMENT_ACTION_THRESHOLD` | Batch settle after this many unsettled actions |
 | `SETTLEMENT_INTERVAL_MINUTES` | Maximum time between settlements |
 | `SETTLEMENT_FEE_ESTIMATE` | Estimated gas fee added to each settlement |
+| `SETTLEMENT_FEE_BUFFER_PERCENT` | Extra buffer on settlement fee estimates (default 10) |
 
 ## Testing
 

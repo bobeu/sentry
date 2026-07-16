@@ -167,6 +167,7 @@ export function WalletPanel() {
   const [depositAmount, setDepositAmount] = useState("1");
   const [withdrawAmount, setWithdrawAmount] = useState("1");
   const [withdrawalAddress, setWithdrawalAddress] = useState("");
+  const [pendingWithdrawalAddress, setPendingWithdrawalAddress] = useState<string | null>(null);
   const [depositConfig, setDepositConfig] = useState<DepositConfig | null>(null);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -190,7 +191,10 @@ export function WalletPanel() {
     setOutstanding(balJson.outstandingCharges ?? 0);
     setWithdrawable(balJson.withdrawableBalance ?? balJson.availableBalance ?? 0);
     setCurrency(balJson.currency ?? "USDm");
-    setWithdrawalAddress(balJson.withdrawalAddress ?? "");
+    setWithdrawalAddress(
+      balJson.pendingWithdrawalAddress ?? balJson.withdrawalAddress ?? "",
+    );
+    setPendingWithdrawalAddress(balJson.pendingWithdrawalAddress ?? null);
     setError(null);
 
     if (spendRes.ok) {
@@ -340,9 +344,29 @@ export function WalletPanel() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Destination update failed");
-      setMessage("Withdrawal destination updated.");
+      setPendingWithdrawalAddress(json.pendingWithdrawalAddress ?? withdrawalAddress);
+      setMessage("Pending destination saved. Confirm it before withdrawing.");
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Destination update failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmDestination() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/wallet/destination", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Confirmation failed");
+      setPendingWithdrawalAddress(null);
+      setWithdrawalAddress(json.withdrawalAddress ?? "");
+      setMessage("Withdrawal destination confirmed.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Confirmation failed");
     } finally {
       setLoading(false);
     }
@@ -482,9 +506,24 @@ export function WalletPanel() {
                 disabled={loading}
                 className="rounded-full border border-white/20 px-4 py-2 text-xs disabled:opacity-40"
               >
-                Save destination
+                Save pending
               </button>
+              {pendingWithdrawalAddress ? (
+                <button
+                  type="button"
+                  onClick={confirmDestination}
+                  disabled={loading}
+                  className="rounded-full bg-[#35d07f] px-4 py-2 text-xs font-semibold text-[#061008] disabled:opacity-40"
+                >
+                  Confirm destination
+                </button>
+              ) : null}
             </div>
+            {pendingWithdrawalAddress ? (
+              <p className="text-xs text-amber-200">
+                Pending confirmation: {pendingWithdrawalAddress}
+              </p>
+            ) : null}
             <form onSubmit={withdraw} className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-[#9aa89a]">
               Withdraw (max {withdrawable.toFixed(4)})

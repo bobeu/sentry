@@ -11,6 +11,7 @@ import { identityUserKey } from "@/lib/identity";
 import {
   getSettlementConfig,
   settlementIntervalMs,
+  bufferedSettlementFee,
   type SettlementConfig,
 } from "@/lib/settlement-config";
 
@@ -39,7 +40,7 @@ export class BillingService {
   }
 
   estimateSettlementFee() {
-    return getSettlementConfig().feeEstimate;
+    return bufferedSettlementFee();
   }
 
   calculateOutstanding(userId: string) {
