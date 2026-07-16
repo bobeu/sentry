@@ -5,7 +5,7 @@ const FRONTEND_DIR = path.join(__dirname, "../lib/contracts");
 const DEPLOYMENTS_ROOT = path.join(__dirname, "deployments");
 
 const NETWORK_PRIORITY = ["celo", "hardhat"];
-const CONTRACTS_TO_SYNC = ["EmploymentContract", "EmploymentWalletFactory"];
+const CONTRACTS_TO_SYNC = ["EmploymentManager", "SentryWalletFactory"];
 
 if (!fs.existsSync(FRONTEND_DIR)) {
   fs.mkdirSync(FRONTEND_DIR, { recursive: true });

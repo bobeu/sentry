@@ -5,6 +5,7 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "coverage": "hardhat coverage",
     "deploy": "hardhat deploy --network hardhat",
     "deploy-celo": "hardhat deploy --network celo && node sync-data.js",
     "sync": "node sync-data.js",

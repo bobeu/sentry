@@ -5570,3 +5570,433 @@ Replaced immediate per-action `charge()` with **prepaid settlement model**:
 
 - `pnpm test` — 8 passing (includes settlement config).
 - `pnpm test:contracts` — 13 passing (includes `chargeSettlement` test).
+
+
+---
+
+# CTO Said
+
+# Prompt 9 — Smart Contract Hardening & Complete Test Rewrite
+
+## Objective
+
+The smart contract architecture has been redesigned.
+
+The project now consists of:
+
+* `SentryWallet.sol`
+* `SentryWalletFactory.sol`
+* `EmploymentManager.sol`
+
+Do **not** attempt to patch the previous contract architecture.
+
+Treat these three contracts as the new source of truth.
+
+Your task is to harden the contracts to production quality and completely rewrite the test suite around the new architecture.
+
+---
+
+# Part 1 — Contract Hardening
+
+Perform a complete security and architecture review before touching the tests.
+
+## 1. Replace IERC20 transfers
+
+Replace every raw:
+
+```solidity
+transfer(...)
+transferFrom(...)
+```
+
+with OpenZeppelin's:
+
+```solidity
+SafeERC20
+```
+
+Use
+
+```solidity
+safeTransfer()
+safeTransferFrom()
+```
+
+throughout the project.
+
+This improves compatibility with non-standard ERC20 implementations.
+
+---
+
+## 2. Add Pausable
+
+`EmploymentManager`
+
+should inherit
+
+```solidity
+Pausable
+```
+
+Only Owner may:
+
+* pause()
+* unpause()
+
+When paused:
+
+* settlements cannot execute
+* employments cannot change state
+
+Withdrawals from user wallets should still work.
+
+---
+
+## 3. Zero-address validation
+
+Review every constructor and setter.
+
+Reject zero addresses where appropriate.
+
+Examples:
+
+* treasury
+* operator
+* token addresses
+* manager
+* owner
+
+---
+
+## 4. Missing events
+
+Emit events whenever:
+
+* operator changes
+* treasury changes
+* payment currency changes
+* supported token changes
+* wallet created
+* employment registered
+
+Review all public state-changing functions.
+
+Every meaningful state change should emit an event.
+
+---
+
+## 5. Custom errors
+
+Replace remaining
+
+```solidity
+require(...)
+```
+
+messages with
+
+custom errors
+
+where appropriate.
+
+Maintain consistency across all contracts.
+
+---
+
+## 6. NatSpec
+
+Document every:
+
+* contract
+* public function
+* external function
+* event
+* error
+
+Use proper Solidity NatSpec.
+
+---
+
+## 7. Storage review
+
+Review storage layout.
+
+Remove unnecessary variables.
+
+Pack structs efficiently.
+
+Avoid duplicated state.
+
+---
+
+## 8. Reentrancy review
+
+Review every external function.
+
+Ensure only functions performing value transfers are protected with:
+
+```solidity
+nonReentrant
+```
+
+Do not overuse it.
+
+---
+
+## 9. Visibility review
+
+Review every function.
+
+Use:
+
+* private
+* internal
+* external
+* public
+
+appropriately.
+
+---
+
+## 10. Gas optimization
+
+Review for:
+
+* unnecessary storage writes
+* repeated SLOADs
+* unnecessary memory allocations
+
+Only optimize where it improves readability.
+
+Do not sacrifice clarity.
+
+---
+
+# Part 2 — WalletFactory Improvements
+
+Review whether CREATE2 is appropriate.
+
+If CREATE2 improves the architecture without increasing complexity significantly:
+
+Implement it.
+
+Otherwise:
+
+Keep CREATE.
+
+Document the reasoning.
+
+Do not introduce unnecessary complexity simply because CREATE2 exists.
+
+---
+
+# Part 3 — Security Review
+
+Review:
+
+* replay protection
+* settlement authorization
+* duplicate wallet creation
+* duplicate settlements
+* ownership transfer
+* manager authorization
+* unsupported token handling
+
+Fix any issue found.
+
+---
+
+# Part 4 — Rewrite Tests
+
+Do **not** update existing tests.
+
+Delete the previous assumptions.
+
+Rewrite the test suite from scratch.
+
+The new tests must validate the new architecture.
+
+---
+
+## SentryWallet Tests
+
+Test:
+
+* native CELO receive
+* ERC20 receive
+* owner withdraw native
+* owner withdraw ERC20
+* unauthorized withdrawal
+* settlement execution
+* unauthorized settlement
+* EIP-1271 validation
+* supported token balances
+
+---
+
+## WalletFactory Tests
+
+Test:
+
+* create wallet
+* duplicate identity rejection
+* duplicate owner rejection (one wallet per owner)
+* identity lookup
+* owner lookup
+* wallet lookup
+* token update
+
+---
+
+## EmploymentManager Tests
+
+Test:
+
+* register employment
+* pause employment
+* resume employment
+* exhaust employment
+* settlement execution
+* duplicate settlement rejection
+* invalid wallet rejection
+* invalid employment status
+* payment currency switching
+* treasury update
+* operator update
+
+---
+
+## Integration Tests
+
+Build end-to-end tests.
+
+Scenario:
+
+* User registered
+* Wallet created
+* Employment started
+* Wallet funded
+* Outstanding charges simulated
+* Settlement executed
+* Treasury receives funds
+* Wallet balance reduced
+* Replay prevented
+
+---
+
+## Failure Tests
+
+Explicitly test:
+
+* zero address
+* invalid token
+* unsupported token
+* settlement replay
+* unauthorized operator
+* unauthorized wallet execution
+* paused manager
+* insufficient funds
+
+---
+
+## Coverage
+
+Target:
+
+100% coverage
+
+for:
+
+* contracts
+* public functions
+* settlement flow
+
+---
+
+# Part 5 — Cleanup
+
+After tests pass:
+
+Run:
+
+* formatter
+* linter
+* compile
+* test
+
+Remove:
+
+* dead code
+* unused imports
+* unused events
+* commented code
+
+---
+
+# Deliverables
+
+Provide a final implementation summary including:
+
+* Architecture improvements
+* Security improvements
+* Gas optimizations
+* Test coverage
+* Files changed
+* Any intentional design decisions
+
+The goal is to leave the smart contract layer in a production-quality state that fully aligns with the redesigned Sentry architecture.
+
+---
+
+## Agent Session Summary — Prompt 9
+
+**Date:** 2026-07-16
+
+### Architecture improvements
+
+- Replaced the retired `EmploymentContract` / `EmploymentWallet` architecture with:
+  - `SentryWallet.sol` — owner-controlled custody, manager-only settlements, EIP-1271.
+  - `SentryWalletFactory.sol` — one wallet per identity and one wallet per owner.
+  - `EmploymentManager.sol` — validated employment lifecycle and replay-protected batch settlement.
+- Updated Hardhat deployment and ABI sync configuration for `EmploymentManager` and `SentryWalletFactory`.
+- Removed old contracts, interfaces, deployment script, and assumption-based tests.
+
+### Security improvements
+
+- Replaced raw ERC20 transfers with OpenZeppelin `SafeERC20`.
+- Added owner-controlled global `Pausable` protection to employment changes and settlements; wallet withdrawals remain available.
+- Added zero-address and identity validation across constructors, setters, registration, and settlement execution.
+- Fixed EIP-1271 validation to check signatures against `owner()` rather than `msg.sender`; malformed signatures return the invalid signature value without reverting.
+- Employment registration now validates deployed bytecode, wallet manager, wallet owner, duplicate users, and duplicate wallets.
+- Settlement checks use effects-before-interactions and preserve replay IDs when an external transfer reverts.
+- Added custom errors and events for meaningful state changes.
+- Added full NatSpec for contracts, public/external functions, events, and errors.
+
+### Storage and gas
+
+- Packed `Employment` into one storage slot (`address`, `uint64`, enum).
+- Replaced duplicated supported-wallet state with `userOfWallet`, which also enforces one employment per wallet.
+- Cached storage values in setters and avoided writes/events when configuration is unchanged.
+- Kept CREATE intentionally: deployed addresses are persisted, while CREATE2 would add salt and init-code complexity without improving wallet uniqueness.
+
+### Test rewrite
+
+- Deleted the legacy contract tests and rewrote the suite around the new architecture.
+- Added dedicated suites for `SentryWallet`, `SentryWalletFactory`, `EmploymentManager`, and end-to-end integration.
+- Coverage includes native/ERC20 custody and withdrawals, EIP-1271, lifecycle transitions, global pause, authorization, duplicate prevention, unsupported inputs, insufficient funds, settlement fees, treasury transfer, and replay protection.
+- Result: **31 passing tests**.
+- Coverage: **100% functions**, **100% lines**, **96.59% statements**, **73.94% branches**.
+
+### Validation
+
+- `pnpm compile` — passed.
+- `pnpm test` — 31 passing.
+- `pnpm coverage` — passed with 100% function and line coverage.
+- `pnpm run deploy` — local deployment passed for both production contracts.
+- TypeScript tests/deploy scripts formatted with Prettier.
+
+### Files changed
+
+- Contracts: `EmploymentManager.sol`, `SentryWallet.sol`, `SentryWalletFactory.sol`, test-only `MockERC20.sol`.
+- Tests: `EmploymentManager.ts`, `SentryWallet.ts`, `SentryWalletFactory.ts`, `Integration.ts`, `helpers.ts`.
+- Tooling/docs: deployment script, `sync-data.js`, contract env example, package scripts, README.

@@ -6,7 +6,7 @@ An AI employee for Telegram that businesses and individuals hire to monitor conv
 
 Sentry is a pay-per-completed-work product:
 
-1. User hires Sentry → **EmploymentWalletFactory** deploys a permanent employment smart wallet.
+1. User hires Sentry → **SentryWalletFactory** deploys a permanent `SentryWallet`.
 2. User funds the wallet (**web deposit** or **direct transfer** + sync).
 3. Sentry joins Telegram groups and performs billable work.
 4. Completed work accumulates as **outstanding charges** off-chain; batch **settlements** settle on-chain via `chargeSettlement()`.
@@ -28,12 +28,13 @@ flowchart TB
   Services --> AI[OpenAI]
   Services --> DB[(PostgreSQL)]
   Services --> Chain[Celo Mainnet]
-  Chain --> EC[EmploymentContract]
-  Chain --> WF[EmploymentWalletFactory]
-  WF --> EW[EmploymentWallet per user]
+  Chain --> EM[EmploymentManager]
+  Chain --> WF[SentryWalletFactory]
+  WF --> SW[SentryWallet per user]
   Services --> Sync[Balance Sync Scheduler]
-  Sync --> EC
-  EC --> Treasury[Treasury]
+  Sync --> SW
+  EM --> SW
+  SW --> Treasury[Treasury]
 ```
 
 **Identity:** Backend computes `keccak256("email:…")` / `telegram:…` / `wallet:…` — contract stores only `bytes32 identityHash`.
@@ -42,8 +43,8 @@ flowchart TB
 
 | Method | Flow |
 |--------|------|
-| **A — Web deposit** | Connect wallet → `depositNativeFor(employmentWallet)` or `depositERC20For` → auto sync |
-| **B — Direct transfer** | Send CELO / USDm / USDC / USDT → employment wallet → **Sync Balance** |
+| **A — Web deposit** | Connect wallet → transfer CELO or supported ERC20 to `SentryWallet` → auto sync |
+| **B — Direct transfer** | Send CELO / USDm / USDC / USDT to `SentryWallet` → **Sync Balance** |
 
 Scheduled sync runs every 5 minutes; users can also trigger `/api/wallet/sync`.
 
@@ -88,6 +89,7 @@ Point Telegram webhook to `POST /api/telegram`.
 ```bash
 pnpm test                 # Backend unit tests (identity, pricing, currency)
 pnpm test:contracts       # Hardhat smart contract tests
+pnpm --dir smartContracts coverage
 ```
 
 ## Celo Mainnet deployment
@@ -97,7 +99,7 @@ cd smartContracts && pnpm install && pnpm compile && pnpm deploy-celo
 cd .. && pnpm contracts:sync
 ```
 
-Deploys `EmploymentContract`, `EmploymentWalletFactory` (authorized as identity registrar), and syncs ABIs to `lib/contracts/`. `MockERC20` lives under `contracts/mocks/` for tests only — never deploy it.
+Deploys `EmploymentManager` and `SentryWalletFactory`, then syncs their ABIs to `lib/contracts/`. The factory creates one owner-controlled `SentryWallet` per identity. `MockERC20` remains test-only and is never deployed.
 
 ## Demo checklist
 
@@ -106,7 +108,7 @@ Deploys `EmploymentContract`, `EmploymentWalletFactory` (authorized as identity 
 - [ ] Balance updates on dashboard
 - [ ] Bot joins Telegram group, mention reply works
 - [ ] FAQ / welcome / summary run
-- [ ] ActionRecord + successful on-chain charge
+- [ ] ActionRecord accrual + successful batch settlement
 - [ ] Transaction visible on Celo explorer
 
 ## Scripts
