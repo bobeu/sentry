@@ -2,10 +2,6 @@
 node_modules
 .pnpm-store
 
-# next
-.next
-out
-
 # env
 .env
 .env.local
@@ -13,17 +9,3 @@ out
 **/defai_registration_details.md
 8004_registration/.env
 agent/out/
-
-# prisma
-prisma/*.db
-prisma/*.db-journal
-
-# misc
-.DS_Store
-*.log
-coverage
-dist
-/apps
-/packages
-/api
-/web-tmp

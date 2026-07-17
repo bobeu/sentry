@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EmploymentStatus {
+  Inactive
+  Active
+  Paused
+  Exhausted
+}
+
+enum ActionType {
+  mention_reply
+  welcome
+  faq_answer
+  spam_moderation
+  daily_summary
+  mention_notification
+}
+
+enum ActionStatus {
+  completed
+  failed
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  withdrawalAddress String?
+  pendingWithdrawalAddress String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet          Wallet?
+  employment      Employment?
+  groupLinks      GroupEmployment[]
+  billingRecords  BillingRecord[]
+  reports         Report[]
+  settings        Settings?
+  sessions        Session[]
+  actions         ActionRecord[]
+  settlements     Settlement[]
+  withdrawals     Withdrawal[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  address         String   @unique
+  balance         Decimal  @default(0) @db.Decimal(36, 18)
+  balanceCachedAt DateTime?
+  identityHash    String?
+  walletCurrency  String   @default("USDm")
+  walletStatus    String   @default("Provisioning")
+  provider        String   @default("employment-contract")
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  settlements Settlement[]
+  withdrawals Withdrawal[]
+}
+
+model TelegramGroup {
+  id              String   @id @default(cuid())
+  telegramId      String   @unique
+  name            String?
+  /// JSON array of admin telegram user ids when obtainable — not assumed ownership.
+  adminTelegramIds String?
+  memberCount     Int?
+  description     String?
+  purpose         String?
+  rules           String?
+  botStatus       String   @default("unknown")
+  botCanDelete    Boolean?
+  lastBotEventAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tasks      Task[]
+  settings   GroupSettings?
+  employment GroupEmployment[]
+  faqs       GroupFAQ[]
+  messages   ConversationContext[]
+  actions    ActionRecord[]
+  reports    Report[]
+}
+
+model GroupSettings {
+  id                    String        @id @default(cuid())
+  groupId               String        @unique
+  group                 TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  enabled               Boolean       @default(false)
+  welcomeMembers        Boolean       @default(true)
+  replyToMentions       Boolean       @default(true)
+  answerQuestions       Boolean       @default(true)
+  spamModeration        Boolean       @default(true)
+  mentionNotifications  Boolean       @default(true)
+  dailySummaryHour      Int           @default(9)
+  summaryToGroup        Boolean       @default(true)
+  summaryToAdmins       Boolean       @default(true)
+  summaryToPrivate      Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+model GroupEmployment {
+  id        String        @id @default(cuid())
+  userId    String
+  groupId   String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  /// User who enabled Sentry for this group.
+  enabled   Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([userId, groupId])
+}
+
+model GroupFAQ {
+  id        String        @id @default(cuid())
+  groupId   String
+  group     TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([groupId])
+}
+
+model ConversationContext {
+  id                String        @id @default(cuid())
+  groupId           String
+  group             TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramMessageId String
+  fromUserId        String?
+  fromUsername      String?
+  text              String
+  createdAt         DateTime      @default(now())
+
+  @@unique([groupId, telegramMessageId])
+  @@index([groupId, createdAt])
+  @@index([createdAt])
+}
+
+enum ChargeStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+enum SettlementStatus {
+  pending
+  submitted
+  succeeded
+  failed
+}
+
+enum WithdrawalStatus {
+  pending
+  submitted
+  succeeded
+  failed
+}
+
+model ActionRecord {
+  id          String         @id @default(cuid())
+  type        ActionType
+  groupId     String?
+  group       TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  completedAt DateTime       @default(now())
+  status      ActionStatus   @default(completed)
+  billable    Boolean        @default(true)
+  metadata    Json?
+  settlementId String?
+  settlement   Settlement?   @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  charge      ChargeRecord?
+
+  @@index([userId, completedAt])
+  @@index([groupId, completedAt])
+  @@index([completedAt])
+  @@index([settlementId])
+}
+
+model ChargeRecord {
+  id              String       @id @default(cuid())
+  actionRecordId  String       @unique
+  actionRecord    ActionRecord @relation(fields: [actionRecordId], references: [id], onDelete: Cascade)
+  amount          Decimal      @db.Decimal(36, 18)
+  currency        String       @default("USDm")
+  status          ChargeStatus @default(pending)
+  transactionHash String?
+  failureReason   String?
+  createdAt       DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model Settlement {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId        String
+  wallet          Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Decimal          @db.Decimal(36, 18)
+  settlementFee   Decimal          @db.Decimal(36, 18)
+  currency        String           @default("USDm")
+  actionCount     Int
+  transactionHash String?
+  status          SettlementStatus @default(pending)
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+  actions         ActionRecord[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model PaymentCurrencyConfig {
+  currency     String   @id
+  enabled      Boolean  @default(true)
+  tokenAddress String?
+  updatedAt    DateTime @updatedAt
+}
+
+model Withdrawal {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId        String
+  wallet          Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Decimal          @db.Decimal(36, 18)
+  currency        String
+  destination     String
+  transactionHash String?
+  status          WithdrawalStatus @default(pending)
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Employment {
+  id                 String           @id @default(cuid())
+  userId             String           @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             EmploymentStatus @default(Inactive)
+  outstandingCharges Decimal          @default(0) @db.Decimal(36, 18)
+  lastSettlementAt   DateTime?
+  startedAt          DateTime?
+  pausedAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Task {
+  id        String         @id @default(cuid())
+  groupId   String?
+  group     TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model BillingRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Decimal  @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id        String         @id @default(cuid())
+  userId    String?
+  user      User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId   String?
+  group     TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  content   String?
+  createdAt DateTime       @default(now())
+}
+
+model Settings {
+  id                 String   @id @default(cuid())
+  userId             String?  @unique
+  user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName        String?
+  timeZone           String   @default("UTC")
+  autoResume         Boolean  @default(true)
+  emailNotifications Boolean  @default(true)
+  /// Telegram identity for private mention notifications
+  telegramUserId     String?
+  telegramUsername   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
