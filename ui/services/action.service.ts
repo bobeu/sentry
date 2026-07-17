@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { ActionType, ActionStatus, Prisma } from "@prisma/client";
+import type { ActionType, ActionStatus, Prisma } from "@/generated";
 import { billingService } from "@/services/billing.service";
 import { PRICING_LABELS } from "@/lib/pricing";
 

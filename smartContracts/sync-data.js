@@ -1,10 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const FRONTEND_DIR = path.join(__dirname, "../lib/contracts");
+const FRONTEND_DIR = path.join(__dirname, "../ui/lib/contracts");
 const DEPLOYMENTS_ROOT = path.join(__dirname, "deployments");
 
-const NETWORK_PRIORITY = ["celo", "hardhat"];
+const NETWORK_PRIORITY = ["celo",];
 const CONTRACTS_TO_SYNC = ["EmploymentManager", "SentryWalletFactory"];
 
 if (!fs.existsSync(FRONTEND_DIR)) {
@@ -82,9 +82,8 @@ function sync() {
 
   const contractEntries = CONTRACTS_TO_SYNC.map((name) => {
     return `  ${name}: {
-    address: (addresses as any)?.${name}?.[${JSON.stringify(primaryChain)}] as Address | undefined,
-    addresses: (addresses as any)?.${name} ?? {},
-    abi: (abis as any)?.${name} ?? [],
+    address: addresses.${name}[${JSON.stringify(primaryChain)}] as Address,
+    abi: abis.${name},
   }`;
   }).join(",\n");
 

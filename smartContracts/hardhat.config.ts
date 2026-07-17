@@ -2,47 +2,54 @@ import type { HardhatUserConfig } from "hardhat/config";
 import { config as dotconfig } from "dotenv";
 import "@nomicfoundation/hardhat-toolbox";
 import "hardhat-deploy";
+import "@nomiclabs/hardhat-web3";
+import "@nomicfoundation/hardhat-viem";
 
 dotconfig();
 
-const placeholderKey =
-  "0x0000000000000000000000000000000000000000000000000000000000000001";
-
-function cleanKey(value?: string) {
-  if (!value) return placeholderKey;
-  const cleaned = value.replace(/[^a-fA-F0-9x]/g, "").slice(0, 66);
-  return cleaned.startsWith("0x") ? cleaned : `0x${cleaned}`;
-}
-
 const config: HardhatUserConfig = {
+  
   networks: {
-    hardhat: {
-      saveDeployments: true,
-      chainId: 31337,
+    sepolia: {
+      url: "https://forno.celo-sepolia.celo-testnet.org",
+      accounts: [process.env.KEY_ROUTE ? process.env.KEY_ROUTE.replace(/[^a-fA-F0-9x]/g, '').slice(0, 66) : "0x0000000000000000000000000000000000000000000000000000000000000001"],
+      chainId: 11_142220,
+      saveDeployments: true
     },
     celo: {
-      url: "https://forno.celo.org",
-      accounts: [cleanKey(process.env.KEY_FAR ?? process.env.PRIVATE_KEY)],
-      chainId: 42_220,
-      saveDeployments: true,
-    },
+      accounts: [process.env.KEY_FAR ? process.env.KEY_FAR.replace(/[^a-fA-F0-9x]/g, '').slice(0, 66) : "0x0000000000000000000000000000000000000000000000000000000000000001"],
+      url: 'https://forno.celo.org', // || 'https://celo.drpc.org'
+      chainId: 42220,
+      // gas: 8000000,
+      // gasPrice: 1000000000,
+      saveDeployments: true
+    }
   },
   paths: {
     sources: "./contracts",
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",
-    deploy: "./deploy",
+    deploy: "./deploy"
   },
+
   etherscan: {
-    apiKey: process.env.CELOSCAN_API_KEY ?? "",
+    apiKey: process.env.CELOSCAN_API_KEY ?? '',
     customChains: [
       {
-        chainId: 42220,
-        network: "celo",
+        chainId: 11142220,
+        network: 'celoSepolia',
         urls: {
-          apiURL: "https://api.etherscan.io/v2/api",
-          browserURL: "https://celoscan.io/",
+          apiURL: 'https://api.etherscan.io/v2/api',
+          browserURL: 'https://sepolia.celoscan.io',
+        },
+      },
+      {
+        chainId: 42220,
+        network: 'celo',
+        urls: {
+          apiURL: 'https://api.etherscan.io/v2/api',
+          browserURL: 'https://celoscan.io/',
         },
       },
     ],
@@ -53,18 +60,31 @@ const config: HardhatUserConfig = {
   namedAccounts: {
     deployer: {
       default: 0,
+      11142220: `privatekey://${process.env.KEY_ROUTE}`,
+      42220: `privatekey://${process.env.KEY_FAR}`,
     },
+    treasury: {
+      default: 0,
+      11142220: `privatekey://${process.env.TREASURY}`,
+      42220: `privatekey://${process.env.TREASURY}`,
+    },
+    operator: {
+      default: 0,
+      11142220: `privatekey://${process.env.OPERATOR}`,
+      42220: `privatekey://${process.env.OPERATOR}`,
+    }
   },
+
   solidity: {
     version: "0.8.28",
-    settings: {
+    settings: {          // See the solidity docs for advice about optimization and evmVersion
       optimizer: {
         enabled: true,
         runs: 200,
       },
-      evmVersion: "cancun",
+      evmVersion: 'cancun',
+      }
     },
-  },
 };
 
 export default config;

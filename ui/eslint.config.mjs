@@ -14,6 +14,9 @@ const eslintConfig = [
     ignores: [
       ".next/**",
       "node_modules/**",
+      "generated/**",
+      "coverage/**",
+      "dist/**",
       "smartContracts/artifacts/**",
       "smartContracts/cache/**",
       "smartContracts/coverage/**",

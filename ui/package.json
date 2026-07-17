@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "postinstall": "prisma generate",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
@@ -16,16 +17,18 @@
     "bot:poll": "tsx telegram/poll.ts",
     "scheduler": "tsx scripts/run-scheduler.ts",
     "test": "tsx --test tests/backend.test.ts",
-    "start:all": "bun run prisma:generate && bun run prisma:deploy && bun run dev",
-    "start:dev": "bun run prisma:generate && bun run prisma:migrate && bun run dev"
+    "start:all": "pnpm prisma:generate && pnpm prisma:deploy && pnpm dev",
+    "start:dev": "pnpm prisma:generate && pnpm prisma:migrate && pnpm dev",
+    "start:prod": "pnpm prisma:deploy && pnpm start"
   },
-  "prisma": "ts-node --compiler-options {\"module\":CommonJS\"} prisma/seed.ts",
   "dependencies": {
     "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "7.8.0",
     "@prisma/client-runtime-utils": "^7.8.0",
+    "dotenv": "^17.2.1",
     "next": "^15.3.3",
     "node-cron": "^3.0.3",
+    "pg": "^8.16.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "telegraf": "^4.16.3",

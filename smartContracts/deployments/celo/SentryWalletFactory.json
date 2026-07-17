@@ -1,0 +1,772 @@
+{
+  "address": "0x338cb2c5A73CBC7C891FFB7448E29C4420090a64",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "initialOwner",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "employmentManager",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "usdm_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "usdc_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "usdt_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "CurrencyDisabled",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "IdentityAlreadyRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidIdentity",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidTokenConfig",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "OwnerAlreadyRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroAddress",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "CurrencyEnabled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousAddress",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newAddress",
+          "type": "address"
+        }
+      ],
+      "name": "TokenAddressUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "userKey",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "name": "WalletCreated",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "userKey",
+          "type": "address"
+        },
+        {
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        }
+      ],
+      "name": "createWallet",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        }
+      ],
+      "name": "currencies",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "tokenAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "hasWallet",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "exists",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "name": "identityOfWallet",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "manager",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setCurrencyEnabled",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum SentryWalletFactory.Token",
+          "name": "currency",
+          "type": "uint8"
+        },
+        {
+          "internalType": "address",
+          "name": "newAddress",
+          "type": "address"
+        }
+      ],
+      "name": "updateTokenAddress",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "walletFromIdentity",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "userKey",
+          "type": "address"
+        }
+      ],
+      "name": "walletFromUser",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "identityHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "walletOfIdentity",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "userKey",
+          "type": "address"
+        }
+      ],
+      "name": "walletOfUser",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "walletVersion",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0x6126a199349b8fc737dc47cca751981922ab9664f57168fc0c9d89eff1e3eeee",
+  "receipt": {
+    "to": null,
+    "from": "0xb2ADb77A837d19c3adA396Db74483B05D49AD6b7",
+    "contractAddress": "0x338cb2c5A73CBC7C891FFB7448E29C4420090a64",
+    "transactionIndex": 6,
+    "gasUsed": "1677573",
+    "logsBloom": "0x00010000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000020000000000000000000800000000001000000000000000000000400000000000000000000000000000000000000000000000000000000000400000000000080010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000020000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0xcf08df96ebe78ce5da8a31983534eeee76599b9178d2b532d1ff857937d3690a",
+    "transactionHash": "0x6126a199349b8fc737dc47cca751981922ab9664f57168fc0c9d89eff1e3eeee",
+    "logs": [
+      {
+        "transactionIndex": 6,
+        "blockNumber": 72401019,
+        "transactionHash": "0x6126a199349b8fc737dc47cca751981922ab9664f57168fc0c9d89eff1e3eeee",
+        "address": "0x338cb2c5A73CBC7C891FFB7448E29C4420090a64",
+        "topics": [
+          "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000b2adb77a837d19c3ada396db74483b05d49ad6b7"
+        ],
+        "data": "0x",
+        "logIndex": 411,
+        "blockHash": "0xcf08df96ebe78ce5da8a31983534eeee76599b9178d2b532d1ff857937d3690a"
+      }
+    ],
+    "blockNumber": 72401019,
+    "cumulativeGasUsed": "4845136",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0xb2ADb77A837d19c3adA396Db74483B05D49AD6b7",
+    "0x2012201E38E748b43A1A938C90553F32FBa78825",
+    "0x765DE816845861e75A25fCA122bb6898B8B1282a",
+    "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+    "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "adc5edb39c1bd5d19f517eabf7ab3362",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.28+commit.7893614a\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"initialOwner\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"employmentManager\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"usdm_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"usdc_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"usdt_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"CurrencyDisabled\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"IdentityAlreadyRegistered\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidIdentity\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidTokenConfig\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"OwnerAlreadyRegistered\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ZeroAddress\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"enabled\",\"type\":\"bool\"}],\"name\":\"CurrencyEnabled\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousAddress\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newAddress\",\"type\":\"address\"}],\"name\":\"TokenAddressUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"userKey\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"name\":\"WalletCreated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"userKey\",\"type\":\"address\"},{\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"}],\"name\":\"createWallet\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"}],\"name\":\"currencies\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"enabled\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"}],\"name\":\"hasWallet\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"exists\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"name\":\"identityOfWallet\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"manager\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"},{\"internalType\":\"bool\",\"name\":\"enabled\",\"type\":\"bool\"}],\"name\":\"setCurrencyEnabled\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"enum SentryWalletFactory.Token\",\"name\":\"currency\",\"type\":\"uint8\"},{\"internalType\":\"address\",\"name\":\"newAddress\",\"type\":\"address\"}],\"name\":\"updateTokenAddress\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"}],\"name\":\"walletFromIdentity\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"userKey\",\"type\":\"address\"}],\"name\":\"walletFromUser\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"identityHash\",\"type\":\"bytes32\"}],\"name\":\"walletOfIdentity\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"userKey\",\"type\":\"address\"}],\"name\":\"walletOfUser\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"wallet\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"walletVersion\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"Uses CREATE deliberately. Future wallet implementations only require updating      `walletVersion` and the deployment target in this factory \\u2014 no in-place upgrades.\",\"errors\":{\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}]},\"events\":{\"CurrencyEnabled(uint8,bool)\":{\"params\":{\"currency\":\"Currency configuration changed.\",\"enabled\":\"New enabled state.\"}},\"WalletCreated(bytes32,address,uint8,address)\":{\"params\":{\"currency\":\"Immutable wallet currency.\",\"identityHash\":\"Identity commitment assigned to the wallet.\",\"userKey\":\"Stable user identifier.\",\"wallet\":\"Deployed SentryWallet address.\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"employmentManager\":\"Manager assigned to new wallets.\",\"initialOwner\":\"Account authorized to create wallets and update token addresses.\",\"usdc_\":\"Initial USDC token address.\",\"usdm_\":\"Initial USDm token address.\",\"usdt_\":\"Initial USDT token address.\"}},\"createWallet(bytes32,address,uint8)\":{\"params\":{\"currency\":\"Immutable currency selected for the wallet.\",\"identityHash\":\"Identity commitment for the user.\",\"userKey\":\"Stable on-chain user identifier.\"},\"returns\":{\"wallet\":\"Address of the deployed wallet.\"}},\"hasWallet(bytes32)\":{\"params\":{\"identityHash\":\"Identity commitment to query.\"},\"returns\":{\"exists\":\"True when a wallet is registered.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"},\"walletFromIdentity(bytes32)\":{\"params\":{\"identityHash\":\"Identity commitment to query.\"},\"returns\":{\"wallet\":\"Registered wallet or zero address.\"}},\"walletFromUser(address)\":{\"params\":{\"userKey\":\"User key to query.\"},\"returns\":{\"wallet\":\"Registered wallet or zero address.\"}}},\"title\":\"SentryWalletFactory\",\"version\":1},\"userdoc\":{\"errors\":{\"IdentityAlreadyRegistered()\":[{\"notice\":\"An identity already has a wallet.\"}],\"InvalidIdentity()\":[{\"notice\":\"Identity hash cannot be zero.\"}],\"OwnerAlreadyRegistered()\":[{\"notice\":\"An owner already has a wallet.\"}],\"ZeroAddress()\":[{\"notice\":\"Address argument cannot be zero.\"}]},\"events\":{\"CurrencyEnabled(uint8,bool)\":{\"notice\":\"Emitted when a currency is enabled or disabled for future wallets.\"},\"WalletCreated(bytes32,address,uint8,address)\":{\"notice\":\"Emitted after a wallet is created and indexed.\"}},\"kind\":\"user\",\"methods\":{\"constructor\":{\"notice\":\"Configures the wallet factory.\"},\"createWallet(bytes32,address,uint8)\":{\"notice\":\"Creates and indexes a wallet.\"},\"hasWallet(bytes32)\":{\"notice\":\"Checks whether an identity has a wallet.\"},\"identityOfWallet(address)\":{\"notice\":\"Identity commitment indexed by wallet.\"},\"manager()\":{\"notice\":\"EmploymentManager assigned to every deployed wallet.\"},\"walletFromIdentity(bytes32)\":{\"notice\":\"Resolves a wallet from an identity.\"},\"walletFromUser(address)\":{\"notice\":\"Resolves a wallet from its stable user key.\"},\"walletOfIdentity(bytes32)\":{\"notice\":\"Wallet indexed by identity commitment.\"},\"walletOfUser(address)\":{\"notice\":\"Wallet indexed by owner.\"},\"walletVersion()\":{\"notice\":\"Version of SentryWallet deployed by this factory.\"}},\"notice\":\"Deploys exactly one SentryWallet for each identity and user key.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/SentryWalletFactory.sol\":\"SentryWalletFactory\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"@openzeppelin/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"@openzeppelin/contracts/interfaces/IERC1363.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.4.0) (interfaces/IERC1363.sol)\\n\\npragma solidity >=0.6.2;\\n\\nimport {IERC20} from \\\"./IERC20.sol\\\";\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @title IERC1363\\n * @dev Interface of the ERC-1363 standard as defined in the https://eips.ethereum.org/EIPS/eip-1363[ERC-1363].\\n *\\n * Defines an extension interface for ERC-20 tokens that supports executing code on a recipient contract\\n * after `transfer` or `transferFrom`, or code on a spender contract after `approve`, in a single transaction.\\n */\\ninterface IERC1363 is IERC20, IERC165 {\\n    /*\\n     * Note: the ERC-165 identifier for this interface is 0xb0202a11.\\n     * 0xb0202a11 ===\\n     *   bytes4(keccak256('transferAndCall(address,uint256)')) ^\\n     *   bytes4(keccak256('transferAndCall(address,uint256,bytes)')) ^\\n     *   bytes4(keccak256('transferFromAndCall(address,address,uint256)')) ^\\n     *   bytes4(keccak256('transferFromAndCall(address,address,uint256,bytes)')) ^\\n     *   bytes4(keccak256('approveAndCall(address,uint256)')) ^\\n     *   bytes4(keccak256('approveAndCall(address,uint256,bytes)'))\\n     */\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from the caller's account to `to`\\n     * and then calls {IERC1363Receiver-onTransferReceived} on `to`.\\n     * @param to The address which you want to transfer to.\\n     * @param value The amount of tokens to be transferred.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function transferAndCall(address to, uint256 value) external returns (bool);\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from the caller's account to `to`\\n     * and then calls {IERC1363Receiver-onTransferReceived} on `to`.\\n     * @param to The address which you want to transfer to.\\n     * @param value The amount of tokens to be transferred.\\n     * @param data Additional data with no specified format, sent in call to `to`.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function transferAndCall(address to, uint256 value, bytes calldata data) external returns (bool);\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from `from` to `to` using the allowance mechanism\\n     * and then calls {IERC1363Receiver-onTransferReceived} on `to`.\\n     * @param from The address which you want to send tokens from.\\n     * @param to The address which you want to transfer to.\\n     * @param value The amount of tokens to be transferred.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function transferFromAndCall(address from, address to, uint256 value) external returns (bool);\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from `from` to `to` using the allowance mechanism\\n     * and then calls {IERC1363Receiver-onTransferReceived} on `to`.\\n     * @param from The address which you want to send tokens from.\\n     * @param to The address which you want to transfer to.\\n     * @param value The amount of tokens to be transferred.\\n     * @param data Additional data with no specified format, sent in call to `to`.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function transferFromAndCall(address from, address to, uint256 value, bytes calldata data) external returns (bool);\\n\\n    /**\\n     * @dev Sets a `value` amount of tokens as the allowance of `spender` over the\\n     * caller's tokens and then calls {IERC1363Spender-onApprovalReceived} on `spender`.\\n     * @param spender The address which will spend the funds.\\n     * @param value The amount of tokens to be spent.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function approveAndCall(address spender, uint256 value) external returns (bool);\\n\\n    /**\\n     * @dev Sets a `value` amount of tokens as the allowance of `spender` over the\\n     * caller's tokens and then calls {IERC1363Spender-onApprovalReceived} on `spender`.\\n     * @param spender The address which will spend the funds.\\n     * @param value The amount of tokens to be spent.\\n     * @param data Additional data with no specified format, sent in call to `spender`.\\n     * @return A boolean value indicating whether the operation succeeded unless throwing.\\n     */\\n    function approveAndCall(address spender, uint256 value, bytes calldata data) external returns (bool);\\n}\\n\",\"keccak256\":\"0xd5ea07362ab630a6a3dee4285a74cf2377044ca2e4be472755ad64d7c5d4b69d\",\"license\":\"MIT\"},\"@openzeppelin/contracts/interfaces/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.4.0) (interfaces/IERC165.sol)\\n\\npragma solidity >=0.4.16;\\n\\nimport {IERC165} from \\\"../utils/introspection/IERC165.sol\\\";\\n\",\"keccak256\":\"0x0afcb7e740d1537b252cb2676f600465ce6938398569f09ba1b9ca240dde2dfc\",\"license\":\"MIT\"},\"@openzeppelin/contracts/interfaces/IERC20.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.4.0) (interfaces/IERC20.sol)\\n\\npragma solidity >=0.4.16;\\n\\nimport {IERC20} from \\\"../token/ERC20/IERC20.sol\\\";\\n\",\"keccak256\":\"0x1a6221315ce0307746c2c4827c125d821ee796c74a676787762f4778671d4f44\",\"license\":\"MIT\"},\"@openzeppelin/contracts/token/ERC20/IERC20.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.4.0) (token/ERC20/IERC20.sol)\\n\\npragma solidity >=0.4.16;\\n\\n/**\\n * @dev Interface of the ERC-20 standard as defined in the ERC.\\n */\\ninterface IERC20 {\\n    /**\\n     * @dev Emitted when `value` tokens are moved from one account (`from`) to\\n     * another (`to`).\\n     *\\n     * Note that `value` may be zero.\\n     */\\n    event Transfer(address indexed from, address indexed to, uint256 value);\\n\\n    /**\\n     * @dev Emitted when the allowance of a `spender` for an `owner` is set by\\n     * a call to {approve}. `value` is the new allowance.\\n     */\\n    event Approval(address indexed owner, address indexed spender, uint256 value);\\n\\n    /**\\n     * @dev Returns the value of tokens in existence.\\n     */\\n    function totalSupply() external view returns (uint256);\\n\\n    /**\\n     * @dev Returns the value of tokens owned by `account`.\\n     */\\n    function balanceOf(address account) external view returns (uint256);\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from the caller's account to `to`.\\n     *\\n     * Returns a boolean value indicating whether the operation succeeded.\\n     *\\n     * Emits a {Transfer} event.\\n     */\\n    function transfer(address to, uint256 value) external returns (bool);\\n\\n    /**\\n     * @dev Returns the remaining number of tokens that `spender` will be\\n     * allowed to spend on behalf of `owner` through {transferFrom}. This is\\n     * zero by default.\\n     *\\n     * This value changes when {approve} or {transferFrom} are called.\\n     */\\n    function allowance(address owner, address spender) external view returns (uint256);\\n\\n    /**\\n     * @dev Sets a `value` amount of tokens as the allowance of `spender` over the\\n     * caller's tokens.\\n     *\\n     * Returns a boolean value indicating whether the operation succeeded.\\n     *\\n     * IMPORTANT: Beware that changing an allowance with this method brings the risk\\n     * that someone may use both the old and the new allowance by unfortunate\\n     * transaction ordering. One possible solution to mitigate this race\\n     * condition is to first reduce the spender's allowance to 0 and set the\\n     * desired value afterwards:\\n     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729\\n     *\\n     * Emits an {Approval} event.\\n     */\\n    function approve(address spender, uint256 value) external returns (bool);\\n\\n    /**\\n     * @dev Moves a `value` amount of tokens from `from` to `to` using the\\n     * allowance mechanism. `value` is then deducted from the caller's\\n     * allowance.\\n     *\\n     * Returns a boolean value indicating whether the operation succeeded.\\n     *\\n     * Emits a {Transfer} event.\\n     */\\n    function transferFrom(address from, address to, uint256 value) external returns (bool);\\n}\\n\",\"keccak256\":\"0x74ed01eb66b923d0d0cfe3be84604ac04b76482a55f9dd655e1ef4d367f95bc2\",\"license\":\"MIT\"},\"@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.5.0) (token/ERC20/utils/SafeERC20.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC20} from \\\"../IERC20.sol\\\";\\nimport {IERC1363} from \\\"../../../interfaces/IERC1363.sol\\\";\\n\\n/**\\n * @title SafeERC20\\n * @dev Wrappers around ERC-20 operations that throw on failure (when the token\\n * contract returns false). Tokens that return no value (and instead revert or\\n * throw on failure) are also supported, non-reverting calls are assumed to be\\n * successful.\\n * To use this library you can add a `using SafeERC20 for IERC20;` statement to your contract,\\n * which allows you to call the safe operations as `token.safeTransfer(...)`, etc.\\n */\\nlibrary SafeERC20 {\\n    /**\\n     * @dev An operation with an ERC-20 token failed.\\n     */\\n    error SafeERC20FailedOperation(address token);\\n\\n    /**\\n     * @dev Indicates a failed `decreaseAllowance` request.\\n     */\\n    error SafeERC20FailedDecreaseAllowance(address spender, uint256 currentAllowance, uint256 requestedDecrease);\\n\\n    /**\\n     * @dev Transfer `value` amount of `token` from the calling contract to `to`. If `token` returns no value,\\n     * non-reverting calls are assumed to be successful.\\n     */\\n    function safeTransfer(IERC20 token, address to, uint256 value) internal {\\n        if (!_safeTransfer(token, to, value, true)) {\\n            revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Transfer `value` amount of `token` from `from` to `to`, spending the approval given by `from` to the\\n     * calling contract. If `token` returns no value, non-reverting calls are assumed to be successful.\\n     */\\n    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {\\n        if (!_safeTransferFrom(token, from, to, value, true)) {\\n            revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Variant of {safeTransfer} that returns a bool instead of reverting if the operation is not successful.\\n     */\\n    function trySafeTransfer(IERC20 token, address to, uint256 value) internal returns (bool) {\\n        return _safeTransfer(token, to, value, false);\\n    }\\n\\n    /**\\n     * @dev Variant of {safeTransferFrom} that returns a bool instead of reverting if the operation is not successful.\\n     */\\n    function trySafeTransferFrom(IERC20 token, address from, address to, uint256 value) internal returns (bool) {\\n        return _safeTransferFrom(token, from, to, value, false);\\n    }\\n\\n    /**\\n     * @dev Increase the calling contract's allowance toward `spender` by `value`. If `token` returns no value,\\n     * non-reverting calls are assumed to be successful.\\n     *\\n     * IMPORTANT: If the token implements ERC-7674 (ERC-20 with temporary allowance), and if the \\\"client\\\"\\n     * smart contract uses ERC-7674 to set temporary allowances, then the \\\"client\\\" smart contract should avoid using\\n     * this function. Performing a {safeIncreaseAllowance} or {safeDecreaseAllowance} operation on a token contract\\n     * that has a non-zero temporary allowance (for that particular owner-spender) will result in unexpected behavior.\\n     */\\n    function safeIncreaseAllowance(IERC20 token, address spender, uint256 value) internal {\\n        uint256 oldAllowance = token.allowance(address(this), spender);\\n        forceApprove(token, spender, oldAllowance + value);\\n    }\\n\\n    /**\\n     * @dev Decrease the calling contract's allowance toward `spender` by `requestedDecrease`. If `token` returns no\\n     * value, non-reverting calls are assumed to be successful.\\n     *\\n     * IMPORTANT: If the token implements ERC-7674 (ERC-20 with temporary allowance), and if the \\\"client\\\"\\n     * smart contract uses ERC-7674 to set temporary allowances, then the \\\"client\\\" smart contract should avoid using\\n     * this function. Performing a {safeIncreaseAllowance} or {safeDecreaseAllowance} operation on a token contract\\n     * that has a non-zero temporary allowance (for that particular owner-spender) will result in unexpected behavior.\\n     */\\n    function safeDecreaseAllowance(IERC20 token, address spender, uint256 requestedDecrease) internal {\\n        unchecked {\\n            uint256 currentAllowance = token.allowance(address(this), spender);\\n            if (currentAllowance < requestedDecrease) {\\n                revert SafeERC20FailedDecreaseAllowance(spender, currentAllowance, requestedDecrease);\\n            }\\n            forceApprove(token, spender, currentAllowance - requestedDecrease);\\n        }\\n    }\\n\\n    /**\\n     * @dev Set the calling contract's allowance toward `spender` to `value`. If `token` returns no value,\\n     * non-reverting calls are assumed to be successful. Meant to be used with tokens that require the approval\\n     * to be set to zero before setting it to a non-zero value, such as USDT.\\n     *\\n     * NOTE: If the token implements ERC-7674, this function will not modify any temporary allowance. This function\\n     * only sets the \\\"standard\\\" allowance. Any temporary allowance will remain active, in addition to the value being\\n     * set here.\\n     */\\n    function forceApprove(IERC20 token, address spender, uint256 value) internal {\\n        if (!_safeApprove(token, spender, value, false)) {\\n            if (!_safeApprove(token, spender, 0, true)) revert SafeERC20FailedOperation(address(token));\\n            if (!_safeApprove(token, spender, value, true)) revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Performs an {ERC1363} transferAndCall, with a fallback to the simple {ERC20} transfer if the target has no\\n     * code. This can be used to implement an {ERC721}-like safe transfer that relies on {ERC1363} checks when\\n     * targeting contracts.\\n     *\\n     * Reverts if the returned value is other than `true`.\\n     */\\n    function transferAndCallRelaxed(IERC1363 token, address to, uint256 value, bytes memory data) internal {\\n        if (to.code.length == 0) {\\n            safeTransfer(token, to, value);\\n        } else if (!token.transferAndCall(to, value, data)) {\\n            revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Performs an {ERC1363} transferFromAndCall, with a fallback to the simple {ERC20} transferFrom if the target\\n     * has no code. This can be used to implement an {ERC721}-like safe transfer that relies on {ERC1363} checks when\\n     * targeting contracts.\\n     *\\n     * Reverts if the returned value is other than `true`.\\n     */\\n    function transferFromAndCallRelaxed(\\n        IERC1363 token,\\n        address from,\\n        address to,\\n        uint256 value,\\n        bytes memory data\\n    ) internal {\\n        if (to.code.length == 0) {\\n            safeTransferFrom(token, from, to, value);\\n        } else if (!token.transferFromAndCall(from, to, value, data)) {\\n            revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Performs an {ERC1363} approveAndCall, with a fallback to the simple {ERC20} approve if the target has no\\n     * code. This can be used to implement an {ERC721}-like safe transfer that rely on {ERC1363} checks when\\n     * targeting contracts.\\n     *\\n     * NOTE: When the recipient address (`to`) has no code (i.e. is an EOA), this function behaves as {forceApprove}.\\n     * Oppositely, when the recipient address (`to`) has code, this function only attempts to call {ERC1363-approveAndCall}\\n     * once without retrying, and relies on the returned value to be true.\\n     *\\n     * Reverts if the returned value is other than `true`.\\n     */\\n    function approveAndCallRelaxed(IERC1363 token, address to, uint256 value, bytes memory data) internal {\\n        if (to.code.length == 0) {\\n            forceApprove(token, to, value);\\n        } else if (!token.approveAndCall(to, value, data)) {\\n            revert SafeERC20FailedOperation(address(token));\\n        }\\n    }\\n\\n    /**\\n     * @dev Imitates a Solidity `token.transfer(to, value)` call, relaxing the requirement on the return value: the\\n     * return value is optional (but if data is returned, it must not be false).\\n     *\\n     * @param token The token targeted by the call.\\n     * @param to The recipient of the tokens\\n     * @param value The amount of token to transfer\\n     * @param bubble Behavior switch if the transfer call reverts: bubble the revert reason or return a false boolean.\\n     */\\n    function _safeTransfer(IERC20 token, address to, uint256 value, bool bubble) private returns (bool success) {\\n        bytes4 selector = IERC20.transfer.selector;\\n\\n        assembly (\\\"memory-safe\\\") {\\n            let fmp := mload(0x40)\\n            mstore(0x00, selector)\\n            mstore(0x04, and(to, shr(96, not(0))))\\n            mstore(0x24, value)\\n            success := call(gas(), token, 0, 0x00, 0x44, 0x00, 0x20)\\n            // if call success and return is true, all is good.\\n            // otherwise (not success or return is not true), we need to perform further checks\\n            if iszero(and(success, eq(mload(0x00), 1))) {\\n                // if the call was a failure and bubble is enabled, bubble the error\\n                if and(iszero(success), bubble) {\\n                    returndatacopy(fmp, 0x00, returndatasize())\\n                    revert(fmp, returndatasize())\\n                }\\n                // if the return value is not true, then the call is only successful if:\\n                // - the token address has code\\n                // - the returndata is empty\\n                success := and(success, and(iszero(returndatasize()), gt(extcodesize(token), 0)))\\n            }\\n            mstore(0x40, fmp)\\n        }\\n    }\\n\\n    /**\\n     * @dev Imitates a Solidity `token.transferFrom(from, to, value)` call, relaxing the requirement on the return\\n     * value: the return value is optional (but if data is returned, it must not be false).\\n     *\\n     * @param token The token targeted by the call.\\n     * @param from The sender of the tokens\\n     * @param to The recipient of the tokens\\n     * @param value The amount of token to transfer\\n     * @param bubble Behavior switch if the transfer call reverts: bubble the revert reason or return a false boolean.\\n     */\\n    function _safeTransferFrom(\\n        IERC20 token,\\n        address from,\\n        address to,\\n        uint256 value,\\n        bool bubble\\n    ) private returns (bool success) {\\n        bytes4 selector = IERC20.transferFrom.selector;\\n\\n        assembly (\\\"memory-safe\\\") {\\n            let fmp := mload(0x40)\\n            mstore(0x00, selector)\\n            mstore(0x04, and(from, shr(96, not(0))))\\n            mstore(0x24, and(to, shr(96, not(0))))\\n            mstore(0x44, value)\\n            success := call(gas(), token, 0, 0x00, 0x64, 0x00, 0x20)\\n            // if call success and return is true, all is good.\\n            // otherwise (not success or return is not true), we need to perform further checks\\n            if iszero(and(success, eq(mload(0x00), 1))) {\\n                // if the call was a failure and bubble is enabled, bubble the error\\n                if and(iszero(success), bubble) {\\n                    returndatacopy(fmp, 0x00, returndatasize())\\n                    revert(fmp, returndatasize())\\n                }\\n                // if the return value is not true, then the call is only successful if:\\n                // - the token address has code\\n                // - the returndata is empty\\n                success := and(success, and(iszero(returndatasize()), gt(extcodesize(token), 0)))\\n            }\\n            mstore(0x40, fmp)\\n            mstore(0x60, 0)\\n        }\\n    }\\n\\n    /**\\n     * @dev Imitates a Solidity `token.approve(spender, value)` call, relaxing the requirement on the return value:\\n     * the return value is optional (but if data is returned, it must not be false).\\n     *\\n     * @param token The token targeted by the call.\\n     * @param spender The spender of the tokens\\n     * @param value The amount of token to transfer\\n     * @param bubble Behavior switch if the transfer call reverts: bubble the revert reason or return a false boolean.\\n     */\\n    function _safeApprove(IERC20 token, address spender, uint256 value, bool bubble) private returns (bool success) {\\n        bytes4 selector = IERC20.approve.selector;\\n\\n        assembly (\\\"memory-safe\\\") {\\n            let fmp := mload(0x40)\\n            mstore(0x00, selector)\\n            mstore(0x04, and(spender, shr(96, not(0))))\\n            mstore(0x24, value)\\n            success := call(gas(), token, 0, 0x00, 0x44, 0x00, 0x20)\\n            // if call success and return is true, all is good.\\n            // otherwise (not success or return is not true), we need to perform further checks\\n            if iszero(and(success, eq(mload(0x00), 1))) {\\n                // if the call was a failure and bubble is enabled, bubble the error\\n                if and(iszero(success), bubble) {\\n                    returndatacopy(fmp, 0x00, returndatasize())\\n                    revert(fmp, returndatasize())\\n                }\\n                // if the return value is not true, then the call is only successful if:\\n                // - the token address has code\\n                // - the returndata is empty\\n                success := and(success, and(iszero(returndatasize()), gt(extcodesize(token), 0)))\\n            }\\n            mstore(0x40, fmp)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x304d732678032a9781ae85c8f204c8fba3d3a5e31c02616964e75cfdc5049098\",\"license\":\"MIT\"},\"@openzeppelin/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"@openzeppelin/contracts/utils/ReentrancyGuard.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.5.0) (utils/ReentrancyGuard.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {StorageSlot} from \\\"./StorageSlot.sol\\\";\\n\\n/**\\n * @dev Contract module that helps prevent reentrant calls to a function.\\n *\\n * Inheriting from `ReentrancyGuard` will make the {nonReentrant} modifier\\n * available, which can be applied to functions to make sure there are no nested\\n * (reentrant) calls to them.\\n *\\n * Note that because there is a single `nonReentrant` guard, functions marked as\\n * `nonReentrant` may not call one another. This can be worked around by making\\n * those functions `private`, and then adding `external` `nonReentrant` entry\\n * points to them.\\n *\\n * TIP: If EIP-1153 (transient storage) is available on the chain you're deploying at,\\n * consider using {ReentrancyGuardTransient} instead.\\n *\\n * TIP: If you would like to learn more about reentrancy and alternative ways\\n * to protect against it, check out our blog post\\n * https://blog.openzeppelin.com/reentrancy-after-istanbul/[Reentrancy After Istanbul].\\n *\\n * IMPORTANT: Deprecated. This storage-based reentrancy guard will be removed and replaced\\n * by the {ReentrancyGuardTransient} variant in v6.0.\\n *\\n * @custom:stateless\\n */\\nabstract contract ReentrancyGuard {\\n    using StorageSlot for bytes32;\\n\\n    // keccak256(abi.encode(uint256(keccak256(\\\"openzeppelin.storage.ReentrancyGuard\\\")) - 1)) & ~bytes32(uint256(0xff))\\n    bytes32 private constant REENTRANCY_GUARD_STORAGE =\\n        0x9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f00;\\n\\n    // Booleans are more expensive than uint256 or any type that takes up a full\\n    // word because each write operation emits an extra SLOAD to first read the\\n    // slot's contents, replace the bits taken up by the boolean, and then write\\n    // back. This is the compiler's defense against contract upgrades and\\n    // pointer aliasing, and it cannot be disabled.\\n\\n    // The values being non-zero value makes deployment a bit more expensive,\\n    // but in exchange the refund on every call to nonReentrant will be lower in\\n    // amount. Since refunds are capped to a percentage of the total\\n    // transaction's gas, it is best to keep them low in cases like this one, to\\n    // increase the likelihood of the full refund coming into effect.\\n    uint256 private constant NOT_ENTERED = 1;\\n    uint256 private constant ENTERED = 2;\\n\\n    /**\\n     * @dev Unauthorized reentrant call.\\n     */\\n    error ReentrancyGuardReentrantCall();\\n\\n    constructor() {\\n        _reentrancyGuardStorageSlot().getUint256Slot().value = NOT_ENTERED;\\n    }\\n\\n    /**\\n     * @dev Prevents a contract from calling itself, directly or indirectly.\\n     * Calling a `nonReentrant` function from another `nonReentrant`\\n     * function is not supported. It is possible to prevent this from happening\\n     * by making the `nonReentrant` function external, and making it call a\\n     * `private` function that does the actual work.\\n     */\\n    modifier nonReentrant() {\\n        _nonReentrantBefore();\\n        _;\\n        _nonReentrantAfter();\\n    }\\n\\n    /**\\n     * @dev A `view` only version of {nonReentrant}. Use to block view functions\\n     * from being called, preventing reading from inconsistent contract state.\\n     *\\n     * CAUTION: This is a \\\"view\\\" modifier and does not change the reentrancy\\n     * status. Use it only on view functions. For payable or non-payable functions,\\n     * use the standard {nonReentrant} modifier instead.\\n     */\\n    modifier nonReentrantView() {\\n        _nonReentrantBeforeView();\\n        _;\\n    }\\n\\n    function _nonReentrantBeforeView() private view {\\n        if (_reentrancyGuardEntered()) {\\n            revert ReentrancyGuardReentrantCall();\\n        }\\n    }\\n\\n    function _nonReentrantBefore() private {\\n        // On the first call to nonReentrant, _status will be NOT_ENTERED\\n        _nonReentrantBeforeView();\\n\\n        // Any calls to nonReentrant after this point will fail\\n        _reentrancyGuardStorageSlot().getUint256Slot().value = ENTERED;\\n    }\\n\\n    function _nonReentrantAfter() private {\\n        // By storing the original value once again, a refund is triggered (see\\n        // https://eips.ethereum.org/EIPS/eip-2200)\\n        _reentrancyGuardStorageSlot().getUint256Slot().value = NOT_ENTERED;\\n    }\\n\\n    /**\\n     * @dev Returns true if the reentrancy guard is currently set to \\\"entered\\\", which indicates there is a\\n     * `nonReentrant` function in the call stack.\\n     */\\n    function _reentrancyGuardEntered() internal view returns (bool) {\\n        return _reentrancyGuardStorageSlot().getUint256Slot().value == ENTERED;\\n    }\\n\\n    function _reentrancyGuardStorageSlot() internal pure virtual returns (bytes32) {\\n        return REENTRANCY_GUARD_STORAGE;\\n    }\\n}\\n\",\"keccak256\":\"0xa516cbf1c7d15d3517c2d668601ce016c54395bf5171918a14e2686977465f53\",\"license\":\"MIT\"},\"@openzeppelin/contracts/utils/StorageSlot.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/StorageSlot.sol)\\n// This file was procedurally generated from scripts/generate/templates/StorageSlot.js.\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Library for reading and writing primitive types to specific storage slots.\\n *\\n * Storage slots are often used to avoid storage conflict when dealing with upgradeable contracts.\\n * This library helps with reading and writing to such slots without the need for inline assembly.\\n *\\n * The functions in this library return Slot structs that contain a `value` member that can be used to read or write.\\n *\\n * Example usage to set ERC-1967 implementation slot:\\n * ```solidity\\n * contract ERC1967 {\\n *     // Define the slot. Alternatively, use the SlotDerivation library to derive the slot.\\n *     bytes32 internal constant _IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n *\\n *     function _getImplementation() internal view returns (address) {\\n *         return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;\\n *     }\\n *\\n *     function _setImplementation(address newImplementation) internal {\\n *         require(newImplementation.code.length > 0);\\n *         StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;\\n *     }\\n * }\\n * ```\\n *\\n * TIP: Consider using this library along with {SlotDerivation}.\\n */\\nlibrary StorageSlot {\\n    struct AddressSlot {\\n        address value;\\n    }\\n\\n    struct BooleanSlot {\\n        bool value;\\n    }\\n\\n    struct Bytes32Slot {\\n        bytes32 value;\\n    }\\n\\n    struct Uint256Slot {\\n        uint256 value;\\n    }\\n\\n    struct Int256Slot {\\n        int256 value;\\n    }\\n\\n    struct StringSlot {\\n        string value;\\n    }\\n\\n    struct BytesSlot {\\n        bytes value;\\n    }\\n\\n    /**\\n     * @dev Returns an `AddressSlot` with member `value` located at `slot`.\\n     */\\n    function getAddressSlot(bytes32 slot) internal pure returns (AddressSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BooleanSlot` with member `value` located at `slot`.\\n     */\\n    function getBooleanSlot(bytes32 slot) internal pure returns (BooleanSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Bytes32Slot` with member `value` located at `slot`.\\n     */\\n    function getBytes32Slot(bytes32 slot) internal pure returns (Bytes32Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Uint256Slot` with member `value` located at `slot`.\\n     */\\n    function getUint256Slot(bytes32 slot) internal pure returns (Uint256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `Int256Slot` with member `value` located at `slot`.\\n     */\\n    function getInt256Slot(bytes32 slot) internal pure returns (Int256Slot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `StringSlot` with member `value` located at `slot`.\\n     */\\n    function getStringSlot(bytes32 slot) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `StringSlot` representation of the string storage pointer `store`.\\n     */\\n    function getStringSlot(string storage store) internal pure returns (StringSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns a `BytesSlot` with member `value` located at `slot`.\\n     */\\n    function getBytesSlot(bytes32 slot) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := slot\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns an `BytesSlot` representation of the bytes storage pointer `store`.\\n     */\\n    function getBytesSlot(bytes storage store) internal pure returns (BytesSlot storage r) {\\n        assembly (\\\"memory-safe\\\") {\\n            r.slot := store.slot\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xcf74f855663ce2ae00ed8352666b7935f6cddea2932fdf2c3ecd30a9b1cd0e97\",\"license\":\"MIT\"},\"@openzeppelin/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.4.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity >=0.4.16;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x8891738ffe910f0cf2da09566928589bf5d63f4524dd734fd9cedbac3274dd5c\",\"license\":\"MIT\"},\"contracts/SentryWallet.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.28;\\n\\nimport { IERC20 } from \\\"@openzeppelin/contracts/token/ERC20/IERC20.sol\\\";\\nimport { SafeERC20 } from \\\"@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol\\\";\\nimport { ReentrancyGuard } from \\\"@openzeppelin/contracts/utils/ReentrancyGuard.sol\\\";\\n\\n/**\\n * @title SentryWallet\\n * @notice Manager-controlled custody for one identity and one immutable payment currency.\\n * @dev Users never move funds directly. EmploymentManager is the sole settlement and withdrawal authority.\\n *      Wallet lifecycle (Provisioning \\u2192 Active \\u2192 Locked \\u2192 Archived) is independent of employment status.\\n */\\ncontract SentryWallet is ReentrancyGuard {\\n    using SafeERC20 for IERC20;\\n\\n    /// @notice Supported payment assets.\\n    enum Token {\\n        CELO,\\n        USDm,\\n        USDC,\\n        USDT\\n    }\\n\\n    /// @notice Wallet lifecycle states managed by EmploymentManager.\\n    enum WalletStatus {\\n        Provisioning,\\n        Active,\\n        Locked,\\n        Archived\\n    }\\n\\n    /// @notice Immutable implementation version for indexers and future factory routing.\\n    uint256 public constant VERSION = 1;\\n\\n    /// @notice Private identity commitment associated with this wallet.\\n    bytes32 public immutable identityHash;\\n\\n    /// @notice Manager authorized to settle, withdraw, and manage lifecycle.\\n    address public immutable manager;\\n\\n    /// @notice Currency permanently assigned when the wallet is deployed.\\n    Token public immutable paymentCurrency;\\n\\n    /// @notice ERC20 contract for paymentCurrency, or zero for native CELO.\\n    address public immutable tokenAddress;\\n\\n    /// @notice Current wallet lifecycle state.\\n    WalletStatus public status;\\n\\n    /// @notice Emitted when native CELO is received.\\n    event NativeReceived(address indexed from, uint256 amount);\\n\\n    /// @notice Emitted when funds are deposited or synchronized into the wallet.\\n    /// @param wallet This wallet address.\\n    /// @param from Funding source.\\n    /// @param amount Amount received in the wallet currency.\\n    /// @param currency Immutable wallet currency.\\n    event WalletFunded(\\n        address indexed wallet,\\n        address indexed from,\\n        uint256 amount,\\n        Token currency\\n    );\\n\\n    /// @notice Emitted after the manager executes a user withdrawal.\\n    event Withdrawal(\\n        address indexed to,\\n        Token indexed token,\\n        uint256 amount,\\n        bytes32 indexed withdrawalId\\n    );\\n\\n    /// @notice Emitted after the manager executes a settlement.\\n    event SettlementExecuted(\\n        address indexed treasury,\\n        Token indexed token,\\n        uint256 amount,\\n        bytes32 indexed settlementId\\n    );\\n\\n    /// @notice Emitted when wallet lifecycle changes.\\n    event WalletStatusChanged(\\n        WalletStatus indexed previousStatus,\\n        WalletStatus indexed newStatus\\n    );\\n\\n    error UnauthorizedManager();\\n    error ZeroAddress();\\n    error InvalidIdentity();\\n    error InvalidAmount();\\n    error NativeTransferFailed();\\n    error InvalidTokenConfig();\\n    error InvalidWalletStatus();\\n\\n    modifier onlyManager() {\\n        if (msg.sender != manager) revert UnauthorizedManager();\\n        _;\\n    }\\n\\n    modifier onlyActive() {\\n        if (status != WalletStatus.Active) revert InvalidWalletStatus();\\n        _;\\n    }\\n\\n    /**\\n     * @notice Creates a manager-controlled wallet for one identity and currency.\\n     * @param employmentManager Manager authorized to settle funds and manage lifecycle.\\n     * @param identityHash_ Namespaced identity commitment.\\n     * @param currency_ Immutable wallet currency.\\n     * @param tokenAddress_ ERC20 address, or zero for CELO.\\n     */\\n    constructor(\\n        address employmentManager,\\n        bytes32 identityHash_,\\n        Token currency_,\\n        address tokenAddress_\\n    ) {\\n        if (employmentManager == address(0)) revert ZeroAddress();\\n        if (identityHash_ == bytes32(0)) revert InvalidIdentity();\\n        if (currency_ == Token.CELO && tokenAddress_ != address(0)) revert InvalidTokenConfig();\\n        if (currency_ != Token.CELO && tokenAddress_ == address(0)) revert InvalidTokenConfig();\\n\\n        manager = employmentManager;\\n        identityHash = identityHash_;\\n        paymentCurrency = currency_;\\n        tokenAddress = tokenAddress_;\\n        status = WalletStatus.Provisioning;\\n    }\\n\\n    /// @notice Accepts native CELO transfers for CELO wallets.\\n    receive() external payable {\\n        if (paymentCurrency != Token.CELO) revert InvalidTokenConfig();\\n        emit NativeReceived(msg.sender, msg.value);\\n        emit WalletFunded(address(this), msg.sender, msg.value, paymentCurrency);\\n    }\\n\\n    /// @notice Returns the balance of the wallet's immutable currency.\\n    function balance() external view returns (uint256) {\\n        if (paymentCurrency == Token.CELO) return address(this).balance;\\n        return IERC20(tokenAddress).balanceOf(address(this));\\n    }\\n\\n    /// @notice Activates a newly provisioned wallet.\\n    function activate() external onlyManager {\\n        if (status != WalletStatus.Provisioning) revert InvalidWalletStatus();\\n        _setStatus(WalletStatus.Active);\\n    }\\n\\n    /// @notice Locks an active wallet to block settlements and withdrawals.\\n    function lockWallet() external onlyManager {\\n        if (status != WalletStatus.Active) revert InvalidWalletStatus();\\n        _setStatus(WalletStatus.Locked);\\n    }\\n\\n    /// @notice Unlocks a locked wallet.\\n    function unlockWallet() external onlyManager {\\n        if (status != WalletStatus.Locked) revert InvalidWalletStatus();\\n        _setStatus(WalletStatus.Active);\\n    }\\n\\n    /// @notice Archives a wallet permanently.\\n    function archiveWallet() external onlyManager {\\n        if (status == WalletStatus.Archived) revert InvalidWalletStatus();\\n        _setStatus(WalletStatus.Archived);\\n    }\\n\\n    /**\\n     * @notice Records an ERC20 funding event after backend synchronization.\\n     * @param from Funding source observed off-chain or on-chain.\\n     * @param amount Amount credited in the wallet currency.\\n     */\\n    function notifyFunding(address from, uint256 amount) external onlyManager {\\n        if (amount == 0) revert InvalidAmount();\\n        emit WalletFunded(address(this), from, amount, paymentCurrency);\\n    }\\n\\n    /**\\n     * @notice Transfers an authorized batch settlement to the treasury.\\n     * @dev Replay protection and employment validation are enforced by EmploymentManager.\\n     */\\n    function executeSettlement(\\n        address treasury,\\n        uint256 amount,\\n        bytes32 settlementId\\n    ) external onlyManager onlyActive nonReentrant {\\n        if (treasury == address(0)) revert ZeroAddress();\\n        if (amount == 0) revert InvalidAmount();\\n        _transfer(treasury, amount);\\n        emit SettlementExecuted(treasury, paymentCurrency, amount, settlementId);\\n    }\\n\\n    /**\\n     * @notice Transfers available funds to a user destination.\\n     * @param destination Registered withdrawal destination.\\n     * @param amount Amount to transfer.\\n     * @param withdrawalId Unique withdrawal identifier.\\n     */\\n    function withdrawTo(\\n        address destination,\\n        uint256 amount,\\n        bytes32 withdrawalId\\n    ) external onlyManager onlyActive nonReentrant {\\n        if (destination == address(0)) revert ZeroAddress();\\n        if (amount == 0) revert InvalidAmount();\\n        _transfer(destination, amount);\\n        emit Withdrawal(destination, paymentCurrency, amount, withdrawalId);\\n    }\\n\\n    function _setStatus(WalletStatus newStatus) private {\\n        WalletStatus previousStatus = status;\\n        if (previousStatus == newStatus) revert InvalidWalletStatus();\\n        status = newStatus;\\n        emit WalletStatusChanged(previousStatus, newStatus);\\n    }\\n\\n    function _transfer(address destination, uint256 amount) private {\\n        if (paymentCurrency == Token.CELO) {\\n            (bool ok, ) = payable(destination).call{value: amount}(\\\"\\\");\\n            if (!ok) revert NativeTransferFailed();\\n        } else {\\n            IERC20(tokenAddress).safeTransfer(destination, amount);\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x415d5063d0e4a686ccad4528f82d1888d2378292b0ce4984574ddb1e0c6628f1\",\"license\":\"MIT\"},\"contracts/SentryWalletFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.28;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\nimport {SentryWallet} from \\\"./SentryWallet.sol\\\";\\n\\n/**\\n * @title SentryWalletFactory\\n * @notice Deploys exactly one SentryWallet for each identity and user key.\\n * @dev Uses CREATE deliberately. Future wallet implementations only require updating\\n *      `walletVersion` and the deployment target in this factory \\u2014 no in-place upgrades.\\n */\\ncontract SentryWalletFactory is Ownable {\\n    enum Token {\\n        CELO,\\n        USDm,\\n        USDC,\\n        USDT\\n    }\\n\\n    struct CurrencyConfig {\\n        address tokenAddress;\\n        bool enabled;\\n    }\\n\\n    /// @notice Emitted after a wallet is created and indexed.\\n    /// @param identityHash Identity commitment assigned to the wallet.\\n    /// @param userKey Stable user identifier.\\n    /// @param currency Immutable wallet currency.\\n    /// @param wallet Deployed SentryWallet address.\\n    event WalletCreated(\\n        bytes32 indexed identityHash,\\n        address indexed userKey,\\n        Token currency,\\n        address indexed wallet\\n    );\\n\\n    /// @notice Emitted when a currency is enabled or disabled for future wallets.\\n    /// @param currency Currency configuration changed.\\n    /// @param enabled New enabled state.\\n    event CurrencyEnabled(Token indexed currency, bool enabled);\\n    event TokenAddressUpdated(\\n        Token indexed currency,\\n        address indexed previousAddress,\\n        address indexed newAddress\\n    );\\n\\n    /// @notice An identity already has a wallet.\\n    error IdentityAlreadyRegistered();\\n\\n    /// @notice An owner already has a wallet.\\n    error OwnerAlreadyRegistered();\\n\\n    /// @notice Address argument cannot be zero.\\n    error ZeroAddress();\\n\\n    /// @notice Identity hash cannot be zero.\\n    error InvalidIdentity();\\n    error CurrencyDisabled();\\n    error InvalidTokenConfig();\\n\\n    /// @notice EmploymentManager assigned to every deployed wallet.\\n    address public immutable manager;\\n\\n    /// @notice Version of SentryWallet deployed by this factory.\\n    uint256 public walletVersion = 1;\\n\\n    mapping(Token currency => CurrencyConfig config) public currencies;\\n\\n    /// @notice Wallet indexed by identity commitment.\\n    mapping(bytes32 identityHash => address wallet) public walletOfIdentity;\\n\\n    /// @notice Wallet indexed by owner.\\n    mapping(address userKey => address wallet) public walletOfUser;\\n\\n    /// @notice Identity commitment indexed by wallet.\\n    mapping(address wallet => bytes32 identityHash) public identityOfWallet;\\n\\n    /**\\n     * @notice Configures the wallet factory.\\n     * @param initialOwner Account authorized to create wallets and update token addresses.\\n     * @param employmentManager Manager assigned to new wallets.\\n     * @param usdm_ Initial USDm token address.\\n     * @param usdc_ Initial USDC token address.\\n     * @param usdt_ Initial USDT token address.\\n     */\\n    constructor(\\n        address initialOwner,\\n        address employmentManager,\\n        address usdm_,\\n        address usdc_,\\n        address usdt_\\n    ) Ownable(initialOwner) {\\n        _validateAddresses(employmentManager, usdm_, usdc_, usdt_);\\n        manager = employmentManager;\\n        currencies[Token.CELO] = CurrencyConfig(address(0), true);\\n        currencies[Token.USDm] = CurrencyConfig(usdm_, true);\\n        currencies[Token.USDC] = CurrencyConfig(usdc_, true);\\n        currencies[Token.USDT] = CurrencyConfig(usdt_, true);\\n    }\\n\\n    /**\\n     * @notice Creates and indexes a wallet.\\n     * @param identityHash Identity commitment for the user.\\n     * @param userKey Stable on-chain user identifier.\\n     * @param currency Immutable currency selected for the wallet.\\n     * @return wallet Address of the deployed wallet.\\n     */\\n    function createWallet(\\n        bytes32 identityHash,\\n        address userKey,\\n        Token currency\\n    ) external onlyOwner returns (address wallet) {\\n        if (userKey == address(0)) revert ZeroAddress();\\n        if (identityHash == bytes32(0)) revert InvalidIdentity();\\n        if (walletOfIdentity[identityHash] != address(0)) revert IdentityAlreadyRegistered();\\n        if (walletOfUser[userKey] != address(0)) revert OwnerAlreadyRegistered();\\n\\n        CurrencyConfig memory config = currencies[currency];\\n        if (!config.enabled) revert CurrencyDisabled();\\n        if (currency != Token.CELO && config.tokenAddress == address(0)) {\\n            revert InvalidTokenConfig();\\n        }\\n\\n        wallet = address(new SentryWallet(\\n            manager,\\n            identityHash,\\n            SentryWallet.Token(uint8(currency)),\\n            config.tokenAddress\\n        ));\\n\\n        walletOfIdentity[identityHash] = wallet;\\n        walletOfUser[userKey] = wallet;\\n        identityOfWallet[wallet] = identityHash;\\n\\n        emit WalletCreated(identityHash, userKey, currency, wallet);\\n    }\\n\\n    /**\\n     * @notice Checks whether an identity has a wallet.\\n     * @param identityHash Identity commitment to query.\\n     * @return exists True when a wallet is registered.\\n     */\\n    function hasWallet(bytes32 identityHash) external view returns (bool exists) {\\n        return walletOfIdentity[identityHash] != address(0);\\n    }\\n\\n    /**\\n     * @notice Resolves a wallet from an identity.\\n     * @param identityHash Identity commitment to query.\\n     * @return wallet Registered wallet or zero address.\\n     */\\n    function walletFromIdentity(bytes32 identityHash) external view returns (address wallet) {\\n        return walletOfIdentity[identityHash];\\n    }\\n\\n    /**\\n     * @notice Resolves a wallet from its stable user key.\\n     * @param userKey User key to query.\\n     * @return wallet Registered wallet or zero address.\\n     */\\n    function walletFromUser(address userKey) external view returns (address wallet) {\\n        return walletOfUser[userKey];\\n    }\\n\\n    function setCurrencyEnabled(Token currency, bool enabled) external onlyOwner {\\n        CurrencyConfig storage config = currencies[currency];\\n        if (currency != Token.CELO && config.tokenAddress == address(0)) {\\n            revert InvalidTokenConfig();\\n        }\\n        if (config.enabled == enabled) return;\\n        config.enabled = enabled;\\n        emit CurrencyEnabled(currency, enabled);\\n    }\\n\\n    function updateTokenAddress(Token currency, address newAddress) external onlyOwner {\\n        if (currency == Token.CELO || newAddress == address(0)) revert InvalidTokenConfig();\\n        CurrencyConfig storage config = currencies[currency];\\n        address previousAddress = config.tokenAddress;\\n        if (previousAddress == newAddress) return;\\n        config.tokenAddress = newAddress;\\n        emit TokenAddressUpdated(currency, previousAddress, newAddress);\\n    }\\n\\n    /**\\n     * @dev Validates manager and token addresses.\\n     * @param employmentManager Manager address.\\n     * @param usdm_ USDm address.\\n     * @param usdc_ USDC address.\\n     * @param usdt_ USDT address.\\n     */\\n    function _validateAddresses(\\n        address employmentManager,\\n        address usdm_,\\n        address usdc_,\\n        address usdt_\\n    ) private pure {\\n        if (\\n            employmentManager == address(0) ||\\n            usdm_ == address(0) ||\\n            usdc_ == address(0) ||\\n            usdt_ == address(0)\\n        ) revert ZeroAddress();\\n    }\\n}\\n\",\"keccak256\":\"0x851d0914b88f16b48fb513d8ba4a41294d62956c3ca0a6f3cbbffb3226a9b5bf\",\"license\":\"MIT\"}},\"version\":1}",
+  "bytecode": "0x60a060405260018055348015610013575f5ffd5b50604051611dfe380380611dfe833981016040819052610032916102b6565b846001600160a01b03811661006057604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b610069816101e7565b5061007684848484610236565b6001600160a01b039384166080526040805180820182525f80825260016020808401828152838052600280835294517fac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b80549251918c166001600160a81b031993841617600160a01b921515830217905586518088018852998b168a5289830184815284865286845299517fe90b7bceb6e7df5418fb78d8ee546e97c83a08bbccc01a0644d599ccd2a7c2e080549b51918d169b84169b909b1790151582021790995585518087018752978a16885287820183815285855285835297517f679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28c8054995115158b02998316918c1691909117989098179097558451808601909552948816845283850190815260039091529252517f88601476d11616a71c5be67555bd1dff4b1cbf21533d2669b768b61518cfe1c380549251151590940291909216919093161791909117905550610317565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b038416158061025357506001600160a01b038316155b8061026557506001600160a01b038216155b8061027757506001600160a01b038116155b156102955760405163d92e233d60e01b815260040160405180910390fd5b50505050565b80516001600160a01b03811681146102b1575f5ffd5b919050565b5f5f5f5f5f60a086880312156102ca575f5ffd5b6102d38661029b565b94506102e16020870161029b565b93506102ef6040870161029b565b92506102fd6060870161029b565b915061030b6080870161029b565b90509295509295909350565b608051611ac86103365f395f818161018001526105990152611ac85ff3fe608060405234801561000f575f5ffd5b50600436106100f0575f3560e01c80638da5cb5b11610093578063bc51713111610063578063bc5171311461025b578063cc0e153b14610264578063f2fde38b146102b7578063f62acb99146102ca575f5ffd5b80638da5cb5b146101fd578063ac5e273c1461020d578063b20060d514610220578063b3cc64a214610248575f5ffd5b8063481c6a75116100ce578063481c6a751461017b5780635ab85176146101a25780635cb5795c146101ca578063715018a6146101f5575f5ffd5b806315304bd6146100f45780633c0f0a91146101265780633de6f37914610166575b5f5ffd5b610113610102366004610896565b60056020525f908152604090205481565b6040519081526020015b60405180910390f35b61014e6101343660046108b6565b5f908152600360205260409020546001600160a01b031690565b6040516001600160a01b03909116815260200161011d565b6101796101743660046108db565b610304565b005b61014e7f000000000000000000000000000000000000000000000000000000000000000081565b61014e6101b03660046108b6565b60036020525f90815260409020546001600160a01b031681565b61014e6101d8366004610896565b6001600160a01b039081165f908152600460205260409020541690565b610179610403565b5f546001600160a01b031661014e565b61014e61021b36600461090c565b610416565b61014e61022e366004610896565b60046020525f90815260409020546001600160a01b031681565b610179610256366004610945565b6106ac565b61011360015481565b61029861027236600461097e565b60026020525f90815260409020546001600160a01b03811690600160a01b900460ff1682565b604080516001600160a01b03909316835290151560208301520161011d565b6101796102c5366004610896565b6107b1565b6102f46102d83660046108b6565b5f908152600360205260409020546001600160a01b0316151590565b604051901515815260200161011d565b61030c6107f3565b5f82600381111561031f5761031f610997565b148061033257506001600160a01b038116155b15610350576040516303ff3dd760e11b815260040160405180910390fd5b5f60025f84600381111561036657610366610997565b600381111561037757610377610997565b815260208101919091526040015f2080549091506001600160a01b0390811690831681036103a55750505050565b81546001600160a01b0319166001600160a01b03848116918217845582168560038111156103d5576103d5610997565b6040517f94335f05fdf7327e98cb1fa67e996297f9cd1d8ab2a354bc833422fdadf1277c905f90a450505050565b61040b6107f3565b6104145f61081f565b565b5f61041f6107f3565b6001600160a01b0383166104465760405163d92e233d60e01b815260040160405180910390fd5b836104645760405163178423dd60e01b815260040160405180910390fd5b5f848152600360205260409020546001600160a01b0316156104995760405163a225e46960e01b815260040160405180910390fd5b6001600160a01b038381165f9081526004602052604090205416156104d15760405163c8b1500560e01b815260040160405180910390fd5b5f60025f8460038111156104e7576104e7610997565b60038111156104f8576104f8610997565b815260208082019290925260409081015f208151808301909252546001600160a01b0381168252600160a01b900460ff16151591810182905291506105505760405163091daf0160e11b815260040160405180910390fd5b5f83600381111561056357610563610997565b14158015610579575080516001600160a01b0316155b15610597576040516303ff3dd760e11b815260040160405180910390fd5b7f0000000000000000000000000000000000000000000000000000000000000000858460038111156105cb576105cb610997565b60ff1660038111156105df576105df610997565b83516040516105ed9061086e565b6105fa94939291906109c7565b604051809103905ff080158015610613573d5f5f3e3d5ffd5b505f86815260036020908152604080832080546001600160a01b038087166001600160a01b031992831681179093558a16808652600485528386208054909216831790915581855260059093529281902089905551929450909187907fb9330d1e67a3cbf02df2bad0722a539d0a92bc93a744484c8ff7380c34a17e079061069c908890610a07565b60405180910390a4509392505050565b6106b46107f3565b5f60025f8460038111156106ca576106ca610997565b60038111156106db576106db610997565b815260208101919091526040015f908120915083600381111561070057610700610997565b14158015610716575080546001600160a01b0316155b15610734576040516303ff3dd760e11b815260040160405180910390fd5b8054821515600160a01b90910460ff1615150361075057505050565b805460ff60a01b1916600160a01b8315150217815582600381111561077757610777610997565b60405183151581527f662c342101e15a7e7af1aedc499d50b358a99c3c01afd6d216331687aceeb5999060200160405180910390a2505050565b6107b96107f3565b6001600160a01b0381166107e757604051631e4fbdf760e01b81525f60048201526024015b60405180910390fd5b6107f08161081f565b50565b5f546001600160a01b031633146104145760405163118cdaa760e01b81523360048201526024016107de565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b61107880610a1b83390190565b80356001600160a01b0381168114610891575f5ffd5b919050565b5f602082840312156108a6575f5ffd5b6108af8261087b565b9392505050565b5f602082840312156108c6575f5ffd5b5035919050565b803560048110610891575f5ffd5b5f5f604083850312156108ec575f5ffd5b6108f5836108cd565b91506109036020840161087b565b90509250929050565b5f5f5f6060848603121561091e575f5ffd5b8335925061092e6020850161087b565b915061093c604085016108cd565b90509250925092565b5f5f60408385031215610956575f5ffd5b61095f836108cd565b915060208301358015158114610973575f5ffd5b809150509250929050565b5f6020828403121561098e575f5ffd5b6108af826108cd565b634e487b7160e01b5f52602160045260245ffd5b600481106107f057634e487b7160e01b5f52602160045260245ffd5b6001600160a01b038516815260208101849052608081016109e7846109ab565b60408201939093526001600160a01b039190911660609091015292915050565b60208101610a14836109ab565b9190529056fe610100604052348015610010575f5ffd5b5060405161107838038061107883398101604081905261002f91610197565b60017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f00556001600160a01b03841661007a5760405163d92e233d60e01b815260040160405180910390fd5b826100985760405163178423dd60e01b815260040160405180910390fd5b5f8260038111156100ab576100ab6101e6565b1480156100c057506001600160a01b03811615155b156100de576040516303ff3dd760e11b815260040160405180910390fd5b5f8260038111156100f1576100f16101e6565b1415801561010657506001600160a01b038116155b15610124576040516303ff3dd760e11b815260040160405180910390fd5b6001600160a01b03841660a0526080839052816003811115610148576101486101e6565b60c081600381111561015c5761015c6101e6565b9052506001600160a01b031660e05250505f805460ff19169055506101fa565b80516001600160a01b0381168114610192575f5ffd5b919050565b5f5f5f5f608085870312156101aa575f5ffd5b6101b38561017c565b9350602085015192506040850151600481106101cd575f5ffd5b91506101db6060860161017c565b905092959194509250565b634e487b7160e01b5f52602160045260245ffd5b60805160a05160c05160e051610ddc61029c5f395f8181610312015281816108c50152610bb101525f818160e40152818161019801528181610275015281816105b1015281816106f301528181610807015281816108760152610aff01525f81816102a8015281816103cd01528181610458015281816104e10152818161065d015281816107370152818161094601526109cf01525f6102340152610ddc5ff3fe6080604052600436106100dc575f3560e01c80639d76ea581161007c578063b69ef8a811610057578063b69ef8a814610372578063cd459b5e14610386578063e7c042d91461039a578063ffa1ad74146103ae575f5ffd5b80639d76ea5814610301578063ab6ade4314610334578063b00a1cc714610353575f5ffd5b8063212ff20a116100b7578063212ff20a146102235780633d15cc6d14610264578063481c6a7514610297578063577f454d146102e2575f5ffd5b80630f15f4c0146101cb5780631debb253146101e1578063200d2ed2146101f5575f5ffd5b366101c7575f7f0000000000000000000000000000000000000000000000000000000000000000600381111561011457610114610cb9565b14610132576040516303ff3dd760e11b815260040160405180910390fd5b60405134815233907f8ac633e5b094e1150d2a6495df4d0c77f51d293abe99e7733c78870dfbee76609060200160405180910390a2604051339030907f2ceae479fbccbfa8e3ca6243eca3f602a9e7a90b654c82d8a8b7c747d897b796906101bd9034907f000000000000000000000000000000000000000000000000000000000000000090610cec565b60405180910390a3005b5f5ffd5b3480156101d6575f5ffd5b506101df6103c2565b005b3480156101ec575f5ffd5b506101df61044d565b348015610200575f5ffd5b505f5461020d9060ff1681565b60405161021a9190610d09565b60405180910390f35b34801561022e575f5ffd5b506102567f000000000000000000000000000000000000000000000000000000000000000081565b60405190815260200161021a565b34801561026f575f5ffd5b5061020d7f000000000000000000000000000000000000000000000000000000000000000081565b3480156102a2575f5ffd5b506102ca7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200161021a565b3480156102ed575f5ffd5b506101df6102fc366004610d37565b6104d6565b34801561030c575f5ffd5b506102ca7f000000000000000000000000000000000000000000000000000000000000000081565b34801561033f575f5ffd5b506101df61034e366004610d67565b610652565b34801561035e575f5ffd5b506101df61036d366004610d37565b61072c565b34801561037d575f5ffd5b50610256610872565b348015610391575f5ffd5b506101df61093b565b3480156103a5575f5ffd5b506101df6109c4565b3480156103b9575f5ffd5b50610256600181565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461040b5760405163d22434fd60e01b815260040160405180910390fd5b5f5b5f5460ff16600381111561042357610423610cb9565b1461044157604051636b80090760e11b815260040160405180910390fd5b61044b6001610a14565b565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146104965760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff1660038111156104ae576104ae610cb9565b146104cc57604051636b80090760e11b815260040160405180910390fd5b61044b6002610a14565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461051f5760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff16600381111561053757610537610cb9565b1461055557604051636b80090760e11b815260040160405180910390fd5b61055d610ace565b6001600160a01b0383166105845760405163d92e233d60e01b815260040160405180910390fd5b815f036105a45760405163162908e360e11b815260040160405180910390fd5b6105ae8383610afc565b807f000000000000000000000000000000000000000000000000000000000000000060038111156105e1576105e1610cb9565b846001600160a01b03167f3f829f78f405fb66e444d913ec32ae6008377c27b62f827112cdb8ac44236f1c8560405161061c91815260200190565b60405180910390a461064d60017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f0055565b505050565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461069b5760405163d22434fd60e01b815260040160405180910390fd5b805f036106bb5760405163162908e360e11b815260040160405180910390fd5b816001600160a01b0316306001600160a01b03167f2ceae479fbccbfa8e3ca6243eca3f602a9e7a90b654c82d8a8b7c747d897b796837f0000000000000000000000000000000000000000000000000000000000000000604051610720929190610cec565b60405180910390a35050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146107755760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff16600381111561078d5761078d610cb9565b146107ab57604051636b80090760e11b815260040160405180910390fd5b6107b3610ace565b6001600160a01b0383166107da5760405163d92e233d60e01b815260040160405180910390fd5b815f036107fa5760405163162908e360e11b815260040160405180910390fd5b6108048383610afc565b807f0000000000000000000000000000000000000000000000000000000000000000600381111561083757610837610cb9565b846001600160a01b03167ffdd782862d03be69ab94309e245dac2dd952efa0a2707b677c086e481dd7e9398560405161061c91815260200190565b5f807f000000000000000000000000000000000000000000000000000000000000000060038111156108a6576108a6610cb9565b036108b057504790565b6040516370a0823160e01b81523060048201527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316906370a0823190602401602060405180830381865afa158015610912573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906109369190610d8f565b905090565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146109845760405163d22434fd60e01b815260040160405180910390fd5b60035f5460ff16600381111561099c5761099c610cb9565b036109ba57604051636b80090760e11b815260040160405180910390fd5b61044b6003610a14565b336001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001614610a0d5760405163d22434fd60e01b815260040160405180910390fd5b600261040d565b5f5460ff16816003811115610a2b57610a2b610cb9565b816003811115610a3d57610a3d610cb9565b03610a5b57604051636b80090760e11b815260040160405180910390fd5b5f805483919060ff19166001836003811115610a7957610a79610cb9565b0217905550816003811115610a9057610a90610cb9565b816003811115610aa257610aa2610cb9565b6040517f630247deeb8bf64f4da9773eb2a8f5b0ad59cdb5b1973d78e1dc00831c1cbdf6905f90a35050565b610ad6610bdc565b60027f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f0055565b5f7f00000000000000000000000000000000000000000000000000000000000000006003811115610b2f57610b2f610cb9565b03610ba4575f826001600160a01b0316826040515f6040518083038185875af1925050503d805f8114610b7d576040519150601f19603f3d011682016040523d82523d5f602084013e610b82565b606091505b505090508061064d57604051633d2cec6f60e21b815260040160405180910390fd5b610bd86001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000168383610c1e565b5050565b7f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005460020361044b57604051633ee5aeb560e01b815260040160405180910390fd5b610c2b8383836001610c57565b61064d57604051635274afe760e01b81526001600160a01b038416600482015260240160405180910390fd5b60405163a9059cbb60e01b5f8181526001600160a01b038616600452602485905291602083604481808b5af1925060015f51148316610cad578383151615610ca1573d5f823e3d81fd5b5f873b113d1516831692505b60405250949350505050565b634e487b7160e01b5f52602160045260245ffd5b60048110610ce957634e487b7160e01b5f52602160045260245ffd5b50565b82815260408101610cfc83610ccd565b8260208301529392505050565b60208101610d1683610ccd565b91905290565b80356001600160a01b0381168114610d32575f5ffd5b919050565b5f5f5f60608486031215610d49575f5ffd5b610d5284610d1c565b95602085013595506040909401359392505050565b5f5f60408385031215610d78575f5ffd5b610d8183610d1c565b946020939093013593505050565b5f60208284031215610d9f575f5ffd5b505191905056fea26469706673582212209c6e30b8eef2593808771f339a54892248a5232a77092cff8a0168f2c8a6be6664736f6c634300081c0033a264697066735822122073230e7c75e616111adeeeb66ab45c571d5d7b33d3fbe5b69e00f985ff90fa0764736f6c634300081c0033",
+  "deployedBytecode": "0x608060405234801561000f575f5ffd5b50600436106100f0575f3560e01c80638da5cb5b11610093578063bc51713111610063578063bc5171311461025b578063cc0e153b14610264578063f2fde38b146102b7578063f62acb99146102ca575f5ffd5b80638da5cb5b146101fd578063ac5e273c1461020d578063b20060d514610220578063b3cc64a214610248575f5ffd5b8063481c6a75116100ce578063481c6a751461017b5780635ab85176146101a25780635cb5795c146101ca578063715018a6146101f5575f5ffd5b806315304bd6146100f45780633c0f0a91146101265780633de6f37914610166575b5f5ffd5b610113610102366004610896565b60056020525f908152604090205481565b6040519081526020015b60405180910390f35b61014e6101343660046108b6565b5f908152600360205260409020546001600160a01b031690565b6040516001600160a01b03909116815260200161011d565b6101796101743660046108db565b610304565b005b61014e7f000000000000000000000000000000000000000000000000000000000000000081565b61014e6101b03660046108b6565b60036020525f90815260409020546001600160a01b031681565b61014e6101d8366004610896565b6001600160a01b039081165f908152600460205260409020541690565b610179610403565b5f546001600160a01b031661014e565b61014e61021b36600461090c565b610416565b61014e61022e366004610896565b60046020525f90815260409020546001600160a01b031681565b610179610256366004610945565b6106ac565b61011360015481565b61029861027236600461097e565b60026020525f90815260409020546001600160a01b03811690600160a01b900460ff1682565b604080516001600160a01b03909316835290151560208301520161011d565b6101796102c5366004610896565b6107b1565b6102f46102d83660046108b6565b5f908152600360205260409020546001600160a01b0316151590565b604051901515815260200161011d565b61030c6107f3565b5f82600381111561031f5761031f610997565b148061033257506001600160a01b038116155b15610350576040516303ff3dd760e11b815260040160405180910390fd5b5f60025f84600381111561036657610366610997565b600381111561037757610377610997565b815260208101919091526040015f2080549091506001600160a01b0390811690831681036103a55750505050565b81546001600160a01b0319166001600160a01b03848116918217845582168560038111156103d5576103d5610997565b6040517f94335f05fdf7327e98cb1fa67e996297f9cd1d8ab2a354bc833422fdadf1277c905f90a450505050565b61040b6107f3565b6104145f61081f565b565b5f61041f6107f3565b6001600160a01b0383166104465760405163d92e233d60e01b815260040160405180910390fd5b836104645760405163178423dd60e01b815260040160405180910390fd5b5f848152600360205260409020546001600160a01b0316156104995760405163a225e46960e01b815260040160405180910390fd5b6001600160a01b038381165f9081526004602052604090205416156104d15760405163c8b1500560e01b815260040160405180910390fd5b5f60025f8460038111156104e7576104e7610997565b60038111156104f8576104f8610997565b815260208082019290925260409081015f208151808301909252546001600160a01b0381168252600160a01b900460ff16151591810182905291506105505760405163091daf0160e11b815260040160405180910390fd5b5f83600381111561056357610563610997565b14158015610579575080516001600160a01b0316155b15610597576040516303ff3dd760e11b815260040160405180910390fd5b7f0000000000000000000000000000000000000000000000000000000000000000858460038111156105cb576105cb610997565b60ff1660038111156105df576105df610997565b83516040516105ed9061086e565b6105fa94939291906109c7565b604051809103905ff080158015610613573d5f5f3e3d5ffd5b505f86815260036020908152604080832080546001600160a01b038087166001600160a01b031992831681179093558a16808652600485528386208054909216831790915581855260059093529281902089905551929450909187907fb9330d1e67a3cbf02df2bad0722a539d0a92bc93a744484c8ff7380c34a17e079061069c908890610a07565b60405180910390a4509392505050565b6106b46107f3565b5f60025f8460038111156106ca576106ca610997565b60038111156106db576106db610997565b815260208101919091526040015f908120915083600381111561070057610700610997565b14158015610716575080546001600160a01b0316155b15610734576040516303ff3dd760e11b815260040160405180910390fd5b8054821515600160a01b90910460ff1615150361075057505050565b805460ff60a01b1916600160a01b8315150217815582600381111561077757610777610997565b60405183151581527f662c342101e15a7e7af1aedc499d50b358a99c3c01afd6d216331687aceeb5999060200160405180910390a2505050565b6107b96107f3565b6001600160a01b0381166107e757604051631e4fbdf760e01b81525f60048201526024015b60405180910390fd5b6107f08161081f565b50565b5f546001600160a01b031633146104145760405163118cdaa760e01b81523360048201526024016107de565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b61107880610a1b83390190565b80356001600160a01b0381168114610891575f5ffd5b919050565b5f602082840312156108a6575f5ffd5b6108af8261087b565b9392505050565b5f602082840312156108c6575f5ffd5b5035919050565b803560048110610891575f5ffd5b5f5f604083850312156108ec575f5ffd5b6108f5836108cd565b91506109036020840161087b565b90509250929050565b5f5f5f6060848603121561091e575f5ffd5b8335925061092e6020850161087b565b915061093c604085016108cd565b90509250925092565b5f5f60408385031215610956575f5ffd5b61095f836108cd565b915060208301358015158114610973575f5ffd5b809150509250929050565b5f6020828403121561098e575f5ffd5b6108af826108cd565b634e487b7160e01b5f52602160045260245ffd5b600481106107f057634e487b7160e01b5f52602160045260245ffd5b6001600160a01b038516815260208101849052608081016109e7846109ab565b60408201939093526001600160a01b039190911660609091015292915050565b60208101610a14836109ab565b9190529056fe610100604052348015610010575f5ffd5b5060405161107838038061107883398101604081905261002f91610197565b60017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f00556001600160a01b03841661007a5760405163d92e233d60e01b815260040160405180910390fd5b826100985760405163178423dd60e01b815260040160405180910390fd5b5f8260038111156100ab576100ab6101e6565b1480156100c057506001600160a01b03811615155b156100de576040516303ff3dd760e11b815260040160405180910390fd5b5f8260038111156100f1576100f16101e6565b1415801561010657506001600160a01b038116155b15610124576040516303ff3dd760e11b815260040160405180910390fd5b6001600160a01b03841660a0526080839052816003811115610148576101486101e6565b60c081600381111561015c5761015c6101e6565b9052506001600160a01b031660e05250505f805460ff19169055506101fa565b80516001600160a01b0381168114610192575f5ffd5b919050565b5f5f5f5f608085870312156101aa575f5ffd5b6101b38561017c565b9350602085015192506040850151600481106101cd575f5ffd5b91506101db6060860161017c565b905092959194509250565b634e487b7160e01b5f52602160045260245ffd5b60805160a05160c05160e051610ddc61029c5f395f8181610312015281816108c50152610bb101525f818160e40152818161019801528181610275015281816105b1015281816106f301528181610807015281816108760152610aff01525f81816102a8015281816103cd01528181610458015281816104e10152818161065d015281816107370152818161094601526109cf01525f6102340152610ddc5ff3fe6080604052600436106100dc575f3560e01c80639d76ea581161007c578063b69ef8a811610057578063b69ef8a814610372578063cd459b5e14610386578063e7c042d91461039a578063ffa1ad74146103ae575f5ffd5b80639d76ea5814610301578063ab6ade4314610334578063b00a1cc714610353575f5ffd5b8063212ff20a116100b7578063212ff20a146102235780633d15cc6d14610264578063481c6a7514610297578063577f454d146102e2575f5ffd5b80630f15f4c0146101cb5780631debb253146101e1578063200d2ed2146101f5575f5ffd5b366101c7575f7f0000000000000000000000000000000000000000000000000000000000000000600381111561011457610114610cb9565b14610132576040516303ff3dd760e11b815260040160405180910390fd5b60405134815233907f8ac633e5b094e1150d2a6495df4d0c77f51d293abe99e7733c78870dfbee76609060200160405180910390a2604051339030907f2ceae479fbccbfa8e3ca6243eca3f602a9e7a90b654c82d8a8b7c747d897b796906101bd9034907f000000000000000000000000000000000000000000000000000000000000000090610cec565b60405180910390a3005b5f5ffd5b3480156101d6575f5ffd5b506101df6103c2565b005b3480156101ec575f5ffd5b506101df61044d565b348015610200575f5ffd5b505f5461020d9060ff1681565b60405161021a9190610d09565b60405180910390f35b34801561022e575f5ffd5b506102567f000000000000000000000000000000000000000000000000000000000000000081565b60405190815260200161021a565b34801561026f575f5ffd5b5061020d7f000000000000000000000000000000000000000000000000000000000000000081565b3480156102a2575f5ffd5b506102ca7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200161021a565b3480156102ed575f5ffd5b506101df6102fc366004610d37565b6104d6565b34801561030c575f5ffd5b506102ca7f000000000000000000000000000000000000000000000000000000000000000081565b34801561033f575f5ffd5b506101df61034e366004610d67565b610652565b34801561035e575f5ffd5b506101df61036d366004610d37565b61072c565b34801561037d575f5ffd5b50610256610872565b348015610391575f5ffd5b506101df61093b565b3480156103a5575f5ffd5b506101df6109c4565b3480156103b9575f5ffd5b50610256600181565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461040b5760405163d22434fd60e01b815260040160405180910390fd5b5f5b5f5460ff16600381111561042357610423610cb9565b1461044157604051636b80090760e11b815260040160405180910390fd5b61044b6001610a14565b565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146104965760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff1660038111156104ae576104ae610cb9565b146104cc57604051636b80090760e11b815260040160405180910390fd5b61044b6002610a14565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461051f5760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff16600381111561053757610537610cb9565b1461055557604051636b80090760e11b815260040160405180910390fd5b61055d610ace565b6001600160a01b0383166105845760405163d92e233d60e01b815260040160405180910390fd5b815f036105a45760405163162908e360e11b815260040160405180910390fd5b6105ae8383610afc565b807f000000000000000000000000000000000000000000000000000000000000000060038111156105e1576105e1610cb9565b846001600160a01b03167f3f829f78f405fb66e444d913ec32ae6008377c27b62f827112cdb8ac44236f1c8560405161061c91815260200190565b60405180910390a461064d60017f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f0055565b505050565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461069b5760405163d22434fd60e01b815260040160405180910390fd5b805f036106bb5760405163162908e360e11b815260040160405180910390fd5b816001600160a01b0316306001600160a01b03167f2ceae479fbccbfa8e3ca6243eca3f602a9e7a90b654c82d8a8b7c747d897b796837f0000000000000000000000000000000000000000000000000000000000000000604051610720929190610cec565b60405180910390a35050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146107755760405163d22434fd60e01b815260040160405180910390fd5b60015f5460ff16600381111561078d5761078d610cb9565b146107ab57604051636b80090760e11b815260040160405180910390fd5b6107b3610ace565b6001600160a01b0383166107da5760405163d92e233d60e01b815260040160405180910390fd5b815f036107fa5760405163162908e360e11b815260040160405180910390fd5b6108048383610afc565b807f0000000000000000000000000000000000000000000000000000000000000000600381111561083757610837610cb9565b846001600160a01b03167ffdd782862d03be69ab94309e245dac2dd952efa0a2707b677c086e481dd7e9398560405161061c91815260200190565b5f807f000000000000000000000000000000000000000000000000000000000000000060038111156108a6576108a6610cb9565b036108b057504790565b6040516370a0823160e01b81523060048201527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316906370a0823190602401602060405180830381865afa158015610912573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906109369190610d8f565b905090565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146109845760405163d22434fd60e01b815260040160405180910390fd5b60035f5460ff16600381111561099c5761099c610cb9565b036109ba57604051636b80090760e11b815260040160405180910390fd5b61044b6003610a14565b336001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001614610a0d5760405163d22434fd60e01b815260040160405180910390fd5b600261040d565b5f5460ff16816003811115610a2b57610a2b610cb9565b816003811115610a3d57610a3d610cb9565b03610a5b57604051636b80090760e11b815260040160405180910390fd5b5f805483919060ff19166001836003811115610a7957610a79610cb9565b0217905550816003811115610a9057610a90610cb9565b816003811115610aa257610aa2610cb9565b6040517f630247deeb8bf64f4da9773eb2a8f5b0ad59cdb5b1973d78e1dc00831c1cbdf6905f90a35050565b610ad6610bdc565b60027f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f0055565b5f7f00000000000000000000000000000000000000000000000000000000000000006003811115610b2f57610b2f610cb9565b03610ba4575f826001600160a01b0316826040515f6040518083038185875af1925050503d805f8114610b7d576040519150601f19603f3d011682016040523d82523d5f602084013e610b82565b606091505b505090508061064d57604051633d2cec6f60e21b815260040160405180910390fd5b610bd86001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000168383610c1e565b5050565b7f9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f005460020361044b57604051633ee5aeb560e01b815260040160405180910390fd5b610c2b8383836001610c57565b61064d57604051635274afe760e01b81526001600160a01b038416600482015260240160405180910390fd5b60405163a9059cbb60e01b5f8181526001600160a01b038616600452602485905291602083604481808b5af1925060015f51148316610cad578383151615610ca1573d5f823e3d81fd5b5f873b113d1516831692505b60405250949350505050565b634e487b7160e01b5f52602160045260245ffd5b60048110610ce957634e487b7160e01b5f52602160045260245ffd5b50565b82815260408101610cfc83610ccd565b8260208301529392505050565b60208101610d1683610ccd565b91905290565b80356001600160a01b0381168114610d32575f5ffd5b919050565b5f5f5f60608486031215610d49575f5ffd5b610d5284610d1c565b95602085013595506040909401359392505050565b5f5f60408385031215610d78575f5ffd5b610d8183610d1c565b946020939093013593505050565b5f60208284031215610d9f575f5ffd5b505191905056fea26469706673582212209c6e30b8eef2593808771f339a54892248a5232a77092cff8a0168f2c8a6be6664736f6c634300081c0033a264697066735822122073230e7c75e616111adeeeb66ab45c571d5d7b33d3fbe5b69e00f985ff90fa0764736f6c634300081c0033",
+  "devdoc": {
+    "details": "Uses CREATE deliberately. Future wallet implementations only require updating      `walletVersion` and the deployment target in this factory — no in-place upgrades.",
+    "errors": {
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ]
+    },
+    "events": {
+      "CurrencyEnabled(uint8,bool)": {
+        "params": {
+          "currency": "Currency configuration changed.",
+          "enabled": "New enabled state."
+        }
+      },
+      "WalletCreated(bytes32,address,uint8,address)": {
+        "params": {
+          "currency": "Immutable wallet currency.",
+          "identityHash": "Identity commitment assigned to the wallet.",
+          "userKey": "Stable user identifier.",
+          "wallet": "Deployed SentryWallet address."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "employmentManager": "Manager assigned to new wallets.",
+          "initialOwner": "Account authorized to create wallets and update token addresses.",
+          "usdc_": "Initial USDC token address.",
+          "usdm_": "Initial USDm token address.",
+          "usdt_": "Initial USDT token address."
+        }
+      },
+      "createWallet(bytes32,address,uint8)": {
+        "params": {
+          "currency": "Immutable currency selected for the wallet.",
+          "identityHash": "Identity commitment for the user.",
+          "userKey": "Stable on-chain user identifier."
+        },
+        "returns": {
+          "wallet": "Address of the deployed wallet."
+        }
+      },
+      "hasWallet(bytes32)": {
+        "params": {
+          "identityHash": "Identity commitment to query."
+        },
+        "returns": {
+          "exists": "True when a wallet is registered."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      },
+      "walletFromIdentity(bytes32)": {
+        "params": {
+          "identityHash": "Identity commitment to query."
+        },
+        "returns": {
+          "wallet": "Registered wallet or zero address."
+        }
+      },
+      "walletFromUser(address)": {
+        "params": {
+          "userKey": "User key to query."
+        },
+        "returns": {
+          "wallet": "Registered wallet or zero address."
+        }
+      }
+    },
+    "title": "SentryWalletFactory",
+    "version": 1
+  },
+  "userdoc": {
+    "errors": {
+      "IdentityAlreadyRegistered()": [
+        {
+          "notice": "An identity already has a wallet."
+        }
+      ],
+      "InvalidIdentity()": [
+        {
+          "notice": "Identity hash cannot be zero."
+        }
+      ],
+      "OwnerAlreadyRegistered()": [
+        {
+          "notice": "An owner already has a wallet."
+        }
+      ],
+      "ZeroAddress()": [
+        {
+          "notice": "Address argument cannot be zero."
+        }
+      ]
+    },
+    "events": {
+      "CurrencyEnabled(uint8,bool)": {
+        "notice": "Emitted when a currency is enabled or disabled for future wallets."
+      },
+      "WalletCreated(bytes32,address,uint8,address)": {
+        "notice": "Emitted after a wallet is created and indexed."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "constructor": {
+        "notice": "Configures the wallet factory."
+      },
+      "createWallet(bytes32,address,uint8)": {
+        "notice": "Creates and indexes a wallet."
+      },
+      "hasWallet(bytes32)": {
+        "notice": "Checks whether an identity has a wallet."
+      },
+      "identityOfWallet(address)": {
+        "notice": "Identity commitment indexed by wallet."
+      },
+      "manager()": {
+        "notice": "EmploymentManager assigned to every deployed wallet."
+      },
+      "walletFromIdentity(bytes32)": {
+        "notice": "Resolves a wallet from an identity."
+      },
+      "walletFromUser(address)": {
+        "notice": "Resolves a wallet from its stable user key."
+      },
+      "walletOfIdentity(bytes32)": {
+        "notice": "Wallet indexed by identity commitment."
+      },
+      "walletOfUser(address)": {
+        "notice": "Wallet indexed by owner."
+      },
+      "walletVersion()": {
+        "notice": "Version of SentryWallet deployed by this factory."
+      }
+    },
+    "notice": "Deploys exactly one SentryWallet for each identity and user key.",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 8,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 3558,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "walletVersion",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_uint256"
+      },
+      {
+        "astId": 3564,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "currencies",
+        "offset": 0,
+        "slot": "2",
+        "type": "t_mapping(t_enum(Token)3501,t_struct(CurrencyConfig)3506_storage)"
+      },
+      {
+        "astId": 3569,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "walletOfIdentity",
+        "offset": 0,
+        "slot": "3",
+        "type": "t_mapping(t_bytes32,t_address)"
+      },
+      {
+        "astId": 3574,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "walletOfUser",
+        "offset": 0,
+        "slot": "4",
+        "type": "t_mapping(t_address,t_address)"
+      },
+      {
+        "astId": 3579,
+        "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+        "label": "identityOfWallet",
+        "offset": 0,
+        "slot": "5",
+        "type": "t_mapping(t_address,t_bytes32)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_bytes32": {
+        "encoding": "inplace",
+        "label": "bytes32",
+        "numberOfBytes": "32"
+      },
+      "t_enum(Token)3501": {
+        "encoding": "inplace",
+        "label": "enum SentryWalletFactory.Token",
+        "numberOfBytes": "1"
+      },
+      "t_mapping(t_address,t_address)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => address)",
+        "numberOfBytes": "32",
+        "value": "t_address"
+      },
+      "t_mapping(t_address,t_bytes32)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bytes32)",
+        "numberOfBytes": "32",
+        "value": "t_bytes32"
+      },
+      "t_mapping(t_bytes32,t_address)": {
+        "encoding": "mapping",
+        "key": "t_bytes32",
+        "label": "mapping(bytes32 => address)",
+        "numberOfBytes": "32",
+        "value": "t_address"
+      },
+      "t_mapping(t_enum(Token)3501,t_struct(CurrencyConfig)3506_storage)": {
+        "encoding": "mapping",
+        "key": "t_enum(Token)3501",
+        "label": "mapping(enum SentryWalletFactory.Token => struct SentryWalletFactory.CurrencyConfig)",
+        "numberOfBytes": "32",
+        "value": "t_struct(CurrencyConfig)3506_storage"
+      },
+      "t_struct(CurrencyConfig)3506_storage": {
+        "encoding": "inplace",
+        "label": "struct SentryWalletFactory.CurrencyConfig",
+        "members": [
+          {
+            "astId": 3503,
+            "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+            "label": "tokenAddress",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_address"
+          },
+          {
+            "astId": 3505,
+            "contract": "contracts/SentryWalletFactory.sol:SentryWalletFactory",
+            "label": "enabled",
+            "offset": 20,
+            "slot": "0",
+            "type": "t_bool"
+          }
+        ],
+        "numberOfBytes": "32"
+      },
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  }
+}

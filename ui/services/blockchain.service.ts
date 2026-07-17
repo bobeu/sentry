@@ -24,146 +24,401 @@ const TOKEN_INDEX: Record<PaymentCurrency, number> = {
 };
 
 const walletAbi = [
-  {
-    type: "function",
-    name: "balance",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "paymentCurrency",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
-  },
-  {
-    type: "function",
-    name: "tokenAddress",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
-const factoryAbi = [
-  {
-    type: "function",
-    name: "createWallet",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "identityHash", type: "bytes32" },
-      { name: "userKey", type: "address" },
-      { name: "currency", type: "uint8" },
-    ],
-    outputs: [{ name: "wallet", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "walletOfIdentity",
-    stateMutability: "view",
-    inputs: [{ name: "identityHash", type: "bytes32" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "setCurrencyEnabled",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "currency", type: "uint8" },
-      { name: "enabled", type: "bool" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "updateTokenAddress",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "currency", type: "uint8" },
-      { name: "newAddress", type: "address" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const managerAbi = [
-  {
-    type: "function",
-    name: "registerEmployment",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "wallet", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "walletOf",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "wallet", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "chargeSettlement",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "settlementId", type: "bytes32" },
-      { name: "serviceAmount", type: "uint256" },
-      { name: "settlementFee", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setWithdrawalDestination",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "destination", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "withdraw",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "withdrawalId", type: "bytes32" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "pauseEmployment",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "resumeEmployment",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "notifyWalletFunding",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "from", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "employmentManager",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "identityHash_",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "enum SentryWallet.Token",
+          "name": "currency_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenAddress_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidAmount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidIdentity",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidTokenConfig",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidWalletStatus",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NativeTransferFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        }
+      ],
+      "name": "SafeERC20FailedOperation",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "UnauthorizedManager",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroAddress",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "NativeReceived",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "treasury",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "enum SentryWallet.Token",
+          "name": "token",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "settlementId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "SettlementExecuted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum SentryWallet.Token",
+          "name": "currency",
+          "type": "uint8"
+        }
+      ],
+      "name": "WalletFunded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "enum SentryWallet.WalletStatus",
+          "name": "previousStatus",
+          "type": "uint8"
+        },
+        {
+          "indexed": true,
+          "internalType": "enum SentryWallet.WalletStatus",
+          "name": "newStatus",
+          "type": "uint8"
+        }
+      ],
+      "name": "WalletStatusChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "enum SentryWallet.Token",
+          "name": "token",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "withdrawalId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "Withdrawal",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "VERSION",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "activate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "archiveWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "balance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "treasury",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "settlementId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "executeSettlement",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "identityHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "lockWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "manager",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "notifyFunding",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "paymentCurrency",
+      "outputs": [
+        {
+          "internalType": "enum SentryWallet.Token",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "status",
+      "outputs": [
+        {
+          "internalType": "enum SentryWallet.WalletStatus",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "tokenAddress",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "unlockWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "destination",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "withdrawalId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "withdrawTo",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
 ] as const;
 
 function key(name: "owner" | "operator"): Hex | null {
@@ -177,9 +432,9 @@ function key(name: "owner" | "operator"): Hex | null {
 
 function configuredAddress(
   envName: string,
-  contract: { address?: Address; addresses: Record<string, string> },
+  contract: Address,
 ): Address | null {
-  const candidate = process.env[envName] ?? contract.address ?? contract.addresses["42220"];
+  const candidate = process.env[envName] ?? contract;
   return candidate && isAddress(candidate) ? (candidate as Address) : null;
 }
 
@@ -194,20 +449,14 @@ export class BlockchainService {
   private managerAddress() {
     return configuredAddress(
       "EMPLOYMENT_MANAGER_ADDRESS",
-      CONTRACTS.EmploymentManager as {
-        address?: Address;
-        addresses: Record<string, string>;
-      },
+      CONTRACTS.EmploymentManager.address,
     );
   }
 
   private factoryAddress() {
     return configuredAddress(
       "SENTRY_WALLET_FACTORY_ADDRESS",
-      CONTRACTS.SentryWalletFactory as {
-        address?: Address;
-        addresses: Record<string, string>;
-      },
+      CONTRACTS.SentryWalletFactory.address,
     );
   }
 
@@ -247,6 +496,14 @@ export class BlockchainService {
   async getEmploymentBalance(address: string, currency: PaymentCurrency) {
     if (!isAddress(address)) return null;
     try {
+      const nativeBalance = await this.client().getBalance({ address: address as Address });
+      if (currency === "CELO") {
+        return {
+          wei: nativeBalance.toString(),
+          balance: formatUnits(nativeBalance, tokenDecimals(currency)),
+          contract: address,
+        };
+      }
       const raw = await this.client().readContract({
         address: address as Address,
         abi: walletAbi,
@@ -254,7 +511,7 @@ export class BlockchainService {
       });
       return {
         wei: raw.toString(),
-        formatted: formatUnits(raw, tokenDecimals(currency)),
+        balance: formatUnits(raw, tokenDecimals(currency)),
         contract: address,
       };
     } catch {
@@ -267,7 +524,7 @@ export class BlockchainService {
     currency: PaymentCurrency,
   ): Promise<number | null> {
     const balance = await this.getEmploymentBalance(address, currency);
-    return balance ? Number(balance.formatted) : null;
+    return balance ? Number(balance) : null;
   }
 
   async getWalletTokenAddress(address: Address): Promise<Address | null> {
@@ -296,7 +553,7 @@ export class BlockchainService {
 
     const existing = await this.client().readContract({
       address: factory,
-      abi: factoryAbi,
+      abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "walletOfIdentity",
       args: [input.identityHash],
     });
@@ -306,7 +563,7 @@ export class BlockchainService {
 
     const hash = await owner.wallet.writeContract({
       address: factory,
-      abi: factoryAbi,
+      abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "createWallet",
       args: [input.identityHash, input.userKey, TOKEN_INDEX[input.currency]],
       account: owner.account,
@@ -315,7 +572,7 @@ export class BlockchainService {
     await this.requireSuccess(hash);
     return (await this.client().readContract({
       address: factory,
-      abi: factoryAbi,
+      abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "walletOfIdentity",
       args: [input.identityHash],
     })) as Address;
@@ -328,7 +585,7 @@ export class BlockchainService {
 
     const registered = await this.client().readContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "walletOf",
       args: [userKey],
     });
@@ -339,7 +596,7 @@ export class BlockchainService {
 
     const hash = await owner.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "registerEmployment",
       args: [userKey, walletAddress],
       account: owner.account,
@@ -361,7 +618,7 @@ export class BlockchainService {
     if (!manager || !operator) throw Errors.blockchainUnavailable();
     const hash = await operator.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "chargeSettlement",
       args: [
         input.userKey,
@@ -382,7 +639,7 @@ export class BlockchainService {
     if (!manager || !operator) throw Errors.blockchainUnavailable();
     const hash = await operator.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "setWithdrawalDestination",
       args: [userKey, destination],
       account: operator.account,
@@ -403,7 +660,7 @@ export class BlockchainService {
     if (!manager || !operator) throw Errors.blockchainUnavailable();
     const hash = await operator.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "withdraw",
       args: [
         userKey,
@@ -436,7 +693,7 @@ export class BlockchainService {
     if (!manager || !operator) return null;
     const hash = await operator.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName: "notifyWalletFunding",
       args: [
         userKey,
@@ -456,7 +713,7 @@ export class BlockchainService {
     if (!factory || !owner) throw Errors.blockchainUnavailable();
     const hash = await owner.wallet.writeContract({
       address: factory,
-      abi: factoryAbi,
+      abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "setCurrencyEnabled",
       args: [TOKEN_INDEX[currency], enabled],
       account: owner.account,
@@ -472,7 +729,7 @@ export class BlockchainService {
     if (!factory || !owner) throw Errors.blockchainUnavailable();
     const hash = await owner.wallet.writeContract({
       address: factory,
-      abi: factoryAbi,
+      abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "updateTokenAddress",
       args: [TOKEN_INDEX[currency], tokenAddress],
       account: owner.account,
@@ -499,7 +756,7 @@ export class BlockchainService {
     if (!manager || !operator) throw Errors.blockchainUnavailable();
     const hash = await operator.wallet.writeContract({
       address: manager,
-      abi: managerAbi,
+      abi: CONTRACTS.EmploymentManager.abi,
       functionName,
       args: [userKey],
       account: operator.account,

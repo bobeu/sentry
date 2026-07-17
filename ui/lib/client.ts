@@ -1,23 +1,28 @@
-import { SentryError } from "./errors";
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated";
+import { PrismaClient, type Prisma } from "../generated";
+import { SentryError } from "./errors";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+function requireDatabaseUrl(): string {
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL must be set before creating the Prisma client. In production use the pooled connection string.",
+    );
+  }
+  return connectionString;
+}
+
 /** Get the shared Prisma client instance for this Node.js process. */
 export function getPrismaClient(): PrismaClient {
   if (globalForPrisma.prisma) return globalForPrisma.prisma;
 
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL must be set before creating the Prisma client.");
-  }
-
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    adapter: new PrismaPg({ connectionString: requireDatabaseUrl() }),
   });
   globalForPrisma.prisma = prisma;
   return prisma;
@@ -37,7 +42,9 @@ export class DatabaseClient {
     this.client = getPrismaClient();
   }
 
-  async withTransaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
+  async withTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
     try {
       return await this.client.$transaction(async (tx) => fn(tx));
     } catch {

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { EmploymentStatus } from "@prisma/client";
+import type { EmploymentStatus } from "@/generated";
 import { walletService } from "@/services/wallet.service";
 import { actionService } from "@/services/action.service";
 import { billingService } from "@/services/billing.service";

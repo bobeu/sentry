@@ -5,32 +5,11 @@ import { isAddress } from "ethers";
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy, log } = deployments;
-  const { deployer } = await getNamedAccounts();
+  const { deployer, treasury, operator } = await getNamedAccounts();
 
-  const localTokens = {
-    usdm: "0x0000000000000000000000000000000000000001",
-    usdc: "0x0000000000000000000000000000000000000002",
-    usdt: "0x0000000000000000000000000000000000000003",
-  };
-  const usdm = process.env.CELO_USDM_ADDRESS ?? localTokens.usdm;
-  const usdc = process.env.CELO_USDC_ADDRESS ?? localTokens.usdc;
-  const usdt = process.env.CELO_USDT_ADDRESS ?? localTokens.usdt;
-  const treasury = process.env.SENTRY_TREASURY_ADDRESS ?? deployer;
-  const operator = process.env.SENTRY_OPERATOR_ADDRESS ?? deployer;
-
-  if (network.name === "celo") {
-    const required = [
-      ["CELO_USDM_ADDRESS", process.env.CELO_USDM_ADDRESS],
-      ["CELO_USDC_ADDRESS", process.env.CELO_USDC_ADDRESS],
-      ["CELO_USDT_ADDRESS", process.env.CELO_USDT_ADDRESS],
-      ["SENTRY_TREASURY_ADDRESS", process.env.SENTRY_TREASURY_ADDRESS],
-    ] as const;
-    for (const [name, value] of required) {
-      if (!value || !isAddress(value)) {
-        throw new Error(`${name} must be a valid address for Celo deployment`);
-      }
-    }
-  }
+  const usdm = "0x765DE816845861e75A25fCA122bb6898B8B1282a";
+  const usdc = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C";
+  const usdt = "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e";
 
   log("----------------------------------------------------");
   log(`Network: ${network.name} (chainId=${network.config.chainId})`);
@@ -44,6 +23,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log: true,
     waitConfirmations: network.live ? 2 : 1,
   });
+  
+  log(`EmploymentManager deployed at ${manager.address}`);
 
   const factory = await deploy("SentryWalletFactory", {
     from: deployer,
@@ -52,7 +33,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     waitConfirmations: network.live ? 2 : 1,
   });
 
-  log(`EmploymentManager deployed at ${manager.address}`);
   log(`SentryWalletFactory deployed at ${factory.address}`);
 };
 

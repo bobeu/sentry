@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { billingService } from "@/services/billing.service";
 
+export const dynamic = "force-dynamic";
+
 export default async function PricingPage() {
   const pricing = await billingService.getPricing();
   const currency = pricing[0]?.currency ?? "USDm";
