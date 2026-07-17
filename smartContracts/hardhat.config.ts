@@ -18,7 +18,7 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       saveDeployments: true,
-      chainId: 42220,
+      chainId: 31337,
     },
     celo: {
       url: "https://forno.celo.org",

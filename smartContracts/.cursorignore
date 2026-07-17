@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.cache/
+pnpm-store/
+.git/
+artifacts/
+cache/
+typechain-types/
+bun.lock

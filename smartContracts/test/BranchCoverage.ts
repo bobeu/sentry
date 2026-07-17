@@ -16,7 +16,6 @@ describe("Branch coverage edges", function () {
 
     const {
       manager,
-      factory,
       owner: depOwner,
       operator: depOperator,
       treasury: depTreasury,
