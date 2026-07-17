@@ -1,0 +1,13 @@
+{
+  "agentId": "9680",
+  "txHash": "0x9c2db680f269a1756704230d0dd6d8645ad169615d4155903520edecb906d6e9",
+  "owner": "0xa1f70ffA4322E3609dD905b41f17Bf3913366bC1",
+  "agentWallet": "0xa1f70ffA4322E3609dD905b41f17Bf3913366bC1",
+  "attributionTag": "celo_e3cc4c8d8a0e",
+  "agentURIMode": "data",
+  "urls": {
+    "8004scan": "https://8004scan.io/agents/celo/9680",
+    "celoscanNft": "https://celoscan.io/nft/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432/9680",
+    "tx": "https://celoscan.io/tx/0x9c2db680f269a1756704230d0dd6d8645ad169615d4155903520edecb906d6e9"
+  }
+}
