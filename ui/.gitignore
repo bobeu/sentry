@@ -21,3 +21,4 @@ generated/
 /generated/prisma
 
 *.tsbuildinfo
+.prisma/
