@@ -1,4 +1,4 @@
-import type { ActionType } from "@/generated";
+import type { ActionType } from "@/generated/prisma/client";
 import type { PaymentCurrency } from "@/lib/payment-currency";
 import { demoPrice } from "@/lib/demo-mode";
 

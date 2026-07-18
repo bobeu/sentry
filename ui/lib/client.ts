@@ -1,38 +1,19 @@
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type Prisma } from "../generated";
+import type { Prisma } from "../generated/prisma/client";
+import { PrismaClient } from "../generated/prisma/client";
+import { prisma } from "./prisma";
 import { SentryError } from "./errors";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-function requireDatabaseUrl(): string {
-  const connectionString = process.env.DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL must be set before creating the Prisma client. In production use the pooled connection string.",
-    );
-  }
-  return connectionString;
-}
+export type { Prisma };
+export { PrismaClient };
 
 /** Get the shared Prisma client instance for this Node.js process. */
 export function getPrismaClient(): PrismaClient {
-  if (globalForPrisma.prisma) return globalForPrisma.prisma;
-
-  const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: requireDatabaseUrl() }),
-  });
-  globalForPrisma.prisma = prisma;
   return prisma;
 }
 
 export async function closePrismaClient(): Promise<void> {
-  if (globalForPrisma.prisma) {
-    await globalForPrisma.prisma.$disconnect();
-    globalForPrisma.prisma = undefined;
-  }
+  await prisma.$disconnect();
 }
 
 export class DatabaseClient {

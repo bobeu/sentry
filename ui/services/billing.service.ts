@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { ActionType } from "@/generated";
+import type { ActionType } from "@/generated/prisma/client";
 import { averageActionCost, priceFor, PRICING_LABELS } from "@/lib/pricing";
 import { blockchainService } from "@/services/blockchain.service";
 import { paymentService } from "@/services/payment.service";

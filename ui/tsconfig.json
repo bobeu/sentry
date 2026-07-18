@@ -16,8 +16,8 @@
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./*"],
-      "@/generated": ["./generated"],
-      "@/generated/*": ["./generated/*"]
+      "@/generated": ["./generated/prisma/client"],
+      "@/generated/*": ["./generated/prisma/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

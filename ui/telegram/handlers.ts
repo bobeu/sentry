@@ -170,7 +170,7 @@ export function registerHandlers(bot: Telegraf) {
         await ctx.reply(`Welcome ${name}!`);
       }
     }
-  });
+  }); 
 
   bot.on("text", async (ctx) => {
     if (!isGroupChat(ctx) || !ctx.message || !("text" in ctx.message)) return;
@@ -180,7 +180,7 @@ export function registerHandlers(bot: Telegraf) {
     const groupRecord = await groupService.upsertFromTelegram({
       telegramId,
       name: "title" in ctx.chat! ? ctx.chat.title : null,
-    });
+    }); 
 
     const text = ctx.message.text;
     const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
