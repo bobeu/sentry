@@ -15,6 +15,7 @@
     "prisma:seed": "prisma db seed",
     "prisma:validate": "prisma validate",
     "bot:poll": "tsx telegram/poll.ts",
+    "bot:webhook": "tsx scripts/setup-telegram-webhook.ts",
     "scheduler": "tsx scripts/run-scheduler.ts",
     "test": "tsx --test tests/backend.test.ts",
     "start:all": "pnpm prisma:generate && pnpm prisma:deploy && pnpm dev",

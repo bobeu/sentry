@@ -88,8 +88,8 @@ export function GroupsPanel() {
           <input
             value={telegramId}
             onChange={(e) => setTelegramId(e.target.value)}
-            placeholder="-100…"
-            className="mt-2 block w-64 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+            placeholder="-1001285489868"
+            className="mt-2 block w-72 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
           />
         </label>
         <button
@@ -100,11 +100,18 @@ export function GroupsPanel() {
           Enable group
         </button>
       </form>
+      <p className="max-w-2xl text-sm text-[#9aa89a]">
+        Add <span className="text-[#e8f5d8]">@tgemployee_bot</span> to the group (admin
+        recommended), then paste the full chat ID starting with{" "}
+        <span className="font-mono text-[#e8f5d8]">-100</span>. Sentry imports the group
+        from Telegram even if the webhook missed the join event.
+      </p>
 
       <div className="grid gap-4">
         {groups.length === 0 ? (
           <p className="text-[#9aa89a]">
-            No groups yet. Add the bot to a Telegram group, then enable it here.
+            No groups enabled yet. Add @tgemployee_bot to a Telegram group, then enable it
+            here with the <span className="font-mono">-100…</span> chat ID.
           </p>
         ) : (
           groups.map((g) => (

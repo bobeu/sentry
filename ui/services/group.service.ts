@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { employmentService } from "@/services/employment.service";
 import { actionService } from "@/services/action.service";
+import { telegramService } from "@/services/telegram.service";
+import {
+  normalizeTelegramChatId,
+  telegramChatIdCandidates,
+} from "@/lib/telegram-id";
 
 export class GroupService {
   async upsertFromTelegram(input: {
@@ -9,20 +14,24 @@ export class GroupService {
     adminTelegramIds?: string[] | null;
     memberCount?: number | null;
     description?: string | null;
+    botStatus?: string | null;
   }) {
+    const telegramId = normalizeTelegramChatId(input.telegramId);
     const adminJson =
       input.adminTelegramIds && input.adminTelegramIds.length > 0
         ? JSON.stringify(input.adminTelegramIds)
         : undefined;
 
     const group = await prisma.telegramGroup.upsert({
-      where: { telegramId: input.telegramId },
+      where: { telegramId },
       create: {
-        telegramId: input.telegramId,
+        telegramId,
         name: input.name ?? null,
         adminTelegramIds: adminJson ?? null,
         memberCount: input.memberCount ?? null,
         description: input.description ?? null,
+        botStatus: input.botStatus ?? "member",
+        lastBotEventAt: new Date(),
         settings: {
           create: {
             enabled: false,
@@ -40,11 +49,73 @@ export class GroupService {
         adminTelegramIds: adminJson,
         memberCount: input.memberCount ?? undefined,
         description: input.description ?? undefined,
+        botStatus: input.botStatus ?? undefined,
+        lastBotEventAt: new Date(),
       },
       include: { settings: true },
     });
 
     return group;
+  }
+
+  /** Resolve a Telegram group from DB, trying common ID variants. */
+  async findByTelegramIdVariants(rawTelegramId: string) {
+    for (const candidate of telegramChatIdCandidates(rawTelegramId)) {
+      const group = await prisma.telegramGroup.findUnique({
+        where: { telegramId: candidate },
+        include: { settings: true },
+      });
+      if (group) return group;
+    }
+    return null;
+  }
+
+  /**
+   * If the bot can see the chat on Telegram but it was never stored
+   * (missed my_chat_member / webhook down), import it now.
+   */
+  async importFromTelegramApi(rawTelegramId: string) {
+    let chat: Awaited<ReturnType<typeof telegramService.getChat>> | null = null;
+    let resolvedId: string | null = null;
+
+    for (const candidate of telegramChatIdCandidates(rawTelegramId)) {
+      try {
+        chat = await telegramService.getChat(candidate);
+        resolvedId = String(chat.id);
+        break;
+      } catch {
+        // try next candidate
+      }
+    }
+
+    if (!chat || !resolvedId) {
+      throw new Error(
+        "Group not found. Add the Sentry bot to the Telegram group as a member (admin recommended), then try again with the full chat ID (usually starts with -100).",
+      );
+    }
+
+    if (chat.type !== "group" && chat.type !== "supergroup") {
+      throw new Error("That chat ID is not a group or supergroup.");
+    }
+
+    let adminIds: string[] = [];
+    try {
+      const admins = await telegramService.getChatAdministrators(resolvedId);
+      adminIds = admins.map((a) => String(a.user.id));
+    } catch {
+      adminIds = [];
+    }
+
+    const memberCount = await telegramService.getChatMemberCount(resolvedId);
+
+    return this.upsertFromTelegram({
+      telegramId: resolvedId,
+      name: chat.title ?? null,
+      description: chat.description ?? null,
+      adminTelegramIds: adminIds,
+      memberCount,
+      botStatus: "member",
+    });
   }
 
   async listForUser(userId: string) {
@@ -122,13 +193,15 @@ export class GroupService {
   async enable(userId: string, telegramId: string) {
     await employmentService.assertCanWork(userId);
 
-    const group = await prisma.telegramGroup.findUnique({
-      where: { telegramId },
-      include: { settings: true },
-    });
+    let group = await this.findByTelegramIdVariants(telegramId);
     if (!group) {
+      // Bot is already in the chat, but webhook never persisted it — import now.
+      group = await this.importFromTelegramApi(telegramId);
+    }
+
+    if (group.botStatus === "removed") {
       throw new Error(
-        "Group not found. Add the Sentry bot to the Telegram group first.",
+        "Sentry was removed from this group. Add the bot back, then enable again.",
       );
     }
 
@@ -156,6 +229,7 @@ export class GroupService {
     return {
       groupId: group.id,
       telegramId: group.telegramId,
+      name: group.name,
       enabled: link.enabled,
       enabledByUserId: userId,
     };
@@ -260,8 +334,9 @@ export class GroupService {
   }
 
   async findActiveGroupByTelegramId(telegramId: string) {
+    const normalized = normalizeTelegramChatId(telegramId);
     return prisma.telegramGroup.findUnique({
-      where: { telegramId },
+      where: { telegramId: normalized },
       include: {
         settings: true,
         employment: {

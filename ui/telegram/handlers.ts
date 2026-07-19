@@ -10,9 +10,10 @@ import { logEvent } from "@/lib/logger";
 import { billingService } from "@/services/billing.service";
 
 import { UNCERTAIN_REPLY } from "@/lib/messages";
+import { normalizeTelegramChatId } from "@/lib/telegram-id";
 
 function chatId(ctx: Context) {
-  return ctx.chat?.id != null ? String(ctx.chat.id) : null;
+  return ctx.chat?.id != null ? normalizeTelegramChatId(String(ctx.chat.id)) : null;
 }
 
 function isGroupChat(ctx: Context) {
