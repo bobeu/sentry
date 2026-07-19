@@ -11,9 +11,10 @@ type ReplyInput = {
 
 function systemRules() {
   return [
-    "You are Sentry, an AI community employee for Telegram.",
-    "Short replies only. Never fabricate facts, rules, or policies.",
-    "Use only provided context, FAQs, and recent messages. Never pretend to be human.",
+    "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee.",
+    "You are not a shallow chatbot: reason carefully, use FAQs + recent chat context, and give useful actionable answers.",
+    "Tone: clear, confident, concise (2–6 short sentences unless asked for detail). Never invent policies or facts.",
+    "Never claim to be human. Prefer FAQs and group context over speculation.",
     `If uncertain: ${UNCERTAIN_REPLY}`,
   ].join(" ");
 }
@@ -146,12 +147,28 @@ export class AiService {
     );
   }
 
-  summarize(): never {
-    throw new Error("Not Implemented");
-  }
-
-  moderate(): never {
-    throw new Error("Not Implemented");
+  async generatePersonalReply(input: {
+    userQuestion: string;
+    userName?: string;
+    employerEmail: string;
+  }) {
+    return callOpenAI(
+      [
+        { role: "system", content: systemRules() },
+        {
+          role: "user",
+          content: [
+            `Employer: ${input.employerEmail}`,
+            `User: ${input.userName ?? "employer"}`,
+            "Channel: private Telegram DM with Sentry agent.",
+            "Help with community ops, drafting replies, explaining messages, or next actions.",
+            "",
+            `Request:\n${input.userQuestion}`,
+          ].join("\n"),
+        },
+      ],
+      350,
+    );
   }
 }
 

@@ -2,6 +2,8 @@ import type { Telegraf } from "telegraf";
 import { prisma } from "@/lib/prisma";
 import { walletService } from "@/services/wallet.service";
 import { formatAmount } from "@/lib/payment-currency";
+import { billingService } from "@/services/billing.service";
+import { botUsername, capabilitiesSummary } from "@/telegram/runtime";
 
 async function walletMessage(telegramUserId: string) {
   const settings = await prisma.settings.findFirst({
@@ -20,6 +22,13 @@ async function walletMessage(telegramUserId: string) {
   const currency = wallet.walletCurrency as import("@/lib/payment-currency").PaymentCurrency;
   const synced = await walletService.syncBalanceFromChain(settings.user.id);
   const balance = synced?.balance ?? Number(wallet.balance.toString());
+  let available = balance;
+  try {
+    const ledger = await billingService.getBalanceLedger(settings.user.id);
+    available = ledger.availableBalance;
+  } catch {
+    // keep on-chain/cached balance
+  }
 
   return [
     "Your Sentry Employment Wallet",
@@ -33,37 +42,56 @@ async function walletMessage(telegramUserId: string) {
     `• Send ${currency} directly to this address.`,
     "• Visit the dashboard to deposit from a connected wallet.",
     "",
-    "Current Balance",
+    "Cached balance",
     formatAmount(balance, currency),
+    "Available (after outstanding charges)",
+    formatAmount(available, currency),
   ].join("\n");
 }
 
 export function registerCommands(bot: Telegraf) {
   bot.start(async (ctx) => {
+    const username = await botUsername(ctx);
     await ctx.reply(
       [
-        "Sentry — your AI community employee.",
+        capabilitiesSummary(username),
         "",
-        "Add me to a Telegram group, hire Sentry in the web app, then enable the group.",
-        "I answer @mentions, welcome new members, and use your FAQs + recent chat context.",
-        "",
-        "Commands: /start /help /mywallet /balance /deposit",
+        "Employers: hire & fund Sentry in the web app, add me to a group, then enable the group.",
+        "Members: ask questions or mention me — I'll help using FAQs and live chat context.",
       ].join("\n"),
     );
   });
 
   bot.help(async (ctx) => {
+    const username = await botUsername(ctx);
+    await ctx.reply(capabilitiesSummary(username));
+  });
+
+  bot.command("status", async (ctx) => {
+    const telegramUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramUserId) return;
+    const settings = await prisma.settings.findFirst({
+      where: { telegramUserId },
+      include: { user: { include: { employment: true, wallet: true } } },
+    });
+    if (!settings?.user) {
+      await ctx.reply("No linked dashboard account. Connect your Telegram user ID in Settings.");
+      return;
+    }
+    let available: number | null = null;
+    try {
+      available = (await billingService.getBalanceLedger(settings.user.id)).availableBalance;
+    } catch {
+      available = null;
+    }
     await ctx.reply(
       [
-        "How to use Sentry:",
-        "1. Hire Sentry in the dashboard",
-        "2. Fund your employment wallet",
-        "3. Add this bot to your group",
-        "4. Enable the group in the Groups page",
-        "5. Mention @sentry (or reply to me) to ask a question",
+        `Account: ${settings.user.email}`,
+        `Employment: ${settings.user.employment?.status ?? "Inactive"}`,
+        `Wallet: ${settings.user.wallet?.address ?? "none"}`,
+        available == null ? "Available balance: (unavailable)" : `Available balance: ${available}`,
         "",
-        "Wallet: /mywallet /balance /deposit",
-        "Billing: pay per completed action in the active payment currency.",
+        "I'm an AI agent on Telegram — mention me in an enabled group or chat here in DM.",
       ].join("\n"),
     );
   });

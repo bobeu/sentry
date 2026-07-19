@@ -39,7 +39,7 @@ export class FaqService {
   }
 
   /**
-   * Simple keyword overlap match — no embeddings.
+   * Lightweight lexical match — tuned so natural paraphrases still hit FAQs.
    */
   match(faqs: Array<{ question: string; answer: string }>, userQuestion: string) {
     const q = normalize(userQuestion);
@@ -52,13 +52,24 @@ export class FaqService {
       if (q.includes(fq) || fq.includes(q)) {
         return faq.answer;
       }
+
+      // Significant token overlap (ignore tiny words)
       const qTokens = new Set(q.split(" ").filter((t) => t.length > 2));
       const fTokens = fq.split(" ").filter((t) => t.length > 2);
       if (fTokens.length === 0) continue;
       const hits = fTokens.filter((t) => qTokens.has(t)).length;
       const score = hits / fTokens.length;
-      if (score >= 0.6 && (!best || score > best.score)) {
-        best = { answer: faq.answer, score };
+
+      // Also boost when distinctive nouns from the FAQ appear in the user text
+      const distinctive = fTokens.filter((t) => t.length >= 5);
+      const distinctiveHits = distinctive.filter((t) => qTokens.has(t)).length;
+      const boosted =
+        distinctive.length > 0 && distinctiveHits === distinctive.length
+          ? Math.max(score, 0.85)
+          : score;
+
+      if (boosted >= 0.45 && (!best || boosted > best.score)) {
+        best = { answer: faq.answer, score: boosted };
       }
     }
     return best?.answer ?? null;
