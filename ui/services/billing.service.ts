@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { ActionType } from "@/generated/prisma/client";
+import type { ActionType } from "@/generated/client";
 import { averageActionCost, priceFor, PRICING_LABELS } from "@/lib/pricing";
 import { blockchainService } from "@/services/blockchain.service";
 import { paymentService } from "@/services/payment.service";
@@ -59,11 +59,11 @@ export class BillingService {
         wallet.address as `0x${string}`,
         wallet.walletCurrency as PaymentCurrency,
       );
-      if (chainBal !== null) {
+      if (chainBal !== null && Number.isFinite(chainBal)) {
         balance = chainBal;
         await prisma.wallet.update({
           where: { id: wallet.id },
-          data: { balance, balanceCachedAt: new Date() },
+          data: { balance: chainBal, balanceCachedAt: new Date() },
         });
       }
     }

@@ -80,3 +80,7 @@ bun run prisma:seed
 ## Version policy
 
 Keep `prisma`, `@prisma/client`, and `@prisma/adapter-pg` on exactly the same version. The project currently pins all three to stable Prisma ORM `7.8.0`. Upgrade them together, regenerate the client, validate the schema, test migrations against staging, then deploy.
+
+---
+
+Again, it seems we only have a sign in page and no sign up. If users need to sign in, they must have already sign up but no such sign up system. Can you inspect the project and determine whether login is needed, where it is needed, and how it should be implemented considering how users data are relayed to the smart contract and mapped to their unique wallets. This is very important so as to understand how to properly implement the sign up. If user needs to sign up/sign in, we could as well implement the `sign-in with Google` method.

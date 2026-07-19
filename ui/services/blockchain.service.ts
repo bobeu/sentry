@@ -11,6 +11,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
+import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { CONTRACTS } from "@/lib/contracts";
 import type { PaymentCurrency } from "@/lib/payment-currency";
 import { tokenDecimals } from "@/lib/payment-currency";
@@ -523,8 +524,13 @@ export class BlockchainService {
     address: Address,
     currency: PaymentCurrency,
   ): Promise<number | null> {
-    const balance = await this.getEmploymentBalance(address, currency);
-    return balance ? Number(balance) : null;
+    const result = await this.getEmploymentBalance(address, currency);
+    if (result == null || result.balance == null || result.balance === "") {
+      return null;
+    }
+    // getEmploymentBalance returns { wei, balance, contract } — never Number() the object.
+    const amount = Number(result.balance);
+    return Number.isFinite(amount) ? amount : null;
   }
 
   async getWalletTokenAddress(address: Address): Promise<Address | null> {
@@ -568,6 +574,7 @@ export class BlockchainService {
       args: [input.identityHash, input.userKey, TOKEN_INDEX[input.currency]],
       account: owner.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return (await this.client().readContract({
@@ -601,6 +608,7 @@ export class BlockchainService {
       args: [userKey, walletAddress],
       account: owner.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -628,6 +636,7 @@ export class BlockchainService {
       ],
       account: operator.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -644,6 +653,7 @@ export class BlockchainService {
       args: [userKey, destination],
       account: operator.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -669,6 +679,7 @@ export class BlockchainService {
       ],
       account: operator.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -702,6 +713,7 @@ export class BlockchainService {
       ],
       account: operator.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -718,6 +730,7 @@ export class BlockchainService {
       args: [TOKEN_INDEX[currency], enabled],
       account: owner.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -734,6 +747,7 @@ export class BlockchainService {
       args: [TOKEN_INDEX[currency], tokenAddress],
       account: owner.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;
@@ -761,6 +775,7 @@ export class BlockchainService {
       args: [userKey],
       account: operator.account,
       chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);
     return hash;

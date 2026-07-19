@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { EmploymentStatus } from "@/generated/prisma/client";
+import type { ActionType, EmploymentStatus } from "@/generated/client";
 import { walletService } from "@/services/wallet.service";
 import { actionService } from "@/services/action.service";
 import { billingService } from "@/services/billing.service";
@@ -174,7 +174,7 @@ export class EmploymentService {
     };
   }
 
-  async assertCanWork(userId: string, actionType?: import("@prisma/client").ActionType) {
+  async assertCanWork(userId: string, actionType?: ActionType) {
     const status = await this.getStatus(userId);
     if (status.status !== "Active") {
       throw Errors.employmentInactive();

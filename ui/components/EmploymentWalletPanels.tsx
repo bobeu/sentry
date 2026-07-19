@@ -12,6 +12,7 @@ import {
   type Hash,
 } from "viem";
 import { celo } from "viem/chains";
+import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
 
 type Employment = {
@@ -283,6 +284,7 @@ export function WalletPanel() {
           to: employmentWallet,
           value: amount,
           account,
+          data: CELO_ATTRIBUTION_SUFFIX,
         });
       } else {
         if (!depositConfig.tokenAddress) throw new Error("Token address is not configured");
@@ -297,6 +299,7 @@ export function WalletPanel() {
           args: [employmentWallet, amount],
           account,
           chain: celo,
+          dataSuffix: CELO_ATTRIBUTION_SUFFIX,
         });
       }
 

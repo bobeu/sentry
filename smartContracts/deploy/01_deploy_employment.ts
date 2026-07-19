@@ -4,8 +4,8 @@ import { isAddress } from "ethers";
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts, network } = hre;
-  const { deploy, log } = deployments;
-  const { deployer, treasury, operator } = await getNamedAccounts();
+  const { deploy, log, execute, read } = deployments;
+  const { deployer, treasury, operator, dd09 } = await getNamedAccounts();
 
   const usdm = "0x765DE816845861e75A25fCA122bb6898B8B1282a";
   const usdc = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C";
@@ -34,6 +34,18 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   });
 
   log(`SentryWalletFactory deployed at ${factory.address}`);
+
+  const owner = await read("EmploymentManager", "owner");
+  log(`EmploymentManager owner: ${owner}`);
+
+  // try {
+  //   log("Transferring ownership of EmploymentManager to new owner");
+  //   const newOnwer = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
+  //   await execute("EmploymentManager", {from: deployer},  'transferOwnership', newOnwer);
+  //   log(`Ownership transferred to ${newOnwer}`);
+  // } catch (error) {
+  //   log(`Error executing EmploymentManager: ${error}`);
+  // }
 };
 
 export default func;

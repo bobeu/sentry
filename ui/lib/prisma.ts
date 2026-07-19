@@ -7,10 +7,14 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function requireDatabaseUrl(): string {
-  const connectionString = process.env.DATABASE_URL?.trim();
+  // Prefer the pooled URL on Prisma Compute (DATABASE_URL_POOLED); fall back to DATABASE_URL.
+  // Use dynamic lookup so Next.js does not inline a build-time .env value into the server bundle.
+  const connectionString =
+    process.env["DATABASE_URL_POOLED"]?.trim() ||
+    process.env["DATABASE_URL"]?.trim();
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL must be set before creating the Prisma client. In production use the pooled Prisma Postgres connection string.",
+      "DATABASE_URL_POOLED or DATABASE_URL must be set before creating the Prisma client.",
     );
   }
   return connectionString;

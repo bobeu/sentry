@@ -87,7 +87,7 @@ export class WalletService {
       : null;
     const balance = onChain ?? cached;
 
-    if (onChain !== null && onChain !== cached) {
+    if (onChain !== null && Number.isFinite(onChain) && onChain !== cached) {
       await prisma.wallet.update({
         where: { id: wallet.id },
         data: { balance: onChain, balanceCachedAt: new Date() },

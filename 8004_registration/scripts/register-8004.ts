@@ -22,7 +22,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
-import { Attribution } from "ox/erc8021";
+import { toDataSuffix } from "@celo/attribution-tags";
 import { identityRegistryAbi } from "./abi/identity-registry";
 
 const IDENTITY_REGISTRY =
@@ -199,7 +199,7 @@ async function main() {
   });
 
   // Append ERC-8021 attribution suffix so DeFAI leaderboard can credit volume.
-  const suffix = Attribution.toDataSuffix({ codes: [ATTRIBUTION_TAG] });
+  const suffix = toDataSuffix(ATTRIBUTION_TAG);
   const data = `${callData}${suffix.replace(/^0x/, "")}` as Hex;
 
   if (dryRun) {

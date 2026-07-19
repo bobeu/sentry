@@ -10,6 +10,10 @@ out
 .env
 .env.local
 .env.*.local
+.env.prisma.deploy
+.env.prisma.existing
+.env.prisma.new
+.env.prisma.*
 **/defai_registration_details.md
 8004_registration/.env
 agent/out/
@@ -22,3 +26,5 @@ generated/
 
 *.tsbuildinfo
 .prisma/
+.vercel
+.env*

@@ -7,6 +7,7 @@
     "gen:8004": "bun run scripts/register-8004.ts"
   },
   "dependencies": {
+    "@celo/attribution-tags": "^0.3.0",
     "ox": "^1.0.0",
     "viem": "^2.55.2"
   },

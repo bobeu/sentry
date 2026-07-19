@@ -72,6 +72,11 @@ const config: HardhatUserConfig = {
       default: 0,
       11142220: `privatekey://${process.env.OPERATOR}`,
       42220: `privatekey://${process.env.OPERATOR}`,
+    },
+    dd09: {
+      default: 0,
+      11142220: `privatekey://${process.env.NEW_OWNER}`,
+      42220: `privatekey://${process.env.NEW_OWNER}`,
     }
   },
 
