@@ -8,6 +8,7 @@ import { emailIdentityHash, identityHash, identityUserKey } from "@/lib/identity
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
 import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
+import { isFiniteBalance, toWalletBalance } from "@/lib/wallet-balance";
 
 function number(value: { toString(): string } | string | number | null | undefined) {
   return value == null ? 0 : Number(value.toString());
@@ -87,10 +88,10 @@ export class WalletService {
       : null;
     const balance = onChain ?? cached;
 
-    if (onChain !== null && Number.isFinite(onChain) && onChain !== cached) {
+    if (isFiniteBalance(onChain) && onChain !== cached) {
       await prisma.wallet.update({
         where: { id: wallet.id },
-        data: { balance: onChain, balanceCachedAt: new Date() },
+        data: { balance: toWalletBalance(onChain), balanceCachedAt: new Date() },
       });
       if (wallet.identityHash && onChain > cached) {
         await blockchainService
@@ -279,12 +280,16 @@ export class WalletService {
         amount,
         user.wallet.walletCurrency as PaymentCurrency,
       );
-      const newBalance =
-        (await blockchainService.syncBalanceCache(
-          user.wallet.address as Address,
-          user.wallet.walletCurrency as PaymentCurrency,
-        )) ??
-        afterSettlement.onChainBalance - amount;
+      const syncedBalance = await blockchainService.syncBalanceCache(
+        user.wallet.address as Address,
+        user.wallet.walletCurrency as PaymentCurrency,
+      );
+      const newBalance = isFiniteBalance(syncedBalance)
+        ? syncedBalance
+        : afterSettlement.onChainBalance - amount;
+      if (!isFiniteBalance(newBalance)) {
+        throw new Error("Could not determine post-withdrawal wallet balance");
+      }
 
       await prisma.$transaction([
         prisma.withdrawal.update({
@@ -297,7 +302,10 @@ export class WalletService {
         }),
         prisma.wallet.update({
           where: { id: user.wallet.id },
-          data: { balance: newBalance, balanceCachedAt: new Date() },
+          data: {
+            balance: toWalletBalance(newBalance),
+            balanceCachedAt: new Date(),
+          },
         }),
       ]);
 

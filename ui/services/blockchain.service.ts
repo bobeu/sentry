@@ -528,7 +528,8 @@ export class BlockchainService {
     if (result == null || result.balance == null || result.balance === "") {
       return null;
     }
-    // getEmploymentBalance returns { wei, balance, contract } — never Number() the object.
+    // getEmploymentBalance returns { wei, balance, contract }.
+    // Number(result) is NaN and Prisma then reports "Argument `balance` is missing".
     const amount = Number(result.balance);
     return Number.isFinite(amount) ? amount : null;
   }

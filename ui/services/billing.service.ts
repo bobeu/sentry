@@ -8,6 +8,7 @@ import { Errors } from "@/lib/errors";
 import { logEvent } from "@/lib/logger";
 import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
 import { identityUserKey } from "@/lib/identity";
+import { isFiniteBalance, toWalletBalance } from "@/lib/wallet-balance";
 import {
   getSettlementConfig,
   settlementIntervalMs,
@@ -59,11 +60,11 @@ export class BillingService {
         wallet.address as `0x${string}`,
         wallet.walletCurrency as PaymentCurrency,
       );
-      if (chainBal !== null && Number.isFinite(chainBal)) {
+      if (isFiniteBalance(chainBal)) {
         balance = chainBal;
         await prisma.wallet.update({
           where: { id: wallet.id },
-          data: { balance: chainBal, balanceCachedAt: new Date() },
+          data: { balance: toWalletBalance(chainBal), balanceCachedAt: new Date() },
         });
       }
     }
@@ -472,12 +473,16 @@ export class BillingService {
         settlementId: settlementHash,
       });
 
-      const newBal =
-        (await blockchainService.syncBalanceCache(
-          wallet.address as `0x${string}`,
-          currency,
-        )) ??
-        onChainBalance - totalAmount;
+      const syncedBal = await blockchainService.syncBalanceCache(
+        wallet.address as `0x${string}`,
+        currency,
+      );
+      const newBal = isFiniteBalance(syncedBal)
+        ? syncedBal
+        : onChainBalance - totalAmount;
+      if (!isFiniteBalance(newBal)) {
+        throw new Error("Could not determine post-settlement wallet balance");
+      }
 
       await prisma.$transaction([
         prisma.settlement.update({
@@ -505,7 +510,10 @@ export class BillingService {
         }),
         prisma.wallet.update({
           where: { id: wallet.id },
-          data: { balance: newBal, balanceCachedAt: new Date() },
+          data: {
+            balance: toWalletBalance(newBal),
+            balanceCachedAt: new Date(),
+          },
         }),
       ]);
 
@@ -658,7 +666,10 @@ export class BillingService {
 
     await prisma.wallet.updateMany({
       where: { userId },
-      data: { balance: ledger.onChainBalance, balanceCachedAt: new Date() },
+      data: {
+        balance: toWalletBalance(ledger.onChainBalance),
+        balanceCachedAt: new Date(),
+      },
     });
 
     await prisma.employment.updateMany({
