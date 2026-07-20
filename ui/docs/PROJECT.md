@@ -31,35 +31,45 @@ When funds are exhausted, Sentry automatically stops working until the wallet is
 
 ## Core Features
 
-Only these.
+✅ Monitor conversations (admin / privacy-off required for full visibility)
 
-✅ Monitor conversations
+✅ Reply to mentions & proactive Q&A
 
-✅ Reply to mentions
-
-✅ Answer FAQs
+✅ Answer FAQs (strong match + AI with context)
 
 ✅ Welcome members
 
 ✅ Moderate spam
 
-✅ Summarize discussions
+✅ Summarize discussions & shift handovers
 
-✅ Daily reports
+✅ Daily / weekly reports & proof-of-work
 
-✅ Notifications
+✅ Mention notifications & employer DMs
 
-✅ Wallet
+✅ Escalation ladder (approve / edit / ignore)
 
-✅ Billing
+✅ Living playbook (learn from corrections)
+
+✅ Intent / conversion sensing
+
+✅ Incident mode
+
+✅ Member memory (opt-in)
+
+✅ Org-chart personas per group
+
+✅ Hire-in-Telegram deep links
+
+✅ Agent-to-agent HTTP API (bearer keys)
+
+✅ Prepaid wallet & pay-per-action billing on Celo
 
 No competitor monitoring.
 
 No marketplace.
 
-No plugins.
-
-No SDK.
+No plugins marketplace.
 
 ---
 
