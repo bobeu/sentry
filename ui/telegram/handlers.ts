@@ -23,6 +23,7 @@ import {
 import { intentService } from "@/services/intent.service";
 import { incidentService } from "@/services/incident.service";
 import { memoryService } from "@/services/memory.service";
+import { secretaryService } from "@/services/secretary.service";
 import {
   botUsername,
   capabilitiesSummary,
@@ -467,6 +468,30 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     return;
   }
 
+  // Secretary Mode manual send: "sec: reply text"
+  const secMatch = cleaned.match(/^sec\s*:\s*(.+)$/is);
+  if (secMatch) {
+    const conn = await prisma.businessConnectionRecord.findFirst({
+      where: { userTelegramId: fromUserId ?? "", isEnabled: true },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!conn) {
+      await ctx.reply("No active Secretary Mode connection.");
+      return;
+    }
+    try {
+      await secretaryService.sendAsUser({
+        connectionId: conn.connectionId,
+        userTelegramId: fromUserId!,
+        text: secMatch[1].trim(),
+      });
+      await ctx.reply("Sent as you via Secretary Mode.");
+    } catch (err) {
+      await ctx.reply(err instanceof Error ? err.message : "Could not send.");
+    }
+    return;
+  }
+
   // Escalation edit: "edit: <text>" while a pending escalation exists
   const editMatch = cleaned.match(/^edit\s*:\s*(.+)$/is);
   if (editMatch) {
@@ -565,8 +590,34 @@ export function registerHandlers(bot: Telegraf) {
       ctx.callbackQuery && "data" in ctx.callbackQuery
         ? ctx.callbackQuery.data
         : null;
-    if (!data?.startsWith("esc:")) return;
+    if (!data) return;
     const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+
+    if (data.startsWith("sec:")) {
+      const parts = data.split(":");
+      const decision = parts[1];
+      const connectionId = parts[2];
+      if (!fromUserId || !connectionId) {
+        await ctx.answerCbQuery("Invalid").catch(() => undefined);
+        return;
+      }
+      if (decision === "ok") {
+        const ok = await secretaryService.approvePending(connectionId, fromUserId);
+        await ctx.answerCbQuery(ok ? "Sent" : "Nothing pending").catch(() => undefined);
+        await ctx
+          .editMessageReplyMarkup({ inline_keyboard: [] })
+          .catch(() => undefined);
+        await ctx.reply(ok ? "Draft sent as you." : "No pending draft.").catch(() => undefined);
+      } else {
+        await ctx.answerCbQuery("Ignored").catch(() => undefined);
+        await ctx
+          .editMessageReplyMarkup({ inline_keyboard: [] })
+          .catch(() => undefined);
+      }
+      return;
+    }
+
+    if (!data.startsWith("esc:")) return;
     const linked = await findLinkedUserByTelegram(fromUserId);
     if (!linked?.user) {
       await ctx.answerCbQuery("Link your Telegram ID in Settings first.").catch(() => undefined);
@@ -591,6 +642,64 @@ export function registerHandlers(bot: Telegraf) {
       .editMessageReplyMarkup({ inline_keyboard: [] })
       .catch(() => undefined);
     await ctx.reply(decision === "ok" ? "Posted to the group." : "Ignored.").catch(() => undefined);
+  });
+
+  // Secretary Mode (Telegram Business connection)
+  bot.on("business_connection" as "message", async (ctx) => {
+    const update = ctx.update as {
+      business_connection?: {
+        id: string;
+        user: { id: number; username?: string; first_name?: string };
+        user_chat_id: number;
+        is_enabled: boolean;
+        rights?: { can_reply?: boolean } | null;
+      };
+    };
+    const conn = update.business_connection;
+    if (!conn) return;
+    try {
+      await secretaryService.upsertConnection(conn);
+      const bot = ctx.telegram;
+      await bot
+        .sendMessage(
+          conn.user_chat_id,
+          conn.is_enabled
+            ? "Secretary Mode connected. I'll auto-reply to simple/FAQ messages and escalate the rest to you here."
+            : "Secretary Mode disconnected.",
+        )
+        .catch(() => undefined);
+    } catch (err) {
+      console.error("[secretary:connection]", err);
+    }
+  });
+
+  bot.on("business_message" as "message", async (ctx) => {
+    const update = ctx.update as {
+      business_message?: {
+        message_id: number;
+        chat: { id: number };
+        text?: string;
+        from?: { id: number; username?: string; first_name?: string };
+        business_connection_id?: string;
+      };
+    };
+    const msg = update.business_message;
+    if (!msg) return;
+    try {
+      await secretaryService.handleBusinessMessage(msg);
+    } catch (err) {
+      console.error("[secretary:message]", err);
+    }
+  });
+
+  bot.use(async (ctx, next) => {
+    const update = ctx.update as {
+      managed_bot?: { bot?: { id?: number; username?: string } };
+    };
+    if (update.managed_bot) {
+      console.info("[managed_bot]", update.managed_bot.bot?.username ?? update.managed_bot);
+    }
+    return next();
   });
 
   bot.on("my_chat_member", async (ctx) => {
@@ -629,6 +738,12 @@ export function registerHandlers(bot: Telegraf) {
       (meAdmin?.status === "administrator" &&
         "can_delete_messages" in meAdmin &&
         Boolean(meAdmin.can_delete_messages));
+    const canRestrict =
+      meAdmin?.status === "creator" ||
+      (meAdmin?.status === "administrator" &&
+        "can_restrict_members" in meAdmin &&
+        Boolean(meAdmin.can_restrict_members));
+    const canBan = canRestrict;
 
     await groupService.upsertFromTelegram({
       telegramId,
@@ -646,6 +761,8 @@ export function registerHandlers(bot: Telegraf) {
       data: {
         botStatus: status === "administrator" ? "active" : "member",
         botCanDelete: Boolean(canDelete),
+        botCanRestrict: Boolean(canRestrict),
+        botCanBan: Boolean(canBan),
         lastBotEventAt: new Date(),
       },
     });

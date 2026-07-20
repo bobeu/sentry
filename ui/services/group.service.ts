@@ -302,6 +302,12 @@ export class GroupService {
       hireInTelegram?: boolean;
       personaRole?: string;
       personaTone?: string | null;
+      adminModeration?: boolean;
+      roseRelayEnabled?: boolean;
+      roseBotUsername?: string | null;
+      announcementsEnabled?: boolean;
+      birthdaysEnabled?: boolean;
+      birthdayHourUtc?: number;
       rules?: string | null;
       description?: string | null;
       purpose?: string | null;
@@ -329,6 +335,10 @@ export class GroupService {
       data.dailySummaryHour !== undefined
         ? Math.min(23, Math.max(0, Math.floor(data.dailySummaryHour)))
         : undefined;
+    const birthdayHour =
+      data.birthdayHourUtc !== undefined
+        ? Math.min(23, Math.max(0, Math.floor(data.birthdayHourUtc)))
+        : undefined;
 
     const settings = await prisma.groupSettings.upsert({
       where: { groupId },
@@ -354,6 +364,12 @@ export class GroupService {
         hireInTelegram: data.hireInTelegram ?? true,
         personaRole: data.personaRole ?? "default",
         personaTone: data.personaTone ?? null,
+        adminModeration: data.adminModeration ?? true,
+        roseRelayEnabled: data.roseRelayEnabled ?? false,
+        roseBotUsername: data.roseBotUsername?.replace(/^@/, "") || "MissRose_bot",
+        announcementsEnabled: data.announcementsEnabled ?? true,
+        birthdaysEnabled: data.birthdaysEnabled ?? true,
+        birthdayHourUtc: birthdayHour ?? 9,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
@@ -375,6 +391,15 @@ export class GroupService {
         hireInTelegram: data.hireInTelegram,
         personaRole: data.personaRole,
         personaTone: data.personaTone,
+        adminModeration: data.adminModeration,
+        roseRelayEnabled: data.roseRelayEnabled,
+        roseBotUsername:
+          data.roseBotUsername === undefined
+            ? undefined
+            : data.roseBotUsername?.replace(/^@/, "") || "MissRose_bot",
+        announcementsEnabled: data.announcementsEnabled,
+        birthdaysEnabled: data.birthdaysEnabled,
+        birthdayHourUtc: birthdayHour,
       },
     });
 

@@ -50,6 +50,12 @@ export function GroupDetailPanel() {
     hireInTelegram: true,
     personaRole: "default",
     personaTone: "",
+    adminModeration: true,
+    roseRelayEnabled: false,
+    roseBotUsername: "MissRose_bot",
+    announcementsEnabled: true,
+    birthdaysEnabled: true,
+    birthdayHourUtc: 9,
   });
   const [rules, setRules] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -62,6 +68,7 @@ export function GroupDetailPanel() {
   const [kbTitle, setKbTitle] = useState("");
   const [kbFile, setKbFile] = useState<File | null>(null);
   const [kbBusy, setKbBusy] = useState(false);
+  const [announceText, setAnnounceText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -101,6 +108,12 @@ export function GroupDetailPanel() {
       hireInTelegram: g.settings?.hireInTelegram ?? true,
       personaRole: g.settings?.personaRole ?? "default",
       personaTone: g.settings?.personaTone ?? "",
+      adminModeration: g.settings?.adminModeration ?? true,
+      roseRelayEnabled: g.settings?.roseRelayEnabled ?? false,
+      roseBotUsername: g.settings?.roseBotUsername ?? "MissRose_bot",
+      announcementsEnabled: g.settings?.announcementsEnabled ?? true,
+      birthdaysEnabled: g.settings?.birthdaysEnabled ?? true,
+      birthdayHourUtc: g.settings?.birthdayHourUtc ?? 9,
     });
     setRules(g.rules ?? "");
     setPurpose(g.purpose ?? "");
@@ -248,6 +261,24 @@ export function GroupDetailPanel() {
     await refresh();
   }
 
+  async function postAnnouncement(event: FormEvent) {
+    event.preventDefault();
+    if (!announceText.trim()) return;
+    setError(null);
+    const res = await fetch("/api/groups/announcements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId, text: announceText }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error ?? "Announce failed");
+      return;
+    }
+    setAnnounceText("");
+    setMessage("Announcement posted to the group");
+  }
+
   return (
     <div className="mt-8 space-y-10">
       <div>
@@ -331,6 +362,10 @@ export function GroupDetailPanel() {
             ["incidentMode", "Incident mode"],
             ["memberMemoryEnabled", "Member memory (/remember)"],
             ["hireInTelegram", "Hire-in-Telegram deep links"],
+            ["adminModeration", "Admin moderation (/ban /mute)"],
+            ["roseRelayEnabled", "Relay moderation to Rose (needs /bot2bot admin)"],
+            ["announcementsEnabled", "Announcements"],
+            ["birthdaysEnabled", "Birthday celebrations"],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex items-center gap-3 text-sm text-[#c7d6c4]">
@@ -342,6 +377,17 @@ export function GroupDetailPanel() {
             {label}
           </label>
         ))}
+        <label className="block text-sm text-[#9aa89a]">
+          Rose bot username (if relay enabled)
+          <input
+            value={settings.roseBotUsername}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, roseBotUsername: e.target.value.replace(/^@/, "") }))
+            }
+            placeholder="MissRose_bot"
+            className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+        </label>
         <label className="block text-sm text-[#9aa89a]">
           Persona role (org chart)
           <select
@@ -378,6 +424,19 @@ export function GroupDetailPanel() {
           />
         </label>
         <label className="block text-sm text-[#9aa89a]">
+          Birthday celebration hour (UTC 0–23)
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={settings.birthdayHourUtc}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, birthdayHourUtc: Number(e.target.value) }))
+            }
+            className="mt-2 w-28 rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+        </label>
+        <label className="block text-sm text-[#9aa89a]">
           Group purpose
           <input
             value={purpose}
@@ -401,6 +460,29 @@ export function GroupDetailPanel() {
           Save settings
         </button>
       </form>
+
+      <section className="max-w-xl space-y-4">
+        <h2 className="text-lg text-[#e8f5d8]">Post announcement</h2>
+        <p className="text-sm text-[#9aa89a]">
+          Posts immediately to the Telegram group. Admins can also use /announce in-chat.
+        </p>
+        <form onSubmit={postAnnouncement} className="space-y-3">
+          <textarea
+            value={announceText}
+            onChange={(e) => setAnnounceText(e.target.value)}
+            placeholder="Announcement text"
+            rows={3}
+            className="w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+          <button
+            type="submit"
+            disabled={!settings.announcementsEnabled}
+            className="rounded-full border border-white/20 px-5 py-2.5 text-sm disabled:opacity-50"
+          >
+            Post now
+          </button>
+        </form>
+      </section>
 
       <section className="max-w-xl space-y-4">
         <h2 className="text-lg text-[#e8f5d8]">FAQs</h2>

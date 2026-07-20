@@ -45,6 +45,24 @@ export class SchedulerService {
       });
     });
 
+    cron.schedule("10 * * * *", async () => {
+      const hour = new Date().getUTCHours();
+      await this.runJob("birthdays", async () => {
+        const { birthdayService } = await import("@/services/birthday.service");
+        await birthdayService.runHourlyPass(hour);
+        console.log("[scheduler] birthdays for hour", hour);
+      });
+    });
+
+    cron.schedule("*/5 * * * *", async () => {
+      await this.runJob("announcements", async () => {
+        const { announcementService } = await import(
+          "@/services/announcement.service"
+        );
+        await announcementService.runDuePass();
+      });
+    });
+
     cron.schedule("*/15 * * * *", async () => {
       await this.runJob("employment reminders", async () => {
         const paused = await prisma.employment.findMany({

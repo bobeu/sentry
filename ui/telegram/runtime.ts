@@ -114,13 +114,16 @@ export function capabilitiesSummary(username: string) {
     "• Answer from FAQs and your knowledge base (docs / blog / uploaded files)",
     "• Reply when mentioned or replied to",
     "• Welcome new members + moderate spam (when enabled)",
+    "• Admin moderation: /ban /unban /mute /unmute (native; optional Rose relay)",
+    "• /announce and birthday celebrations (/birthday MM-DD)",
+    "• Secretary Mode: connect me in Telegram Business → Chatbots",
     "• Notify you of @mentions (when linked)",
     "• Employer DMs: reports, group status, past work, drafting help",
     "• Wallet/deposit commands in DM",
     "",
     `Try: ${tag} what is this group about?`,
-    "Employer DM: \"group status\", \"past work\", \"full report\"",
-    "Commands: /help /mywallet /balance /deposit /status",
+    "Employer DM: \"group status\", \"past work\", \"full report\", or sec: <reply>",
+    "Commands: /help /mywallet /balance /deposit /status /announce /birthday",
   ].join("\n");
 }
 
