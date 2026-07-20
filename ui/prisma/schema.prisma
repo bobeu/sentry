@@ -131,6 +131,8 @@ model TelegramGroup {
   settings     GroupSettings?
   employment   GroupEmployment[]
   faqs         GroupFAQ[]
+  knowledgeSources GroupKnowledgeSource[]
+  knowledgeChunks  GroupKnowledgeChunk[]
   messages     ConversationContext[]
   actions      ActionRecord[]
   reports      Report[]
@@ -194,6 +196,54 @@ model GroupFAQ {
   updatedAt DateTime      @updatedAt
 
   @@index([groupId])
+}
+
+enum KnowledgeSourceType {
+  url
+  file
+}
+
+enum KnowledgeSourceStatus {
+  pending
+  ready
+  failed
+}
+
+/// Employer-supplied docs / FAQ pages / blogs Sentry can search when answering.
+model GroupKnowledgeSource {
+  id          String                @id @default(cuid())
+  groupId     String
+  group       TelegramGroup         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type        KnowledgeSourceType
+  title       String?
+  url         String?
+  fileName    String?
+  mimeType    String?
+  /// Full extracted plain text (capped on ingest).
+  contentText String                @default("")
+  byteSize    Int                   @default(0)
+  status      KnowledgeSourceStatus @default(pending)
+  error       String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  chunks      GroupKnowledgeChunk[]
+
+  @@index([groupId])
+  @@index([groupId, status])
+}
+
+model GroupKnowledgeChunk {
+  id        String               @id @default(cuid())
+  groupId   String
+  group     TelegramGroup        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sourceId  String
+  source    GroupKnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  ordinal   Int
+  content   String
+  createdAt DateTime             @default(now())
+
+  @@index([groupId])
+  @@index([sourceId])
 }
 
 model ConversationContext {

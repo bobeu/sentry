@@ -68,17 +68,17 @@ export async function POST(request: Request) {
       }
       const faqs = await faqService.list(body.groupId);
       const hit = faqService.match(faqs, body.question);
-      if (hit) {
-        result = { answer: hit, viaFaq: true };
-      } else {
-        const context = await contextService.build(body.groupId);
-        const reply = await aiService.generateReply({
-          context,
-          userQuestion: body.question,
-          preferFaq: false,
-        });
-        result = { answer: reply.text, viaFaq: false };
-      }
+      const context = await contextService.build(body.groupId);
+      const reply = await aiService.generateReply({
+        context,
+        userQuestion: body.question,
+        preferFaq: false,
+        groupId: body.groupId,
+      });
+      result = {
+        answer: reply.text,
+        viaFaq: reply.viaFaq || Boolean(hit),
+      };
     }
 
     await actionService.record({

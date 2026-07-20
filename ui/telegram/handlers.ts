@@ -9,8 +9,8 @@ import { notificationService } from "@/services/notification.service";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/logger";
 import { billingService } from "@/services/billing.service";
-import { faqService } from "@/services/faq.service";
 import { UNCERTAIN_REPLY } from "@/lib/messages";
+import { splitTelegramMessage } from "@/lib/telegram-message";
 import {
   detectEmployerIntent,
   employerAgentService,
@@ -78,17 +78,31 @@ async function replyTo(
   text: string,
   replyToMessageId?: number,
 ) {
-  try {
-    if (replyToMessageId != null && ctx.chat) {
-      await ctx.reply(text, {
-        reply_parameters: { message_id: replyToMessageId },
-      });
-      return;
+  const chunks = splitTelegramMessage(text);
+  if (chunks.length === 0) return;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    try {
+      if (i === 0 && replyToMessageId != null && ctx.chat) {
+        await ctx.reply(chunk, {
+          reply_parameters: { message_id: replyToMessageId },
+        });
+      } else {
+        await ctx.reply(chunk);
+      }
+    } catch (err) {
+      console.warn("[telegram:reply]", err);
+      await ctx.reply(chunk).catch(() => undefined);
     }
-    await ctx.reply(text);
-  } catch (err) {
-    console.warn("[telegram:reply]", err);
-    await ctx.reply(text).catch(() => undefined);
+  }
+}
+
+async function replyPlain(ctx: Context, text: string) {
+  for (const chunk of splitTelegramMessage(text)) {
+    await ctx.reply(chunk).catch((err) => {
+      console.warn("[telegram:replyPlain]", err);
+    });
   }
 }
 
@@ -189,6 +203,8 @@ async function agentAnswerForGroup(
     context,
     userQuestion: cleaned,
     userName: fromUsername ?? undefined,
+    preferFaq: false,
+    groupId: runtime.group.id,
     playbookRules: playbookRules || undefined,
     personaRole: runtime.group.settings?.personaRole,
     personaTone: runtime.group.settings?.personaTone,
@@ -372,9 +388,13 @@ async function handleGroupIntelligence(
   }
 
   try {
-    const result = faq
-      ? { text: faq, viaFaq: true as const }
-      : await agentAnswerForGroup(runtime, cleaned, fromUsername, fromUserId);
+    // Always route through the agent so FAQ + knowledge-base tools can narrow the reply.
+    const result = await agentAnswerForGroup(
+      runtime,
+      cleaned,
+      fromUsername,
+      fromUserId,
+    );
     await deliverOrEscalate({
       ctx,
       runtime,
@@ -471,9 +491,7 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     // Structured employer reports — deterministic data, then optional AI polish for "general".
     if (intent === "status" || intent === "work" || intent === "report") {
       const report = await employerAgentService.formatDirectReport(user.id, intent);
-      const textOut =
-        report.length > 3500 ? `${report.slice(0, 3490)}\n…` : report;
-      await ctx.reply(textOut);
+      await replyPlain(ctx, report);
       await actionService.record({
         type: "mention_reply",
         userId: user.id,
@@ -492,49 +510,28 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     const brief = await employerAgentService.buildOperationalBrief(user.id, intent);
     const displayName = ctx.from?.username ?? ctx.from?.first_name ?? undefined;
 
-    // Strong FAQ hits still answer instantly; everything else uses the full agent.
+    // Employer DMs also go through the agent with FAQ + knowledge tools.
     if (link?.group.settings?.enabled) {
-      const faqs = link.group.faqs.map((f) => ({
-        question: f.question,
-        answer: f.answer,
-      }));
-      const faqHit = faqService.matchDetailed(faqs, cleaned);
-      if (faqHit && faqHit.score >= 0.72) {
-        await ctx.reply(faqHit.answer);
-        await actionService.record({
-          type: "faq_answer",
-          groupId: link.groupId,
-          userId: user.id,
-          billable: true,
-          metadata: { channel: "private", viaFaq: true, intent },
-        });
-        return;
-      }
-
       const context = await contextService.build(link.group.id);
-      const textOut = await aiService.generatePersonalReply({
+      const agent = await aiService.generateReply({
+        context,
         userQuestion: cleaned,
         userName: displayName,
-        employerEmail: user.email,
-        operationalBrief: [
-          brief,
-          "",
-          `Active group: ${context.groupName}`,
-          `Purpose: ${context.purpose ?? "(none)"}`,
-          `Recent chat:\n${context.recentMessages
-            .slice(-12)
-            .map((m) => `${m.from}: ${m.text}`)
-            .join("\n") || "(none)"}`,
-          `FAQs:\n${faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n") || "(none)"}`,
-        ].join("\n"),
+        preferFaq: false,
+        groupId: link.group.id,
       });
-      await ctx.reply(textOut);
+      await replyPlain(ctx, agent.text);
       await actionService.record({
-        type: "mention_reply",
+        type: agent.viaFaq ? "faq_answer" : "mention_reply",
         groupId: link.groupId,
         userId: user.id,
         billable: true,
-        metadata: { channel: "private", viaFaq: false, intent },
+        metadata: {
+          channel: "private",
+          viaFaq: agent.viaFaq,
+          intent,
+          briefPreview: brief.slice(0, 200),
+        },
       });
       return;
     }
@@ -545,7 +542,7 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       employerEmail: user.email,
       operationalBrief: brief,
     });
-    await ctx.reply(textOut);
+    await replyPlain(ctx, textOut);
     await actionService.record({
       type: "mention_reply",
       userId: user.id,

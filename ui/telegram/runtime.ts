@@ -111,7 +111,7 @@ export function capabilitiesSummary(username: string) {
     "",
     "I can:",
     "• Read group chats and answer with agentic reasoning (when I'm a group admin, or privacy mode is off)",
-    "• Answer FAQs and community questions",
+    "• Answer from FAQs and your knowledge base (docs / blog / uploaded files)",
     "• Reply when mentioned or replied to",
     "• Welcome new members + moderate spam (when enabled)",
     "• Notify you of @mentions (when linked)",
