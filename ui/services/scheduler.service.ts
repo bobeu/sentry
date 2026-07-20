@@ -65,6 +65,14 @@ export class SchedulerService {
       });
     });
 
+    cron.schedule("0 16 * * 0", async () => {
+      await this.runJob("weekly proof-of-work", async () => {
+        const { proofService } = await import("@/services/proof.service");
+        await proofService.runWeeklyPass();
+        console.log("[scheduler] weekly proof-of-work done");
+      });
+    });
+
     cron.schedule("*/5 * * * *", async () => {
       await this.runJob("wallet sync", async () => {
         const { syncService } = await import("@/services/sync.service");

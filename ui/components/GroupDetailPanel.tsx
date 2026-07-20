@@ -29,6 +29,16 @@ export function GroupDetailPanel() {
     spamModeration: true,
     mentionNotifications: true,
     dailySummaryHour: 9,
+    shiftHandover: true,
+    escalationLadder: true,
+    livingPlaybook: true,
+    intentSensing: true,
+    proofOfWork: true,
+    incidentMode: true,
+    memberMemoryEnabled: false,
+    hireInTelegram: true,
+    personaRole: "default",
+    personaTone: "",
   });
   const [rules, setRules] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -65,6 +75,16 @@ export function GroupDetailPanel() {
       spamModeration: g.settings?.spamModeration ?? true,
       mentionNotifications: g.settings?.mentionNotifications ?? true,
       dailySummaryHour: g.settings?.dailySummaryHour ?? 9,
+      shiftHandover: g.settings?.shiftHandover ?? true,
+      escalationLadder: g.settings?.escalationLadder ?? true,
+      livingPlaybook: g.settings?.livingPlaybook ?? true,
+      intentSensing: g.settings?.intentSensing ?? true,
+      proofOfWork: g.settings?.proofOfWork ?? true,
+      incidentMode: g.settings?.incidentMode ?? true,
+      memberMemoryEnabled: g.settings?.memberMemoryEnabled ?? false,
+      hireInTelegram: g.settings?.hireInTelegram ?? true,
+      personaRole: g.settings?.personaRole ?? "default",
+      personaTone: g.settings?.personaTone ?? "",
     });
     setRules(g.rules ?? "");
     setPurpose(g.purpose ?? "");
@@ -194,17 +214,47 @@ export function GroupDetailPanel() {
             ["answerQuestions", "FAQ / questions"],
             ["spamModeration", "Spam moderation"],
             ["mentionNotifications", "Mention notifications"],
+            ["shiftHandover", "Shift handover briefs"],
+            ["escalationLadder", "Escalation approvals"],
+            ["livingPlaybook", "Living playbook"],
+            ["intentSensing", "Intent / conversion sensing"],
+            ["proofOfWork", "Proof-of-work reports"],
+            ["incidentMode", "Incident mode"],
+            ["memberMemoryEnabled", "Member memory (/remember)"],
+            ["hireInTelegram", "Hire-in-Telegram deep links"],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex items-center gap-3 text-sm text-[#c7d6c4]">
             <input
               type="checkbox"
-              checked={settings[key]}
+              checked={Boolean(settings[key])}
               onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.checked }))}
             />
             {label}
           </label>
         ))}
+        <label className="block text-sm text-[#9aa89a]">
+          Persona role (org chart)
+          <select
+            value={settings.personaRole}
+            onChange={(e) => setSettings((s) => ({ ...s, personaRole: e.target.value }))}
+            className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          >
+            <option value="default">Default (no persona override)</option>
+            <option value="support">Support</option>
+            <option value="announcer">Announcer</option>
+            <option value="vip">VIP lounge</option>
+          </select>
+        </label>
+        <label className="block text-sm text-[#9aa89a]">
+          Persona tone (optional)
+          <input
+            value={settings.personaTone}
+            onChange={(e) => setSettings((s) => ({ ...s, personaTone: e.target.value }))}
+            placeholder="calm, concise, no hype"
+            className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+        </label>
         <label className="block text-sm text-[#9aa89a]">
           Daily summary hour (UTC 0–23)
           <input

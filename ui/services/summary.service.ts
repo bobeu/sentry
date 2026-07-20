@@ -24,6 +24,7 @@ export class SummaryService {
         groupId,
         userId: group.employment[0]?.userId ?? null,
         content: summary,
+        kind: "daily",
       },
     });
 
@@ -68,6 +69,16 @@ export class SummaryService {
     }
 
     logEvent("Summary Generated", { groupId, employerId });
+
+    if (group.settings.shiftHandover) {
+      try {
+        const { handoverService } = await import("@/services/handover.service");
+        await handoverService.generateShiftHandover(groupId);
+      } catch (err) {
+        console.error("[summary:handover]", groupId, err);
+      }
+    }
+
     return summary;
   }
 

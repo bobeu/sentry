@@ -12,8 +12,12 @@ import {
   type Hash,
 } from "viem";
 import { celo } from "viem/chains";
+import { useAccount } from "wagmi";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
+import { WalletConnectButton } from "@/components/WalletConnectButton";
+import { useToast } from "@/components/Toast";
+import { getInjectedProvider } from "@/lib/wagmi";
 
 type Employment = {
   id: string;
@@ -161,6 +165,8 @@ const DEPOSIT_ABI = [
 ] as const;
 
 export function WalletPanel() {
+  const { isConnected, address: connectedAddress } = useAccount();
+  const toast = useToast();
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [outstanding, setOutstanding] = useState(0);
@@ -258,12 +264,12 @@ export function WalletPanel() {
   async function webDeposit(event: FormEvent) {
     event.preventDefault();
     if (!depositConfig) {
-      setError("Wallet deposit configuration is unavailable.");
+      toast.push("Wallet deposit configuration is unavailable.");
       return;
     }
-    const eth = (window as unknown as { ethereum?: unknown }).ethereum;
-    if (!eth) {
-      setError("Connect a Web3 wallet (MetaMask / MiniPay) to deposit.");
+    const eth = getInjectedProvider();
+    if (!eth || !isConnected) {
+      toast.push("Connect a Web3 wallet (MetaMask / MiniPay) to deposit.");
       return;
     }
 
@@ -274,7 +280,9 @@ export function WalletPanel() {
       const transport = custom(eth as Parameters<typeof custom>[0]);
       const client = createWalletClient({ chain: celo, transport });
       const publicClient = createPublicClient({ chain: celo, transport });
-      const [account] = await client.requestAddresses();
+      const [account] = connectedAddress
+        ? [connectedAddress as Address]
+        : await client.requestAddresses();
       const employmentWallet = depositConfig.employmentWallet as Address;
 
       let hash: Hash;
@@ -308,12 +316,14 @@ export function WalletPanel() {
       if (receipt.status !== "success") throw new Error("Deposit transaction reverted");
 
       const synced = await syncBalance(false);
-      setMessage(
-        `Deposit confirmed. Balance is now ${Number(synced.balance).toFixed(4)} ${synced.currency ?? currency} (synced automatically).`,
-      );
+      const ok = `Deposit confirmed. Balance is now ${Number(synced.balance).toFixed(4)} ${synced.currency ?? currency} (synced automatically).`;
+      setMessage(ok);
+      toast.push(ok, "success");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Deposit failed");
+      const msg = err instanceof Error ? err.message : "Deposit failed";
+      setError(msg);
+      toast.push(msg);
       setMessage(null);
     } finally {
       setLoading(false);
@@ -436,6 +446,9 @@ export function WalletPanel() {
         <ol className="mt-3 space-y-3 text-sm text-[#b7c4b5]">
           <li>
             <span className="text-[#e8f5d8]">① Deposit from Connected Wallet</span>
+            <div className="mt-2">
+              <WalletConnectButton />
+            </div>
             {address && depositConfig ? (
               <form onSubmit={webDeposit} className="mt-2 flex flex-wrap items-end gap-2">
                 <label className="text-xs text-[#9aa89a]">
@@ -448,14 +461,14 @@ export function WalletPanel() {
                 </label>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !isConnected}
                   className="rounded-full bg-[#35d07f] px-4 py-2 text-xs font-semibold text-[#061008] disabled:opacity-60"
                 >
                   Deposit
                 </button>
               </form>
             ) : (
-              <p className="mt-1 text-xs">Deploy contracts to enable web deposit.</p>
+              <p className="mt-1 text-xs">Hire Sentry to enable web deposit.</p>
             )}
           </li>
           <li>
@@ -557,7 +570,6 @@ export function WalletPanel() {
       </div>
 
       {message ? <p className="mt-3 text-sm text-[#35d07f]">{message}</p> : null}
-      {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
     </div>
   );
 }

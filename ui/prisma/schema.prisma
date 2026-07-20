@@ -21,6 +21,14 @@ enum ActionType {
   spam_moderation
   daily_summary
   mention_notification
+  shift_handover
+  escalation
+  playbook_learn
+  intent_signal
+  incident_mode
+  member_memory
+  agent_task
+  proof_report
 }
 
 enum ActionStatus {
@@ -28,13 +36,38 @@ enum ActionStatus {
   failed
 }
 
+enum EscalationStatus {
+  pending
+  approved
+  edited
+  ignored
+  expired
+}
+
+enum IncidentStatus {
+  open
+  monitoring
+  resolved
+}
+
+enum ReportKind {
+  daily
+  shift
+  proof
+}
+
+enum PlaybookSource {
+  correction
+  manual
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  withdrawalAddress String?
+  id                       String   @id @default(cuid())
+  email                    String   @unique
+  withdrawalAddress        String?
   pendingWithdrawalAddress String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   wallet          Wallet?
   employment      Employment?
@@ -46,6 +79,9 @@ model User {
   actions         ActionRecord[]
   settlements     Settlement[]
   withdrawals     Withdrawal[]
+  playbookRules   PlaybookRule[]
+  escalations     Escalation[]
+  agentApiKeys    AgentApiKey[]
 }
 
 model Session {
@@ -58,46 +94,50 @@ model Session {
 }
 
 model Wallet {
-  id              String   @id @default(cuid())
-  address         String   @unique
-  balance         Decimal  @default(0) @db.Decimal(36, 18)
+  id              String    @id @default(cuid())
+  address         String    @unique
+  balance         Decimal   @default(0) @db.Decimal(36, 18)
   balanceCachedAt DateTime?
   identityHash    String?
-  walletCurrency  String   @default("USDm")
-  walletStatus    String   @default("Provisioning")
-  provider        String   @default("employment-contract")
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  walletCurrency  String    @default("USDm")
+  walletStatus    String    @default("Provisioning")
+  provider        String    @default("employment-contract")
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   settlements Settlement[]
   withdrawals Withdrawal[]
 }
 
 model TelegramGroup {
-  id              String   @id @default(cuid())
-  telegramId      String   @unique
-  name            String?
+  id               String    @id @default(cuid())
+  telegramId       String    @unique
+  name             String?
   /// JSON array of admin telegram user ids when obtainable — not assumed ownership.
   adminTelegramIds String?
-  memberCount     Int?
-  description     String?
-  purpose         String?
-  rules           String?
-  botStatus       String   @default("unknown")
-  botCanDelete    Boolean?
-  lastBotEventAt  DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  memberCount      Int?
+  description      String?
+  purpose          String?
+  rules            String?
+  botStatus        String    @default("unknown")
+  botCanDelete     Boolean?
+  lastBotEventAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  tasks      Task[]
-  settings   GroupSettings?
-  employment GroupEmployment[]
-  faqs       GroupFAQ[]
-  messages   ConversationContext[]
-  actions    ActionRecord[]
-  reports    Report[]
+  tasks        Task[]
+  settings     GroupSettings?
+  employment   GroupEmployment[]
+  faqs         GroupFAQ[]
+  messages     ConversationContext[]
+  actions      ActionRecord[]
+  reports      Report[]
+  playbookRules PlaybookRule[]
+  escalations  Escalation[]
+  memberMemories MemberMemory[]
+  incidents    IncidentEvent[]
 }
 
 model GroupSettings {
@@ -114,6 +154,18 @@ model GroupSettings {
   summaryToGroup        Boolean       @default(true)
   summaryToAdmins       Boolean       @default(true)
   summaryToPrivate      Boolean       @default(true)
+  /// Additive agent capacity flags
+  shiftHandover         Boolean       @default(true)
+  escalationLadder      Boolean       @default(true)
+  livingPlaybook        Boolean       @default(true)
+  intentSensing         Boolean       @default(true)
+  proofOfWork           Boolean       @default(true)
+  incidentMode          Boolean       @default(true)
+  memberMemoryEnabled   Boolean       @default(false)
+  hireInTelegram        Boolean       @default(true)
+  /// Persona / org-chart (applied only when role != default)
+  personaRole           String        @default("default")
+  personaTone           String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 }
@@ -181,20 +233,20 @@ enum WithdrawalStatus {
 }
 
 model ActionRecord {
-  id          String         @id @default(cuid())
-  type        ActionType
-  groupId     String?
-  group       TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  userId      String?
-  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  completedAt DateTime       @default(now())
-  status      ActionStatus   @default(completed)
-  billable    Boolean        @default(true)
-  metadata    Json?
+  id           String         @id @default(cuid())
+  type         ActionType
+  groupId      String?
+  group        TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  completedAt  DateTime       @default(now())
+  status       ActionStatus   @default(completed)
+  billable     Boolean        @default(true)
+  metadata     Json?
   settlementId String?
-  settlement   Settlement?   @relation(fields: [settlementId], references: [id], onDelete: SetNull)
-  createdAt   DateTime       @default(now())
-  charge      ChargeRecord?
+  settlement   Settlement?    @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+  charge       ChargeRecord?
 
   @@index([userId, completedAt])
   @@index([groupId, completedAt])
@@ -300,7 +352,11 @@ model Report {
   groupId   String?
   group     TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   content   String?
+  kind      ReportKind     @default(daily)
   createdAt DateTime       @default(now())
+
+  @@index([userId, kind, createdAt])
+  @@index([groupId, kind, createdAt])
 }
 
 model Settings {
@@ -314,6 +370,86 @@ model Settings {
   /// Telegram identity for private mention notifications
   telegramUserId     String?
   telegramUsername   String?
+  /// Allow agent task API once keys exist
+  agentApiEnabled    Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+model PlaybookRule {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId     String?
+  group       TelegramGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  trigger     String
+  instruction String
+  source      PlaybookSource @default(manual)
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId, active])
+  @@index([groupId, active])
+}
+
+model Escalation {
+  id                   String           @id @default(cuid())
+  groupId              String
+  group                TelegramGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status               EscalationStatus @default(pending)
+  draftText            String
+  reason               String?
+  sourceTelegramMsgId  String?
+  sourceChatId         String?
+  employerTelegramMsgId String?
+  finalText            String?
+  createdAt            DateTime         @default(now())
+  resolvedAt           DateTime?
+
+  @@index([userId, status, createdAt])
+  @@index([groupId, status])
+}
+
+model MemberMemory {
+  id             String        @id @default(cuid())
+  groupId        String
+  group          TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramUserId String
+  note           String
+  consentAt      DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([groupId, telegramUserId])
+  @@index([telegramUserId])
+}
+
+model IncidentEvent {
+  id        String         @id @default(cuid())
+  groupId   String
+  group     TelegramGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  trigger   String
+  status    IncidentStatus @default(open)
+  timeline  Json?
+  createdAt DateTime       @default(now())
+  resolvedAt DateTime?
+
+  @@index([groupId, status, createdAt])
+}
+
+model AgentApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, revokedAt])
 }

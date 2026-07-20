@@ -15,6 +15,14 @@ import {
   detectEmployerIntent,
   employerAgentService,
 } from "@/services/employer-agent.service";
+import { playbookService } from "@/services/playbook.service";
+import {
+  escalationService,
+  shouldEscalate,
+} from "@/services/escalation.service";
+import { intentService } from "@/services/intent.service";
+import { incidentService } from "@/services/incident.service";
+import { memoryService } from "@/services/memory.service";
 import {
   botUsername,
   capabilitiesSummary,
@@ -32,6 +40,22 @@ import {
   stripBotMention,
   type GroupRuntime,
 } from "@/telegram/runtime";
+
+function appBaseUrl() {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.WEBHOOK_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://sentry-sigma-two.vercel.app";
+  return raw.replace(/\/$/, "");
+}
+
+function hireDeepLink(groupTelegramId?: string) {
+  const base = `${appBaseUrl()}/employment?hire=1`;
+  return groupTelegramId
+    ? `${base}&group=${encodeURIComponent(groupTelegramId)}`
+    : base;
+}
 
 async function recordBillable(
   runtime: GroupRuntime,
@@ -150,12 +174,69 @@ async function agentAnswerForGroup(
   runtime: GroupRuntime,
   cleaned: string,
   fromUsername: string | null,
+  fromUserId: string | null,
 ) {
   const context = await contextService.build(runtime.group.id);
+  const playbookRules =
+    runtime.employerUserId && runtime.group.settings?.livingPlaybook !== false
+      ? await playbookService.formatForPrompt(
+          runtime.employerUserId,
+          runtime.group.id,
+        )
+      : "";
+  const memberNote = await memoryService.getNote(runtime.group.id, fromUserId);
   return aiService.generateReply({
     context,
     userQuestion: cleaned,
     userName: fromUsername ?? undefined,
+    playbookRules: playbookRules || undefined,
+    personaRole: runtime.group.settings?.personaRole,
+    personaTone: runtime.group.settings?.personaTone,
+    memberNote,
+  });
+}
+
+async function deliverOrEscalate(input: {
+  ctx: Context;
+  runtime: GroupRuntime;
+  cleaned: string;
+  result: { text: string; viaFaq: boolean };
+  messageId: number;
+  fromAdmin: boolean;
+  proactive?: boolean;
+}) {
+  const { ctx, runtime, cleaned, result, messageId, fromAdmin, proactive } =
+    input;
+  const settings = runtime.group.settings;
+  const escalate =
+    Boolean(settings?.escalationLadder) &&
+    runtime.billable &&
+    runtime.employerUserId &&
+    shouldEscalate(cleaned, result.viaFaq);
+
+  if (escalate && runtime.employerUserId) {
+    await escalationService.createAndNotify({
+      groupId: runtime.group.id,
+      userId: runtime.employerUserId,
+      draftText: result.text,
+      reason: "Ambiguous or high-stakes — needs employer approval",
+      sourceTelegramMsgId: String(messageId),
+      sourceChatId: chatIdOf(ctx) ?? runtime.group.telegramId,
+      groupName: runtime.group.name,
+    });
+    await replyTo(
+      ctx,
+      "I've drafted a reply and sent it to the employer for approval — they'll post it shortly.",
+      messageId,
+    );
+    return;
+  }
+
+  await replyTo(ctx, result.text, messageId);
+  await recordBillable(runtime, result.viaFaq ? "faq_answer" : "mention_reply", {
+    viaFaq: result.viaFaq,
+    fromAdmin,
+    proactive: Boolean(proactive),
   });
 }
 
@@ -192,10 +273,15 @@ async function handleGroupIntelligence(
     }
 
     if (!runtime.communityMode && !fromAdmin) {
+      const hire =
+        runtime.group.settings?.hireInTelegram !== false
+          ? `\n\nHire Sentry for this community:\n${hireDeepLink(runtime.group.telegramId)}`
+          : "";
       await replyTo(
         ctx,
         "This group hasn't fully activated community mode yet. An employer can enable Sentry from the dashboard Groups page.\n\n" +
-          capabilitiesSummary(username),
+          capabilitiesSummary(username) +
+          hire,
         message.message_id,
       );
       await recordBillable(runtime, "mention_reply", { kind: "inactive_group" }, false);
@@ -248,10 +334,18 @@ async function handleGroupIntelligence(
     }
 
     try {
-      const result = await agentAnswerForGroup(runtime, cleaned, fromUsername);
-      await replyTo(ctx, result.text, message.message_id);
-      await recordBillable(runtime, result.viaFaq ? "faq_answer" : "mention_reply", {
-        viaFaq: result.viaFaq,
+      const result = await agentAnswerForGroup(
+        runtime,
+        cleaned,
+        fromUsername,
+        fromUserId,
+      );
+      await deliverOrEscalate({
+        ctx,
+        runtime,
+        cleaned,
+        result,
+        messageId: message.message_id,
         fromAdmin,
       });
     } catch (err) {
@@ -280,10 +374,14 @@ async function handleGroupIntelligence(
   try {
     const result = faq
       ? { text: faq, viaFaq: true as const }
-      : await agentAnswerForGroup(runtime, cleaned, fromUsername);
-    await replyTo(ctx, result.text, message.message_id);
-    await recordBillable(runtime, result.viaFaq ? "faq_answer" : "mention_reply", {
-      viaFaq: result.viaFaq,
+      : await agentAnswerForGroup(runtime, cleaned, fromUsername, fromUserId);
+    await deliverOrEscalate({
+      ctx,
+      runtime,
+      cleaned,
+      result,
+      messageId: message.message_id,
+      fromAdmin,
       proactive: true,
     });
   } catch (err) {
@@ -335,6 +433,30 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       "Your account is linked, but Sentry isn't actively employed yet. Hire and fund the employment wallet in the dashboard, then ask again.",
     );
     return;
+  }
+
+  // Living playbook: "correct: trigger → instruction"
+  const learned = await playbookService.learnFromCorrection({
+    userId: user.id,
+    text: cleaned,
+  });
+  if (learned) {
+    await ctx.reply(
+      `Playbook updated.\nWhen "${learned.trigger}": ${learned.instruction}`,
+    );
+    return;
+  }
+
+  // Escalation edit: "edit: <text>" while a pending escalation exists
+  const editMatch = cleaned.match(/^edit\s*:\s*(.+)$/is);
+  if (editMatch) {
+    const pending = await escalationService.listPending(user.id);
+    const esc = pending[0];
+    if (esc) {
+      await escalationService.resolve(esc.id, user.id, "edited", editMatch[1].trim());
+      await ctx.reply("Edited draft posted to the group.");
+      return;
+    }
   }
 
   try {
@@ -439,6 +561,39 @@ async function handlePrivateAgent(ctx: Context, text: string) {
 export function registerHandlers(bot: Telegraf) {
   bot.catch((err) => {
     console.error("[telegram]", err);
+  });
+
+  bot.on("callback_query", async (ctx) => {
+    const data =
+      ctx.callbackQuery && "data" in ctx.callbackQuery
+        ? ctx.callbackQuery.data
+        : null;
+    if (!data?.startsWith("esc:")) return;
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const linked = await findLinkedUserByTelegram(fromUserId);
+    if (!linked?.user) {
+      await ctx.answerCbQuery("Link your Telegram ID in Settings first.").catch(() => undefined);
+      return;
+    }
+    const [, decision, id] = data.split(":");
+    if (!id || (decision !== "ok" && decision !== "no")) {
+      await ctx.answerCbQuery("Unknown action").catch(() => undefined);
+      return;
+    }
+    const resolved = await escalationService.resolve(
+      id,
+      linked.user.id,
+      decision === "ok" ? "approved" : "ignored",
+    );
+    if (!resolved) {
+      await ctx.answerCbQuery("Already resolved or not found").catch(() => undefined);
+      return;
+    }
+    await ctx.answerCbQuery(decision === "ok" ? "Approved" : "Ignored").catch(() => undefined);
+    await ctx
+      .editMessageReplyMarkup({ inline_keyboard: [] })
+      .catch(() => undefined);
+    await ctx.reply(decision === "ok" ? "Posted to the group." : "Ignored.").catch(() => undefined);
   });
 
   bot.on("my_chat_member", async (ctx) => {
@@ -628,11 +783,40 @@ export function registerHandlers(bot: Telegraf) {
           "I'm here, but this group isn't linked yet. Enable it from the Sentry dashboard Groups page.\n\n" +
             capabilitiesSummary(username) +
             "\n\n" +
-            groupVisibilityHint(username),
+            groupVisibilityHint(username) +
+            `\n\nHire me: ${hireDeepLink(telegramId)}`,
           ctx.message.message_id,
         ).catch(() => undefined);
       }
       return;
+    }
+
+    // Pre-hooks: incident + intent (after FAQ/capability short-circuits live inside intelligence)
+    if (runtime.communityMode) {
+      await incidentService
+        .maybeTrigger({
+          groupId: runtime.group.id,
+          telegramChatId: telegramId,
+          text,
+          fromUsername,
+          employerUserId: runtime.employerUserId,
+          billable: runtime.billable,
+          botCanDelete: runtime.group.botCanDelete,
+          adminTelegramIds: runtime.adminTelegramIds,
+          groupName: runtime.group.name,
+        })
+        .catch((err) => console.error("[incident]", err));
+
+      await intentService
+        .handle({
+          groupId: runtime.group.id,
+          userId: runtime.employerUserId,
+          text,
+          fromUsername,
+          groupName: runtime.group.name,
+          billable: runtime.billable,
+        })
+        .catch((err) => console.error("[intent]", err));
     }
 
     // Employer mention notifications (community mode)

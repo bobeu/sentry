@@ -10,6 +10,14 @@ export const PRICING_AMOUNTS: Record<ActionType, number> = {
   daily_summary: 0.05,
   spam_moderation: 0.02,
   mention_notification: 0.01,
+  shift_handover: 0.04,
+  escalation: 0.02,
+  playbook_learn: 0.01,
+  intent_signal: 0.01,
+  incident_mode: 0.05,
+  member_memory: 0.005,
+  agent_task: 0.03,
+  proof_report: 0.03,
 };
 
 export const PRICING_LABELS: Record<ActionType, string> = {
@@ -19,6 +27,14 @@ export const PRICING_LABELS: Record<ActionType, string> = {
   daily_summary: "Daily Summary",
   spam_moderation: "Spam Moderation",
   mention_notification: "Mention Notification",
+  shift_handover: "Shift Handover",
+  escalation: "Escalation Review",
+  playbook_learn: "Playbook Learn",
+  intent_signal: "Intent Signal",
+  incident_mode: "Incident Mode",
+  member_memory: "Member Memory",
+  agent_task: "Agent Task API",
+  proof_report: "Proof of Work",
 };
 
 export function getPricing(currency: PaymentCurrency = "USDm") {

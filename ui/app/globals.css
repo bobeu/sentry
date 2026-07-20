@@ -6,28 +6,91 @@
   --muted: #9aa89a;
   --accent: #35d07f;
   --accent-2: #fcff52;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-strong: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.12);
 }
+
 body {
   min-height: 100vh;
   color: var(--ink);
   background:
-    radial-gradient(circle at 12% 18%, rgba(53, 208, 127, 0.18), transparent 34%),
-    radial-gradient(circle at 88% 8%, rgba(252, 255, 82, 0.12), transparent 28%),
+    radial-gradient(circle at 12% 18%, rgba(53, 208, 127, 0.2), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgba(252, 255, 82, 0.1), transparent 28%),
     linear-gradient(160deg, #071009 0%, #101a12 48%, #0b120c 100%);
   font-family: var(--font-body), sans-serif;
 }
+
 a {
   color: inherit;
   text-decoration: none;
 }
+
 ::selection {
   color: #061008;
   background: #8cf1b7;
 }
+
 .hero-noise {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 54px 54px;
   mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+
+.surface-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 1.25rem;
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.surface-card:hover {
+  border-color: rgba(53, 208, 127, 0.35);
+  background: var(--surface-strong);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 220ms ease-out;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+.status-pulse {
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+.nav-drawer {
+  max-height: 0;
+  overflow: hidden;
+  border-top: 1px solid transparent;
+  background: rgba(8, 14, 10, 0.97);
+  transition: max-height 240ms ease, border-color 240ms ease;
+}
+
+.nav-drawer-open {
+  max-height: 28rem;
+  border-top-color: var(--border);
 }

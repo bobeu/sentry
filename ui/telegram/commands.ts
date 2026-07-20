@@ -3,7 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { walletService } from "@/services/wallet.service";
 import { formatAmount } from "@/lib/payment-currency";
 import { billingService } from "@/services/billing.service";
-import { botUsername, capabilitiesSummary } from "@/telegram/runtime";
+import { memoryService } from "@/services/memory.service";
+import {
+  botUsername,
+  capabilitiesSummary,
+  chatIdOf,
+  isGroupChat,
+  resolveGroupRuntime,
+} from "@/telegram/runtime";
 
 async function walletMessage(telegramUserId: string) {
   const settings = await prisma.settings.findFirst({
@@ -94,6 +101,51 @@ export function registerCommands(bot: Telegraf) {
         "I'm an AI agent on Telegram — mention me in an enabled group or chat here in DM.",
       ].join("\n"),
     );
+  });
+
+  bot.command("remember", async (ctx) => {
+    if (!isGroupChat(ctx)) {
+      await ctx.reply("Use /remember in a group where member memory is enabled.");
+      return;
+    }
+    const telegramId = chatIdOf(ctx);
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId || !fromUserId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime?.communityMode) {
+      await ctx.reply("Community mode isn't enabled here.");
+      return;
+    }
+    const note = (ctx.message && "text" in ctx.message ? ctx.message.text : "")
+      .replace(/^\/remember(@\w+)?\s*/i, "")
+      .trim();
+    if (!note) {
+      await ctx.reply("Usage: /remember I asked about vesting last week");
+      return;
+    }
+    try {
+      await memoryService.remember({
+        groupId: runtime.group.id,
+        telegramUserId: fromUserId,
+        note,
+        employerUserId: runtime.employerUserId,
+        billable: runtime.billable,
+      });
+      await ctx.reply("Saved with your consent. Use /forget to clear.");
+    } catch (err) {
+      await ctx.reply(err instanceof Error ? err.message : "Could not save memory.");
+    }
+  });
+
+  bot.command("forget", async (ctx) => {
+    if (!isGroupChat(ctx)) return;
+    const telegramId = chatIdOf(ctx);
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId || !fromUserId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime) return;
+    await memoryService.forget(runtime.group.id, fromUserId);
+    await ctx.reply("Memory cleared for this group.");
   });
 
   bot.command("mywallet", async (ctx) => {

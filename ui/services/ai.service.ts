@@ -15,6 +15,10 @@ type ReplyInput = {
   userName?: string;
   /** When false, FAQ hits are context only — never short-circuit the agent. */
   preferFaq?: boolean;
+  playbookRules?: string;
+  personaRole?: string | null;
+  personaTone?: string | null;
+  memberNote?: string | null;
 };
 
 const DEFAULT_GEMINI_MODELS = [
@@ -39,14 +43,32 @@ function geminiApiKey() {
   ).trim();
 }
 
-function systemRules() {
-  return [
+function systemRules(extras?: {
+  playbookRules?: string;
+  personaRole?: string | null;
+  personaTone?: string | null;
+  memberNote?: string | null;
+}) {
+  const parts = [
     "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee.",
     "You are not a shallow chatbot: reason carefully, use FAQs + recent chat context, and give useful actionable answers.",
     "Tone: clear, confident, concise (2–6 short sentences unless asked for detail). Never invent policies or facts.",
     "Never claim to be human. Prefer FAQs and group context over speculation.",
     `If uncertain: ${UNCERTAIN_REPLY}`,
-  ].join(" ");
+  ];
+  if (extras?.personaRole && extras.personaRole !== "default") {
+    parts.push(
+      `Persona role for this group: ${extras.personaRole}.` +
+        (extras.personaTone ? ` Tone guidance: ${extras.personaTone}.` : ""),
+    );
+  }
+  if (extras?.playbookRules) {
+    parts.push(`Employer playbook rules (must follow):\n${extras.playbookRules}`);
+  }
+  if (extras?.memberNote) {
+    parts.push(`Consented member memory note: ${extras.memberNote}`);
+  }
+  return parts.join(" ");
 }
 
 function employerSystemRules() {
@@ -270,8 +292,15 @@ export class AiService {
       return { text: faqHit.answer, viaFaq: true as const };
     }
 
+    const rules = systemRules({
+      playbookRules: input.playbookRules,
+      personaRole: input.personaRole,
+      personaTone: input.personaTone,
+      memberNote: input.memberNote,
+    });
+
     const text = await callLLM([
-      { role: "system", content: systemRules() },
+      { role: "system", content: rules },
       {
         role: "user",
         content: `${formatContext(input.context)}\n\nUser (${input.userName ?? "member"}) asked:\n${input.userQuestion}\n\nReply in 2-5 short sentences.`,

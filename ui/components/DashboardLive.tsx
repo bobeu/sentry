@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import Link from "next/link";
+import { AgentCapacityPanel } from "@/components/AgentCapacityPanel";
+import { useToast } from "@/components/Toast";
 
 type ActionRow = {
   id: string;
@@ -58,6 +60,22 @@ function actionLabel(type: string) {
       return "Sent notification";
     case "welcome":
       return "Welcomed member";
+    case "shift_handover":
+      return "Shift handover";
+    case "escalation":
+      return "Escalation";
+    case "intent_signal":
+      return "Intent signal";
+    case "incident_mode":
+      return "Incident mode";
+    case "proof_report":
+      return "Proof of work";
+    case "playbook_learn":
+      return "Playbook learn";
+    case "member_memory":
+      return "Member memory";
+    case "agent_task":
+      return "Agent API task";
     default:
       return type;
   }
@@ -70,6 +88,7 @@ function formatDuration(ms: number) {
 }
 
 export function DashboardLive() {
+  const toast = useToast();
   const [data, setData] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,14 +102,19 @@ export function DashboardLive() {
         if (cancelled) return;
         setLoading(false);
         if (!res.ok) {
-          setError(json.error ?? "Unable to load dashboard");
+          const msg = json.error ?? "Unable to load dashboard";
+          setError(msg);
+          if (res.status !== 401) toast.push(msg);
           return;
         }
+        setError(null);
         setData(json);
       } catch {
         if (cancelled) return;
         setLoading(false);
-        setError("Dashboard data is temporarily unavailable. Please try again shortly.");
+        const msg = "Dashboard data is temporarily unavailable. Please try again shortly.";
+        setError(msg);
+        toast.push(msg);
       }
     }
     void load();
@@ -102,17 +126,17 @@ export function DashboardLive() {
       clearInterval(id);
       window.removeEventListener("sentry:wallet-updated", onWallet);
     };
-  }, []);
+  }, [toast]);
 
   if (loading) {
     return <p className="mt-10 text-[#9aa89a]">Loading dashboard…</p>;
   }
 
-  if (error) {
+  if (error && !data) {
     return (
-      <div className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-6">
+      <div className="mt-10 surface-card p-6">
         <p className="text-[#e8f5d8]">{error}</p>
-        <Link href="/login" className="mt-4 inline-block text-[#35d07f]">
+        <Link href="/login" className="mt-4 inline-block text-[var(--accent)]">
           Sign in to continue
         </Link>
       </div>
@@ -128,7 +152,7 @@ export function DashboardLive() {
   const next = data.nextSettlement;
 
   return (
-    <div className="mt-10 space-y-8">
+    <div className="mt-10 space-y-10">
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Card
           title="Employment Status"
@@ -189,6 +213,8 @@ export function DashboardLive() {
           description="Total completed work"
         />
       </div>
+
+      <AgentCapacityPanel />
 
       <section>
         <h2 className="text-lg text-[#e8f5d8]">Recent Activity</h2>

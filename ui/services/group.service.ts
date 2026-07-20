@@ -274,6 +274,16 @@ export class GroupService {
       summaryToGroup?: boolean;
       summaryToAdmins?: boolean;
       summaryToPrivate?: boolean;
+      shiftHandover?: boolean;
+      escalationLadder?: boolean;
+      livingPlaybook?: boolean;
+      intentSensing?: boolean;
+      proofOfWork?: boolean;
+      incidentMode?: boolean;
+      memberMemoryEnabled?: boolean;
+      hireInTelegram?: boolean;
+      personaRole?: string;
+      personaTone?: string | null;
       rules?: string | null;
       description?: string | null;
       purpose?: string | null;
@@ -316,6 +326,16 @@ export class GroupService {
         summaryToGroup: data.summaryToGroup ?? true,
         summaryToAdmins: data.summaryToAdmins ?? true,
         summaryToPrivate: data.summaryToPrivate ?? true,
+        shiftHandover: data.shiftHandover ?? true,
+        escalationLadder: data.escalationLadder ?? true,
+        livingPlaybook: data.livingPlaybook ?? true,
+        intentSensing: data.intentSensing ?? true,
+        proofOfWork: data.proofOfWork ?? true,
+        incidentMode: data.incidentMode ?? true,
+        memberMemoryEnabled: data.memberMemoryEnabled ?? false,
+        hireInTelegram: data.hireInTelegram ?? true,
+        personaRole: data.personaRole ?? "default",
+        personaTone: data.personaTone ?? null,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
@@ -327,6 +347,16 @@ export class GroupService {
         summaryToGroup: data.summaryToGroup,
         summaryToAdmins: data.summaryToAdmins,
         summaryToPrivate: data.summaryToPrivate,
+        shiftHandover: data.shiftHandover,
+        escalationLadder: data.escalationLadder,
+        livingPlaybook: data.livingPlaybook,
+        intentSensing: data.intentSensing,
+        proofOfWork: data.proofOfWork,
+        incidentMode: data.incidentMode,
+        memberMemoryEnabled: data.memberMemoryEnabled,
+        hireInTelegram: data.hireInTelegram,
+        personaRole: data.personaRole,
+        personaTone: data.personaTone,
       },
     });
 
