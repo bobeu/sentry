@@ -160,6 +160,23 @@ export class GroupService {
           include: {
             settings: true,
             faqs: { orderBy: { createdAt: "asc" } },
+            knowledgeSources: {
+              orderBy: { createdAt: "desc" },
+              select: {
+                id: true,
+                type: true,
+                title: true,
+                url: true,
+                fileName: true,
+                mimeType: true,
+                byteSize: true,
+                status: true,
+                error: true,
+                createdAt: true,
+                updatedAt: true,
+                _count: { select: { chunks: true } },
+              },
+            },
             messages: { orderBy: { createdAt: "desc" }, take: 50 },
           },
         },
@@ -185,6 +202,7 @@ export class GroupService {
       enabled: link.enabled && (link.group.settings?.enabled ?? false),
       settings: link.group.settings,
       faqs: link.group.faqs,
+      knowledgeSources: link.group.knowledgeSources,
       recentMessages: [...link.group.messages].reverse(),
       ...stats,
     };

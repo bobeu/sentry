@@ -5,6 +5,17 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 type Faq = { id: string; question: string; answer: string };
+type KnowledgeSource = {
+  id: string;
+  type: "url" | "file";
+  title: string | null;
+  url: string | null;
+  fileName: string | null;
+  byteSize: number;
+  status: string;
+  error: string | null;
+  _count?: { chunks: number };
+};
 type Message = { id: string; fromUsername: string | null; text: string; createdAt: string };
 
 export function GroupDetailPanel() {
@@ -43,9 +54,14 @@ export function GroupDetailPanel() {
   const [rules, setRules] = useState("");
   const [purpose, setPurpose] = useState("");
   const [faqs, setFaqs] = useState<Faq[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [kbUrl, setKbUrl] = useState("");
+  const [kbTitle, setKbTitle] = useState("");
+  const [kbFile, setKbFile] = useState<File | null>(null);
+  const [kbBusy, setKbBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -89,6 +105,7 @@ export function GroupDetailPanel() {
     setRules(g.rules ?? "");
     setPurpose(g.purpose ?? "");
     setFaqs(g.faqs ?? []);
+    setKnowledgeSources(g.knowledgeSources ?? []);
     setMessages(g.recentMessages ?? []);
     setError(null);
   }, [groupId]);
@@ -135,6 +152,98 @@ export function GroupDetailPanel() {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupId, faqId }),
+    });
+    await refresh();
+  }
+
+  async function addKnowledgeUrl(event: FormEvent) {
+    event.preventDefault();
+    setKbBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/groups/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groupId,
+          url: kbUrl,
+          title: kbTitle || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Failed to add knowledge URL");
+        return;
+      }
+      setKbUrl("");
+      setKbTitle("");
+      setMessage("Knowledge URL ingested");
+      await refresh();
+    } finally {
+      setKbBusy(false);
+    }
+  }
+
+  async function addKnowledgeFile(event: FormEvent) {
+    event.preventDefault();
+    if (!kbFile) {
+      setError("Choose a file first");
+      return;
+    }
+    if (kbFile.size > 512 * 1024) {
+      setError("File must be 512KB or smaller");
+      return;
+    }
+    setKbBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("groupId", groupId);
+      form.set("file", kbFile);
+      if (kbTitle) form.set("title", kbTitle);
+      const res = await fetch("/api/groups/knowledge", {
+        method: "POST",
+        body: form,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Failed to upload knowledge file");
+        return;
+      }
+      setKbFile(null);
+      setKbTitle("");
+      setMessage("Knowledge file ingested");
+      await refresh();
+    } finally {
+      setKbBusy(false);
+    }
+  }
+
+  async function refreshKnowledge(sourceId: string) {
+    setKbBusy(true);
+    try {
+      const res = await fetch("/api/groups/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupId, sourceId, action: "refresh" }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Refresh failed");
+        return;
+      }
+      setMessage("Knowledge source refreshed");
+      await refresh();
+    } finally {
+      setKbBusy(false);
+    }
+  }
+
+  async function removeKnowledge(sourceId: string) {
+    await fetch("/api/groups/knowledge", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId, sourceId }),
     });
     await refresh();
   }
@@ -326,6 +435,95 @@ export function GroupDetailPanel() {
           />
           <button type="submit" className="rounded-full border border-white/20 px-5 py-2.5 text-sm">
             Add FAQ
+          </button>
+        </form>
+      </section>
+
+      <section className="max-w-xl space-y-4">
+        <h2 className="text-lg text-[#e8f5d8]">Knowledge base</h2>
+        <p className="text-sm text-[#9aa89a]">
+          Give Sentry a docs/blog/FAQ URL or upload a text file (.txt, .md, .csv, .json, .html —
+          max 512KB). The agent searches this on every group answer.
+        </p>
+        <ul className="space-y-3">
+          {knowledgeSources.map((src) => (
+            <li key={src.id} className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm">
+              <p className="font-medium text-[#e8f5d8]">
+                {src.title || src.fileName || src.url || "Source"}
+              </p>
+              <p className="mt-1 text-xs text-[#9aa89a]">
+                {src.type} · {src.status}
+                {src._count?.chunks != null ? ` · ${src._count.chunks} chunks` : ""}
+                {src.byteSize ? ` · ${Math.round(src.byteSize / 1024)}KB` : ""}
+              </p>
+              {src.url ? (
+                <a
+                  href={src.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 block truncate text-xs text-[#35d07f]"
+                >
+                  {src.url}
+                </a>
+              ) : null}
+              {src.error ? <p className="mt-1 text-xs text-red-300">{src.error}</p> : null}
+              <div className="mt-2 flex gap-3">
+                {src.type === "url" ? (
+                  <button
+                    type="button"
+                    disabled={kbBusy}
+                    onClick={() => refreshKnowledge(src.id)}
+                    className="text-xs text-[#35d07f] disabled:opacity-50"
+                  >
+                    Refresh
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => removeKnowledge(src.id)}
+                  className="text-xs text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <form onSubmit={addKnowledgeUrl} className="space-y-3">
+          <input
+            value={kbTitle}
+            onChange={(e) => setKbTitle(e.target.value)}
+            placeholder="Optional title"
+            className="w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+          <input
+            value={kbUrl}
+            onChange={(e) => setKbUrl(e.target.value)}
+            placeholder="https://docs.example.com/faq"
+            required
+            className="w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+          />
+          <button
+            type="submit"
+            disabled={kbBusy}
+            className="rounded-full border border-white/20 px-5 py-2.5 text-sm disabled:opacity-50"
+          >
+            {kbBusy ? "Ingesting…" : "Add URL"}
+          </button>
+        </form>
+        <form onSubmit={addKnowledgeFile} className="space-y-3">
+          <input
+            type="file"
+            accept=".txt,.md,.markdown,.csv,.json,.html,.htm,text/plain,text/markdown,text/html,application/json"
+            onChange={(e) => setKbFile(e.target.files?.[0] ?? null)}
+            className="w-full text-sm text-[#9aa89a]"
+          />
+          <button
+            type="submit"
+            disabled={kbBusy || !kbFile}
+            className="rounded-full border border-white/20 px-5 py-2.5 text-sm disabled:opacity-50"
+          >
+            Upload file
           </button>
         </form>
       </section>

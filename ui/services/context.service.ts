@@ -4,6 +4,7 @@ const MAX_CONTEXT = 100;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type ContextBundle = {
+  groupId: string;
   groupName: string;
   purpose: string | null;
   description: string | null;
@@ -14,6 +15,12 @@ export type ContextBundle = {
     at: Date;
   }>;
   faqs: Array<{ question: string; answer: string }>;
+  knowledgeSources: Array<{
+    id: string;
+    title: string;
+    url: string | null;
+    status: string;
+  }>;
   config: {
     enabled: boolean;
     welcomeMembers: boolean;
@@ -90,6 +97,18 @@ export class ContextService {
       include: {
         settings: true,
         faqs: { orderBy: { createdAt: "asc" }, take: 20 },
+        knowledgeSources: {
+          where: { status: { in: ["ready", "pending", "failed"] } },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            title: true,
+            url: true,
+            fileName: true,
+            status: true,
+          },
+        },
         messages: {
           where: { createdAt: { gte: cutoff } },
           orderBy: { createdAt: "desc" },
@@ -105,6 +124,7 @@ export class ContextService {
     const recent = [...group.messages].reverse();
 
     return {
+      groupId: group.id,
       groupName: group.name ?? `Group ${group.telegramId}`,
       purpose: group.purpose,
       description: group.description,
@@ -115,6 +135,12 @@ export class ContextService {
         at: m.createdAt,
       })),
       faqs: group.faqs.map((f) => ({ question: f.question, answer: f.answer })),
+      knowledgeSources: group.knowledgeSources.map((s) => ({
+        id: s.id,
+        title: s.title || s.fileName || s.url || "Knowledge",
+        url: s.url,
+        status: s.status,
+      })),
       config: {
         enabled: group.settings?.enabled ?? false,
         welcomeMembers: group.settings?.welcomeMembers ?? true,
