@@ -182,7 +182,7 @@ export function WalletPanel() {
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function refresh() {

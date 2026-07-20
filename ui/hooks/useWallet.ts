@@ -28,16 +28,17 @@ export function useWallet() {
     if (!(window as unknown as { ethereum?: unknown }).ethereum) return;
     if (!miniPayDetected) return;
 
-    const miniPayConnector = injected({ target: "metaMask" });
-    connectAsync({ connector: miniPayConnector }).catch((err: unknown) => {
-      console.error("Auto-connect MiniPay failed:", err);
-    });
+    connectAsync({ connector: injected({ target: "metaMask" }) }).catch(
+      (err: unknown) => {
+        console.error("Auto-connect MiniPay failed:", err);
+      },
+    );
   }, [isReady, isConnected, isConnecting, connectAsync, miniPayDetected]);
 
   const connectWallet = async (connectorId?: string) => {
     const targetConnector = connectorId
       ? connectors.find((c) => c.id === connectorId)
-      : connectors.find((c) => c.id === "injected") || connectors[0];
+      : connectors[0];
     if (!targetConnector) {
       throw new Error("No wallet connector available");
     }

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Newsreader } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
 import { Providers } from "@/app/providers";
-import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
 
 const display = Newsreader({
