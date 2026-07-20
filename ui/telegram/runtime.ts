@@ -44,6 +44,42 @@ export function mentionedBot(text: string, username: string) {
   return /(^|\s)sentry([,:\s]|$)/i.test(text);
 }
 
+/** Also detect Telegram mention entities (incl. text_mention without @username in text). */
+export function messageAddressesBot(
+  message: {
+    text?: string;
+    entities?: Array<{
+      type: string;
+      offset: number;
+      length: number;
+      user?: { id: number };
+    }>;
+    reply_to_message?: { from?: { id?: number } };
+  },
+  opts: { botId: number; username: string },
+) {
+  const text = message.text ?? "";
+  if (mentionedBot(text, opts.username)) return true;
+  if (message.reply_to_message?.from?.id === opts.botId) return true;
+
+  for (const entity of message.entities ?? []) {
+    if (entity.type === "mention") {
+      const slice = text.slice(entity.offset, entity.offset + entity.length).toLowerCase();
+      if (
+        slice === `@${opts.username}` ||
+        slice === "@tgemployee_bot" ||
+        slice === "@sentry"
+      ) {
+        return true;
+      }
+    }
+    if (entity.type === "text_mention" && entity.user?.id === opts.botId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function looksLikeQuestion(text: string) {
   const t = text.trim();
   if (!t) return false;
@@ -74,17 +110,27 @@ export function capabilitiesSummary(username: string) {
     "I'm Sentry — your AI community employee on Telegram.",
     "",
     "I can:",
+    "• Read group chats and answer with agentic reasoning (when I'm a group admin, or privacy mode is off)",
     "• Answer FAQs and community questions",
     "• Reply when mentioned or replied to",
-    "• Welcome new members",
-    "• Moderate spam (when enabled)",
+    "• Welcome new members + moderate spam (when enabled)",
     "• Notify you of @mentions (when linked)",
-    "• Summarize chats for employers",
-    "• Help with wallet/deposit commands in DM",
+    "• Employer DMs: reports, group status, past work, drafting help",
+    "• Wallet/deposit commands in DM",
     "",
     `Try: ${tag} what is this group about?`,
+    "Employer DM: \"group status\", \"past work\", \"full report\"",
     "Commands: /help /mywallet /balance /deposit /status",
   ].join("\n");
+}
+
+export function groupVisibilityHint(username: string) {
+  const tag = username ? `@${username}` : "@sentry";
+  return [
+    "To let me see and help with all group chats (not only mentions), make me a group admin",
+    "(or disable privacy mode for this bot in BotFather → /setprivacy → Disable).",
+    `Until then I still answer when you ${tag} mention me or reply to me.`,
+  ].join(" ");
 }
 
 /**

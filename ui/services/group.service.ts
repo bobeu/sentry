@@ -334,17 +334,20 @@ export class GroupService {
   }
 
   async findActiveGroupByTelegramId(telegramId: string) {
-    const normalized = normalizeTelegramChatId(telegramId);
-    return prisma.telegramGroup.findUnique({
-      where: { telegramId: normalized },
-      include: {
-        settings: true,
-        employment: {
-          where: { enabled: true },
-          include: { user: { include: { employment: true, wallet: true } } },
+    for (const candidate of telegramChatIdCandidates(telegramId)) {
+      const group = await prisma.telegramGroup.findUnique({
+        where: { telegramId: candidate },
+        include: {
+          settings: true,
+          employment: {
+            where: { enabled: true },
+            include: { user: { include: { employment: true, wallet: true } } },
+          },
         },
-      },
-    });
+      });
+      if (group) return group;
+    }
+    return null;
   }
 }
 
