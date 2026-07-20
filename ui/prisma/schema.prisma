@@ -29,6 +29,19 @@ enum ActionType {
   member_memory
   agent_task
   proof_report
+  admin_moderation
+  rose_relay
+  announcement
+  birthday
+  secretary_reply
+  secretary_escalation
+}
+
+enum AnnouncementStatus {
+  scheduled
+  posted
+  cancelled
+  failed
 }
 
 enum ActionStatus {
@@ -79,9 +92,11 @@ model User {
   actions         ActionRecord[]
   settlements     Settlement[]
   withdrawals     Withdrawal[]
-  playbookRules   PlaybookRule[]
-  escalations     Escalation[]
-  agentApiKeys    AgentApiKey[]
+  playbookRules        PlaybookRule[]
+  escalations          Escalation[]
+  agentApiKeys         AgentApiKey[]
+  businessConnections  BusinessConnectionRecord[]
+  announcements        GroupAnnouncement[]
 }
 
 model Session {
@@ -123,6 +138,8 @@ model TelegramGroup {
   rules            String?
   botStatus        String    @default("unknown")
   botCanDelete     Boolean?
+  botCanRestrict   Boolean?
+  botCanBan        Boolean?
   lastBotEventAt   DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -140,6 +157,8 @@ model TelegramGroup {
   escalations  Escalation[]
   memberMemories MemberMemory[]
   incidents    IncidentEvent[]
+  announcements GroupAnnouncement[]
+  birthdays    MemberBirthday[]
 }
 
 model GroupSettings {
@@ -168,6 +187,13 @@ model GroupSettings {
   /// Persona / org-chart (applied only when role != default)
   personaRole           String        @default("default")
   personaTone           String?
+  /// Native ban/mute + optional Rose relay
+  adminModeration       Boolean       @default(true)
+  roseRelayEnabled      Boolean       @default(false)
+  roseBotUsername       String        @default("MissRose_bot")
+  announcementsEnabled  Boolean       @default(true)
+  birthdaysEnabled      Boolean       @default(true)
+  birthdayHourUtc       Int           @default(9)
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 }
@@ -502,4 +528,57 @@ model AgentApiKey {
   createdAt  DateTime  @default(now())
 
   @@index([userId, revokedAt])
+}
+
+/// Telegram Secretary / Business connection (user linked Sentry to their account).
+model BusinessConnectionRecord {
+  id             String   @id @default(cuid())
+  connectionId   String   @unique
+  userTelegramId String
+  userChatId     String
+  canReply       Boolean  @default(false)
+  isEnabled      Boolean  @default(true)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rightsJson     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userTelegramId])
+  @@index([userId, isEnabled])
+}
+
+model GroupAnnouncement {
+  id          String             @id @default(cuid())
+  groupId     String
+  group       TelegramGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  text        String
+  status      AnnouncementStatus @default(scheduled)
+  scheduledAt DateTime?
+  postedAt    DateTime?
+  error       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([groupId, status, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+model MemberBirthday {
+  id             String        @id @default(cuid())
+  groupId        String
+  group          TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramUserId String
+  month          Int
+  day            Int
+  displayName    String?
+  consentAt      DateTime      @default(now())
+  lastCelebratedYear Int?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([groupId, telegramUserId])
+  @@index([month, day])
 }

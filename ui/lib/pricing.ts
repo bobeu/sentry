@@ -18,6 +18,12 @@ export const PRICING_AMOUNTS: Record<ActionType, number> = {
   member_memory: 0.005,
   agent_task: 0.03,
   proof_report: 0.03,
+  admin_moderation: 0.02,
+  rose_relay: 0.01,
+  announcement: 0.02,
+  birthday: 0.01,
+  secretary_reply: 0.015,
+  secretary_escalation: 0.02,
 };
 
 export const PRICING_LABELS: Record<ActionType, string> = {
@@ -35,6 +41,12 @@ export const PRICING_LABELS: Record<ActionType, string> = {
   member_memory: "Member Memory",
   agent_task: "Agent Task API",
   proof_report: "Proof of Work",
+  admin_moderation: "Admin Moderation",
+  rose_relay: "Rose Command Relay",
+  announcement: "Announcement",
+  birthday: "Birthday Celebration",
+  secretary_reply: "Secretary Reply",
+  secretary_escalation: "Secretary Escalation",
 };
 
 export function getPricing(currency: PaymentCurrency = "USDm") {
