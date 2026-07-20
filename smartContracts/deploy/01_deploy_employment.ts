@@ -46,7 +46,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   // } catch (error) {
   //   log(`Error executing EmploymentManager: ${error}`);
   // }
+  try {
+    log("Setting new operator for EmploymentManager");
+    const newOperator = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
+    await execute("EmploymentManager", {from: dd09},  'setOperator', newOperator);
+    log(`Operator set to ${newOperator}`);
+  } catch (error) {
+    log(`Error executing EmploymentManager: ${error}`);
+  }
 };
 
 export default func;
-func.tags = ["Sentry"];
+func.tags = ["EmploymentManager", "SentryWalletFactory"];
