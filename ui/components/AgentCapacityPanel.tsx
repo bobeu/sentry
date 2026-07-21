@@ -56,14 +56,16 @@ export function AgentCapacityPanel() {
   if (!data) return null;
 
   return (
-    <section className="space-y-5">
-      <div>
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[#f1faea]">
-          Agent capacity
-        </h2>
-        <p className="mt-1 text-sm text-[#9aa89a]">
-          Shift handovers, escalations, incidents, and proof-of-work.
-        </p>
+    <section className="space-y-6 animate-rise-delay-1">
+      <div className="flex items-end justify-between border-b border-primary/15 pb-4">
+        <div>
+          <h2 className="text-2xl font-black text-text-dark">
+            Agent Capacity & Throughput
+          </h2>
+          <p className="mt-1 text-sm text-muted font-medium">
+            Shift handovers, escalations, incident controls, and proof-of-work telemetry.
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -75,30 +77,49 @@ export function AgentCapacityPanel() {
         <Card
           title="Pending escalations"
           value={data.escalations.length}
-          description="Approve in Telegram DM"
+          description="Awaiting approval in Telegram DM"
         />
         <Card
           title="Open incidents"
           value={data.incidents.length}
-          description="Crisis mode triggers"
+          description="Crisis triggers active"
         />
         <Card
           title="Recent handovers"
           value={data.handovers.length}
-          description="Shift briefs this week"
+          description="Shift briefs sent this week"
         />
       </div>
 
       {data.escalations.length > 0 ? (
-        <div className="surface-card p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#9aa89a]">Needs approval</p>
-          <ul className="mt-3 space-y-2 text-sm">
+        <div className="surface-card p-6 border-l-4 border-l-warning">
+          <div className="flex items-center gap-2 mb-4 border-b border-primary/5 pb-2">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="status-pulse absolute inline-flex h-full w-full rounded-full bg-warning opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning"></span>
+            </span>
+            <p className="text-xs font-bold uppercase tracking-wider text-warning">
+              Pending Approvals (Action Required)
+            </p>
+          </div>
+          <ul className="space-y-3.5">
             {data.escalations.slice(0, 5).map((e) => (
-              <li key={e.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                <p className="text-[#e8f5d8]">
-                  {e.group.name ?? e.group.telegramId} — {e.reason ?? "review"}
+              <li key={e.id} className="rounded-xl border border-primary/10 bg-bg-light/40 p-4">
+                <div className="flex items-center justify-between gap-4 border-b border-primary/5 pb-2 mb-2">
+                  <span className="font-bold text-text-dark text-sm">
+                    💬 {e.group.name ?? "Telegram Chat"}
+                  </span>
+                  <span className="text-[10px] bg-warning/15 text-warning px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide border border-warning/10">
+                    {e.reason ?? "escalation"}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted mb-2 font-bold uppercase tracking-wider">Proposed Response Draft:</p>
+                <div className="telegram-bubble-out text-white p-3.5 text-xs font-medium italic">
+                  &ldquo;{e.draftText}&rdquo;
+                </div>
+                <p className="mt-3.5 text-[10px] text-muted font-semibold">
+                  Use Sentry Telegram DM to tap <strong className="text-text-dark font-extrabold">Approve</strong> or type <strong className="text-text-dark font-extrabold">edit: [your text]</strong>.
                 </p>
-                <p className="mt-1 line-clamp-2 text-[#9aa89a]">{e.draftText}</p>
               </li>
             ))}
           </ul>
@@ -106,9 +127,14 @@ export function AgentCapacityPanel() {
       ) : null}
 
       {data.proof.content ? (
-        <pre className="surface-card overflow-x-auto whitespace-pre-wrap p-5 text-xs text-[#b7c4b5]">
-          {data.proof.content}
-        </pre>
+        <div className="space-y-2">
+          <p className="text-xs uppercase font-extrabold tracking-widest text-muted">
+            Raw Weekly Proof of Work
+          </p>
+          <pre className="surface-card overflow-x-auto whitespace-pre-wrap p-5 text-xs text-primary font-mono bg-white max-h-60 border border-primary/10 rounded-xl leading-relaxed">
+            {data.proof.content}
+          </pre>
+        </div>
       ) : null}
     </section>
   );

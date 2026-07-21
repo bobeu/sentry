@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_NAME } from "@/lib/constants";
@@ -23,7 +24,7 @@ const secondary = [
 function NavIcon({ d }: { d: string }) {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" aria-hidden>
-      <path d={d} stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -51,22 +52,41 @@ export function SiteNav() {
   }, [open]);
 
   const linkClass = (href: string) =>
-    `inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+    `inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${
       pathname === href || pathname.startsWith(`${href}/`)
-        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-        : "text-[#b9c9b5] hover:text-[#8cf1b7]"
+        ? "bg-primary text-white shadow-sm"
+        : "text-text-dark hover:text-primary hover:bg-primary/5"
     }`;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0b120c]/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3 sm:px-6">
-        <Link
-          href="/"
-          className="font-[family-name:var(--font-display)] text-2xl tracking-tight text-[#f1faea] transition hover:text-white"
-        >
-          {APP_NAME}
-        </Link>
+    <header className="sticky top-0 z-40 px-4 py-4 w-full bg-transparent">
+      <div className="mx-auto max-w-6xl rounded-full bg-white px-6 py-3.5 shadow-md flex items-center justify-between gap-4 border border-primary/10 relative">
+        
+        {/* Brand Logo & Partnership Handshake */}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight text-text-dark hover:opacity-90 transition"
+          >
+            <Image
+              src="/logo.png"
+              alt="Sentry Logo"
+              width={38}
+              height={38}
+              className="rounded-lg bg-primary/10 p-0.5 border border-primary/20"
+            />
+            <span className="font-sans font-extrabold tracking-tight lowercase">sentry</span>
+          </Link>
+          
+          {/* Celo + Telegram Handshake badge */}
+          <div className="flex items-center gap-1.5 bg-primary/8 rounded-full px-3 py-1 border border-primary/15 shadow-inner">
+            <Image src="/celo_logo_png.png" alt="Celo Network" width={16} height={16} className="rounded-full shrink-0" />
+            <span className="text-[10px] select-none text-text-dark/40">🤝</span>
+            <Image src="/Telegram.png" alt="Telegram App" width={16} height={16} className="rounded-full shrink-0" />
+          </div>
+        </div>
 
+        {/* Desktop Navigation */}
         <nav className="hidden items-center gap-1 lg:flex">
           {primary.map((link) => (
             <Link key={link.href} href={link.href} className={linkClass(link.href)}>
@@ -74,7 +94,7 @@ export function SiteNav() {
               {link.label}
             </Link>
           ))}
-          <span className="mx-2 h-4 w-px bg-white/15" />
+          <span className="mx-2 h-4 w-px bg-primary/20" />
           {secondary.map((link) => (
             <Link key={link.href} href={link.href} className={linkClass(link.href)}>
               {link.label}
@@ -85,39 +105,37 @@ export function SiteNav() {
           </div>
         </nav>
 
+        {/* Mobile Navigation controls */}
         <div className="flex items-center gap-2 lg:hidden">
           <WalletConnectButton />
           <button
             type="button"
-            className="rounded-full border border-white/15 bg-white/5 p-2 text-[#e8f5d8]"
-            aria-label={open ? "Close menu" : "Open menu"}
+            className="rounded-full bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-primary/90 transition shadow cursor-pointer"
+            aria-label={open ? "Close menu" : "Menu"}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
-              {open ? (
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              ) : (
-                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              )}
-            </svg>
+            Menu
           </button>
         </div>
       </div>
 
+      {/* Mobile Drawer */}
       <div
-        className={`nav-drawer lg:hidden ${open ? "nav-drawer-open" : ""}`}
+        className={`nav-drawer rounded-2xl mt-2 mx-auto max-w-6xl shadow-xl overflow-hidden transition-all duration-300 lg:hidden ${
+          open ? "max-h-[30rem] border border-white/10 py-4 px-5" : "max-h-0 pointer-events-none"
+        }`}
         aria-hidden={!open}
       >
-        <div className="space-y-1 px-5 pb-6 pt-2">
+        <div className="space-y-1.5">
           {[...primary, ...secondary].map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-base ${
+              className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition ${
                 pathname === link.href
-                  ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                  : "text-[#d7e6d1]"
+                  ? "bg-primary text-white"
+                  : "text-text-dark hover:bg-primary/5 hover:text-primary"
               }`}
             >
               {icons[link.href] ? <NavIcon d={icons[link.href]} /> : null}

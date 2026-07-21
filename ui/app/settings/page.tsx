@@ -108,139 +108,168 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-14">
-      <Link href="/dashboard" className="text-sm text-[#9aa89a] hover:text-white">
-        ← Dashboard
-      </Link>
-      <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl text-[#e8f5d8]">
-        Settings
-      </h1>
-      <p className="mt-3 max-w-xl text-[#9aa89a]">
-        Preferences, Telegram identity, and agent-to-agent API keys.
-      </p>
+    <main className="mx-auto max-w-6xl px-6 py-14 space-y-8 animate-rise">
+      <div className="border-b border-primary/15 pb-5">
+        <Link href="/dashboard" className="text-xs font-bold text-muted hover:text-primary uppercase tracking-wider transition">
+          ← Back to Dashboard
+        </Link>
+        <h1 className="mt-3 text-3xl font-black text-text-dark">
+          Settings
+        </h1>
+        <p className="mt-1.5 text-xs text-muted font-semibold">
+          Preferences, Telegram identity, and agent-to-agent API credentials.
+        </p>
+      </div>
 
-      <form onSubmit={onSubmit} className="mt-10 max-w-lg space-y-8">
-        <section className="space-y-4">
-          <h2 className="text-lg text-[#e8f5d8]">General</h2>
-          <label className="block text-sm text-[#9aa89a]">
+      <form onSubmit={onSubmit} className="max-w-xl space-y-6">
+        {/* General Settings */}
+        <div className="surface-card p-6 space-y-4 border border-primary/10 shadow-sm">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-text-dark border-b border-primary/10 pb-2">
+            General Configuration
+          </h2>
+          <label className="block text-xs text-muted font-semibold">
             Display Name
             <input
               value={settings.displayName}
               onChange={(e) => setSettings((s) => ({ ...s, displayName: e.target.value }))}
-              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+              className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition text-sm"
             />
           </label>
-          <label className="block text-sm text-[#9aa89a]">
+          <label className="block text-xs text-muted font-semibold">
             Time Zone
             <input
               value={settings.timeZone}
               onChange={(e) => setSettings((s) => ({ ...s, timeZone: e.target.value }))}
-              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
+              className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition font-mono text-sm"
               placeholder="UTC"
             />
           </label>
-        </section>
+        </div>
 
-        <section className="space-y-4">
-          <h2 className="text-lg text-[#e8f5d8]">Employment</h2>
-          <label className="flex items-center gap-3 text-sm text-[#c7d6c4]">
+        {/* Identity & Notifications */}
+        <div className="surface-card p-6 space-y-4 border border-primary/10 shadow-sm">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-text-dark border-b border-primary/10 pb-2">
+            Identity & Alerts
+          </h2>
+          <label className="flex items-center gap-3 text-sm text-text-dark font-bold cursor-pointer">
             <input
               type="checkbox"
               checked={settings.autoResume}
               onChange={(e) => setSettings((s) => ({ ...s, autoResume: e.target.checked }))}
+              className="rounded border-primary/20 text-primary focus:ring-0 focus:ring-offset-0 h-4 w-4 accent-primary cursor-pointer"
             />
-            Auto Resume
+            Auto Resume Employment
           </label>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-lg text-[#e8f5d8]">Notifications</h2>
-          <label className="flex items-center gap-3 text-sm text-[#c7d6c4]">
+          <label className="flex items-center gap-3 text-sm text-text-dark font-bold cursor-pointer">
             <input
               type="checkbox"
               checked={settings.emailNotifications}
               onChange={(e) =>
                 setSettings((s) => ({ ...s, emailNotifications: e.target.checked }))
               }
+              className="rounded border-primary/20 text-primary focus:ring-0 focus:ring-offset-0 h-4 w-4 accent-primary cursor-pointer"
             />
             Email Notifications
           </label>
-          <label className="block text-sm text-[#9aa89a]">
-            Telegram username (for mention alerts)
-            <input
-              value={settings.telegramUsername}
-              onChange={(e) => setSettings((s) => ({ ...s, telegramUsername: e.target.value }))}
-              placeholder="bobman7000"
-              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
-            />
-          </label>
-          <label className="block text-sm text-[#9aa89a]">
-            Telegram user ID (numeric, for private DMs)
-            <input
-              value={settings.telegramUserId}
-              onChange={(e) => setSettings((s) => ({ ...s, telegramUserId: e.target.value }))}
-              placeholder="123456789"
-              className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 outline-none focus:border-[#35d07f]"
-            />
-          </label>
-        </section>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-full bg-[#35d07f] px-6 py-3 text-sm font-semibold text-[#061008] disabled:opacity-60"
-        >
-          {loading ? "Saving…" : "Save settings"}
-        </button>
-        {message ? <p className="text-sm text-[#35d07f]">{message}</p> : null}
+          <div className="border-t border-primary/10 my-4 pt-4 space-y-4">
+            <label className="block text-xs text-muted font-semibold">
+              Telegram Username (for mention alerts)
+              <input
+                value={settings.telegramUsername}
+                onChange={(e) => setSettings((s) => ({ ...s, telegramUsername: e.target.value }))}
+                placeholder="bobman7000"
+                className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition text-sm"
+              />
+            </label>
+            <label className="block text-xs text-muted font-semibold">
+              Telegram User ID (numeric, for private DMs)
+              <input
+                value={settings.telegramUserId}
+                onChange={(e) => setSettings((s) => ({ ...s, telegramUserId: e.target.value }))}
+                placeholder="123456789"
+                className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition font-mono text-sm"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold text-white shadow hover:bg-primary/95 cursor-pointer disabled:opacity-60 transition"
+          >
+            {loading ? "Saving…" : "Save Settings"}
+          </button>
+        </div>
+
+        {message && (
+          <div className="rounded-lg border border-accent/25 bg-accent/10 px-4 py-3 text-xs text-slate-900 font-bold">
+            {message}
+          </div>
+        )}
       </form>
 
-      <section className="mt-14 max-w-lg space-y-4">
-        <h2 className="text-lg text-[#e8f5d8]">Agent task API</h2>
-        <p className="text-sm text-[#9aa89a]">
-          Create a bearer key for <code className="text-[#8cf1b7]">POST /api/agent/v1/tasks</code>.
-          Creating a key enables the API for your account.
+      {/* Task API credentials */}
+      <div className="surface-card p-6 space-y-4 max-w-xl border border-primary/10 shadow-sm">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-text-dark border-b border-primary/10 pb-2">
+          Agent Task API Credentials
+        </h2>
+        <p className="text-xs text-muted leading-relaxed font-medium">
+          Allows external backends to delegate tasks via <code className="text-primary font-bold font-mono bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">POST /api/agent/v1/tasks</code>. Each request accrues a small on-chain fee.
         </p>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap gap-2.5 pt-2">
           <input
             value={keyLabel}
             onChange={(e) => setKeyLabel(e.target.value)}
-            className="rounded-xl border border-white/15 bg-black/30 px-4 py-2 text-sm outline-none focus:border-[#35d07f]"
-            placeholder="label"
+            className="rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-medium transition flex-1 min-w-[180px]"
+            placeholder="Label (e.g. dev-backend)"
           />
           <button
             type="button"
             onClick={createKey}
-            className="rounded-full border border-white/20 px-4 py-2 text-sm"
+            className="rounded-full bg-primary px-5 py-2.5 text-xs font-bold text-white hover:bg-primary/95 cursor-pointer transition shadow-sm"
           >
-            Create key
+            Generate Key
           </button>
         </div>
-        {newKey ? (
-          <pre className="overflow-x-auto rounded-xl border border-[var(--accent)]/30 bg-black/40 p-3 text-xs text-[#8cf1b7]">
-            {newKey}
-          </pre>
-        ) : null}
-        <ul className="space-y-2 text-sm">
-          {keys.map((k) => (
-            <li
-              key={k.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-            >
-              <span>
-                {k.label} · {k.keyPrefix}…
-              </span>
-              <button
-                type="button"
-                className="text-xs text-red-300"
-                onClick={() => revokeKey(k.id)}
+
+        {newKey && (
+          <div className="p-3.5 bg-bg-light/60 border border-primary/15 rounded-lg">
+            <p className="text-[10px] text-muted mb-1 font-bold uppercase tracking-wider">Generated API Secret Token (Copy immediately):</p>
+            <pre className="overflow-x-auto text-xs text-primary font-mono py-1 leading-relaxed">
+              {newKey}
+            </pre>
+          </div>
+        )}
+
+        <ul className="space-y-2.5 pt-2 border-t border-primary/10">
+          {keys.length === 0 ? (
+            <li className="text-xs text-muted py-2 font-medium">No API keys registered.</li>
+          ) : (
+            keys.map((k) => (
+              <li
+                key={k.id}
+                className="flex items-center justify-between gap-4 rounded-xl border border-primary/10 bg-white px-3.5 py-2.5 text-xs text-text-dark shadow-sm"
               >
-                Revoke
-              </button>
-            </li>
-          ))}
+                <span className="font-mono font-bold">
+                  🔑 {k.label} &middot; <span className="text-muted font-medium">{k.keyPrefix}&hellip;</span>
+                </span>
+                <button
+                  type="button"
+                  className="text-[10px] font-bold text-alert hover:underline uppercase cursor-pointer"
+                  onClick={() => revokeKey(k.id)}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))
+          )}
         </ul>
-      </section>
+      </div>
     </main>
   );
 }
+
