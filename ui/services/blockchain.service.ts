@@ -5,6 +5,7 @@ import {
   http,
   isAddress,
   parseUnits,
+  zeroAddress,
   type Address,
   type Hash,
   type Hex,
@@ -541,7 +542,7 @@ export class BlockchainService {
         abi: walletAbi,
         functionName: "tokenAddress",
       });
-      return token === "0x0000000000000000000000000000000000000000"
+      return token === zeroAddress
         ? null
         : (token as Address);
     } catch {
@@ -564,7 +565,7 @@ export class BlockchainService {
       functionName: "walletOfIdentity",
       args: [input.identityHash],
     });
-    if (existing !== "0x0000000000000000000000000000000000000000") {
+    if (existing !== zeroAddress) {
       return existing as Address;
     }
 
@@ -598,7 +599,7 @@ export class BlockchainService {
       args: [userKey],
     });
     if (registered === walletAddress) return null;
-    if (registered !== "0x0000000000000000000000000000000000000000") {
+    if (registered !== zeroAddress) {
       throw new Error("User key is registered to a different Sentry wallet");
     }
 
@@ -641,6 +642,50 @@ export class BlockchainService {
     });
     await this.requireSuccess(hash);
     return hash;
+  }
+
+  /**
+   * Estimate operator gas cost for chargeSettlement in native CELO.
+   * Returns null when estimation is unavailable (caller should use configured fee).
+   */
+  async estimateChargeSettlementFeeCelo(input: {
+    userKey: Address;
+    currency: PaymentCurrency;
+    serviceAmount: number;
+    settlementFee: number;
+    settlementId: Hex;
+  }): Promise<number | null> {
+    const manager = this.managerAddress();
+    const operator = this.walletClient("operator", manager);
+    if (!manager || !operator || !this.isConfigured()) return null;
+    try {
+      const args = [
+        input.userKey,
+        input.settlementId,
+        parseUnits(input.serviceAmount.toString(), tokenDecimals(input.currency)),
+        parseUnits(input.settlementFee.toString(), tokenDecimals(input.currency)),
+      ] as const;
+      const gas = await this.client().estimateContractGas({
+        address: manager,
+        abi: CONTRACTS.EmploymentManager.abi,
+        functionName: "chargeSettlement",
+        args,
+        account: operator.account,
+      });
+      const fees = await this.client().estimateFeesPerGas().catch(() => null);
+      const gasPrice =
+        fees?.maxFeePerGas ??
+        fees?.gasPrice ??
+        (await this.client().getGasPrice());
+      const costWei = gas * gasPrice;
+      const celo = Number(formatUnits(costWei, 18));
+      if (!Number.isFinite(celo) || celo <= 0) return null;
+      // Small safety bump so the reserved fee covers fee market spikes.
+      return celo * 1.25;
+    } catch (err) {
+      console.warn("[blockchain] fee estimate failed", err);
+      return null;
+    }
   }
 
   async setWithdrawalDestination(userKey: Address, destination: Address) {
