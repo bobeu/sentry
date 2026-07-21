@@ -638,6 +638,7 @@ export class BlockchainService {
       ],
       account: operator.account,
       chain: celo,
+      // ERC-8021 DeFAI attribution — required on every operator settlement tx
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
     });
     await this.requireSuccess(hash);

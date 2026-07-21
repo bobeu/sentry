@@ -15,16 +15,51 @@ import {
   bufferedSettlementFee,
   type SettlementConfig,
 } from "@/lib/settlement-config";
+import { CELO_ATTRIBUTION_TAG } from "@/lib/attribution";
 
 function bal(value: { toString(): string } | null | undefined) {
   if (!value) return 0;
   return Number(value.toString());
 }
 
-const TX_OPTS = { maxWait: 20_000, timeout: 60_000 } as const;
-
-/** Serialize settlements per user so concurrent actions don't contend on DB txs. */
+/** Serialize settlements per user so concurrent actions don't contend. */
 const settlementInflight = new Map<string, Promise<unknown>>();
+
+/** Serialize operator chain writes (nonce + pool pressure). */
+let operatorChainTail: Promise<unknown> = Promise.resolve();
+
+function enqueueOperatorChain<T>(work: () => Promise<T>): Promise<T> {
+  const run = operatorChainTail.catch(() => undefined).then(work);
+  operatorChainTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function dbWrite<T>(
+  label: string,
+  work: () => Promise<T>,
+  attempts = 4,
+): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await work();
+    } catch (err) {
+      last = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const retryable =
+        /Unable to start a transaction|connection|timeout|ECONNRESET|40P01|57P01|too many/i.test(
+          msg,
+        );
+      console.warn(`[billing:db] ${label} attempt ${i + 1}/${attempts}`, msg);
+      if (!retryable || i === attempts - 1) break;
+      await new Promise((r) => setTimeout(r, 250 * Math.pow(2, i)));
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
 
 export type BalanceLedger = {
   onChainBalance: number;
@@ -100,10 +135,12 @@ export class BillingService {
       );
       if (isFiniteBalance(chainBal)) {
         balance = chainBal;
-        await prisma.wallet.update({
-          where: { id: wallet.id },
-          data: { balance: toWalletBalance(chainBal), balanceCachedAt: new Date() },
-        });
+        await dbWrite("wallet.balance", () =>
+          prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: toWalletBalance(chainBal), balanceCachedAt: new Date() },
+          }),
+        );
       }
     }
     return balance;
@@ -376,17 +413,30 @@ export class BillingService {
       throw Errors.walletNotFunded();
     }
 
-    const charge = await prisma.$transaction(async (tx) => {
-      const pending = await tx.chargeRecord.create({
-        data: {
-          actionRecordId: action.id,
-          amount,
-          currency,
-          status: "pending",
-        },
+    // Avoid interactive $transaction (pooler/serverless often hits
+    // "Unable to start a transaction in the given time").
+    let charge;
+    try {
+      charge = await dbWrite("charge.create", () =>
+        prisma.chargeRecord.create({
+          data: {
+            actionRecordId: action.id,
+            amount,
+            currency,
+            status: "pending",
+          },
+        }),
+      );
+    } catch (err) {
+      const existing = await prisma.chargeRecord.findUnique({
+        where: { actionRecordId: action.id },
       });
+      if (existing) return existing;
+      throw err;
+    }
 
-      await tx.employment.upsert({
+    await dbWrite("employment.outstanding", () =>
+      prisma.employment.upsert({
         where: { userId: action.userId! },
         create: {
           userId: action.userId!,
@@ -396,10 +446,8 @@ export class BillingService {
         update: {
           outstandingCharges: { increment: amount },
         },
-      });
-
-      return pending;
-    }, TX_OPTS);
+      }),
+    );
 
     logEvent("Action Recorded", {
       actionId: action.id,
@@ -410,7 +458,10 @@ export class BillingService {
     });
 
     const ledgerAfter = await this.getBalanceLedger(action.userId);
-    if (ledgerAfter.outstandingCharges >= config.monetaryThreshold * 0.8) {
+    if (
+      config.mode === "batch" &&
+      ledgerAfter.outstandingCharges >= config.monetaryThreshold * 0.8
+    ) {
       await this.notify(
         action.userId,
         `Outstanding charges: ${formatAmount(ledgerAfter.outstandingCharges, currency)} pending settlement.`,
@@ -461,7 +512,7 @@ export class BillingService {
     const prev = settlementInflight.get(userId) ?? Promise.resolve();
     const run = prev
       .catch(() => undefined)
-      .then(() => this.settleEmploymentInner(userId));
+      .then(() => this.settleEmploymentDrain(userId));
     settlementInflight.set(
       userId,
       run.finally(() => {
@@ -473,7 +524,24 @@ export class BillingService {
     return run;
   }
 
-  private async settleEmploymentInner(userId: string) {
+  /**
+   * Instant mode: one on-chain tx per charge (max DeFAI volume).
+   * Batch mode: one on-chain tx for all pending charges.
+   */
+  private async settleEmploymentDrain(userId: string) {
+    const config = getSettlementConfig();
+    const maxPasses = config.mode === "instant" ? 25 : 1;
+    let last: Awaited<ReturnType<BillingService["settleOneBatch"]>> = null;
+    for (let i = 0; i < maxPasses; i++) {
+      const result = await this.settleOneBatch(userId, config.mode === "instant");
+      if (!result) break;
+      last = result;
+      if (config.mode !== "instant") break;
+    }
+    return last;
+  }
+
+  private async settleOneBatch(userId: string, oneChargeOnly: boolean) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     const employment = await prisma.employment.findUnique({ where: { userId } });
     if (!wallet || !employment) return null;
@@ -486,18 +554,25 @@ export class BillingService {
       orderBy: { createdAt: "desc" },
     });
     if (inFlight) {
+      // Reconcile: chain may have succeeded but DB never finished.
+      if (inFlight.transactionHash && inFlight.status === "submitted") {
+        await this.reconcileSubmittedSettlement(inFlight.id, userId, wallet.id);
+        return inFlight;
+      }
       const ageMs = Date.now() - inFlight.createdAt.getTime();
       if (ageMs < 5 * 60 * 1000) {
         console.warn("[billing] settlement already in flight", inFlight.id);
         return inFlight;
       }
-      await prisma.settlement.update({
-        where: { id: inFlight.id },
-        data: {
-          status: "failed",
-          failureReason: "stale_in_flight_settlement",
-        },
-      });
+      await dbWrite("settlement.stale", () =>
+        prisma.settlement.update({
+          where: { id: inFlight.id },
+          data: {
+            status: "failed",
+            failureReason: "stale_in_flight_settlement",
+          },
+        }),
+      );
     }
 
     const pendingCharges = await prisma.chargeRecord.findMany({
@@ -507,6 +582,7 @@ export class BillingService {
       },
       include: { actionRecord: true },
       orderBy: { createdAt: "asc" },
+      take: oneChargeOnly ? 1 : 100,
     });
     if (pendingCharges.length === 0) return null;
 
@@ -523,26 +599,30 @@ export class BillingService {
     });
     const totalAmount = serviceAmount + settlementFee;
 
-    const settlement = await prisma.settlement.create({
-      data: {
-        userId,
-        walletId: wallet.id,
-        amount: serviceAmount,
-        settlementFee,
-        currency,
-        actionCount: pendingCharges.length,
-        status: "pending",
-      },
-    });
+    const settlement = await dbWrite("settlement.create", () =>
+      prisma.settlement.create({
+        data: {
+          userId,
+          walletId: wallet.id,
+          amount: serviceAmount,
+          settlementFee,
+          currency,
+          actionCount: pendingCharges.length,
+          status: "pending",
+        },
+      }),
+    );
 
     if (!blockchainService.isConfigured()) {
-      await prisma.settlement.update({
-        where: { id: settlement.id },
-        data: {
-          status: "failed",
-          failureReason: "Blockchain not configured",
-        },
-      });
+      await dbWrite("settlement.fail_no_chain", () =>
+        prisma.settlement.update({
+          where: { id: settlement.id },
+          data: {
+            status: "failed",
+            failureReason: "Blockchain not configured",
+          },
+        }),
+      );
       logEvent("Settlement Failed", {
         settlementId: settlement.id,
         reason: "blockchain_unavailable",
@@ -552,32 +632,47 @@ export class BillingService {
 
     const onChainBalance = await this.syncOnChainBalance(userId);
     if (onChainBalance < totalAmount) {
-      await prisma.settlement.update({
-        where: { id: settlement.id },
-        data: {
-          status: "failed",
-          failureReason: "Insufficient on-chain balance for settlement",
-        },
-      });
+      await dbWrite("settlement.fail_balance", () =>
+        prisma.settlement.update({
+          where: { id: settlement.id },
+          data: {
+            status: "failed",
+            failureReason: "Insufficient on-chain balance for settlement",
+          },
+        }),
+      );
       await this.exhaustUser(userId, "insufficient_balance_for_settlement");
       return settlement;
     }
 
     const settlementHash = keccak256(toBytes(settlement.id));
+    let txHash: string | null = null;
 
     try {
-      await prisma.settlement.update({
-        where: { id: settlement.id },
-        data: { status: "submitted" },
-      });
+      await dbWrite("settlement.submitted", () =>
+        prisma.settlement.update({
+          where: { id: settlement.id },
+          data: { status: "submitted" },
+        }),
+      );
 
-      const txHash = await blockchainService.chargeSettlementOnChain({
-        userKey,
-        currency,
-        serviceAmount,
-        settlementFee,
-        settlementId: settlementHash,
-      });
+      txHash = await enqueueOperatorChain(() =>
+        blockchainService.chargeSettlementOnChain({
+          userKey,
+          currency,
+          serviceAmount,
+          settlementFee,
+          settlementId: settlementHash,
+        }),
+      );
+
+      // Persist hash before any further DB work so retries never double-charge.
+      await dbWrite("settlement.txHash", () =>
+        prisma.settlement.update({
+          where: { id: settlement.id },
+          data: { transactionHash: txHash },
+        }),
+      );
 
       const syncedBal = await blockchainService.syncBalanceCache(
         wallet.address as `0x${string}`,
@@ -608,6 +703,7 @@ export class BillingService {
         currency,
         actionCount: pendingCharges.length,
         mode: getSettlementConfig().mode,
+        attributionTag: CELO_ATTRIBUTION_TAG,
       });
 
       if (getSettlementConfig().mode === "batch" || pendingCharges.length > 1) {
@@ -625,14 +721,51 @@ export class BillingService {
       return settlement;
     } catch (err) {
       const reason = err instanceof Error ? err.message : "settlement_failed";
-      await prisma.settlement
-        .update({
+
+      // Chain already succeeded — never mark failed without reconciling (avoids double charge).
+      if (txHash) {
+        console.error(
+          "[billing] chain succeeded; reconciling DB",
+          settlement.id,
+          txHash,
+          reason,
+        );
+        try {
+          const syncedBal = await blockchainService.syncBalanceCache(
+            wallet.address as `0x${string}`,
+            currency,
+          );
+          const newBal = isFiniteBalance(syncedBal)
+            ? syncedBal
+            : Math.max(0, onChainBalance - totalAmount);
+          await this.applySettlementSuccess({
+            settlementId: settlement.id,
+            userId,
+            walletId: wallet.id,
+            chargeIds: pendingCharges.map((c) => c.id),
+            actionIds: pendingCharges.map((c) => c.actionRecordId),
+            txHash,
+            newBal,
+          });
+          return settlement;
+        } catch (reconcileErr) {
+          console.error("[billing] reconcile after chain failed", reconcileErr);
+          await this.notify(
+            userId,
+            `Settlement tx ${txHash} landed on-chain; ledger sync pending — will auto-reconcile.`,
+          );
+          return settlement;
+        }
+      }
+
+      await dbWrite("settlement.fail", () =>
+        prisma.settlement.update({
           where: { id: settlement.id },
           data: { status: "failed", failureReason: reason.slice(0, 500) },
-        })
-        .catch((updateErr) => {
-          console.error("[billing] failed to mark settlement failed", updateErr);
-        });
+        }),
+      ).catch((updateErr) => {
+        console.error("[billing] failed to mark settlement failed", updateErr);
+      });
       logEvent("Settlement Failed", { settlementId: settlement.id, reason });
       await this.notify(
         userId,
@@ -642,8 +775,55 @@ export class BillingService {
     }
   }
 
+  private async reconcileSubmittedSettlement(
+    settlementId: string,
+    userId: string,
+    walletId: string,
+  ) {
+    const settlement = await prisma.settlement.findUnique({
+      where: { id: settlementId },
+    });
+    if (!settlement?.transactionHash || settlement.status === "succeeded") return;
+
+    const pendingCharges = await prisma.chargeRecord.findMany({
+      where: {
+        status: "pending",
+        actionRecord: { userId, settlementId: null },
+      },
+      orderBy: { createdAt: "asc" },
+      take: settlement.actionCount || 1,
+    });
+    if (pendingCharges.length === 0) {
+      await dbWrite("settlement.reconcile_mark", () =>
+        prisma.settlement.update({
+          where: { id: settlementId },
+          data: { status: "succeeded", completedAt: new Date() },
+        }),
+      );
+      return;
+    }
+
+    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) return;
+    const currency = wallet.walletCurrency as PaymentCurrency;
+    const syncedBal = await blockchainService.syncBalanceCache(
+      wallet.address as `0x${string}`,
+      currency,
+    );
+    const newBal = isFiniteBalance(syncedBal) ? syncedBal : bal(wallet.balance);
+    await this.applySettlementSuccess({
+      settlementId,
+      userId,
+      walletId,
+      chargeIds: pendingCharges.map((c) => c.id),
+      actionIds: pendingCharges.map((c) => c.actionRecordId),
+      txHash: settlement.transactionHash,
+      newBal,
+    });
+  }
+
   /**
-   * Persist settlement success without a long interactive multi-statement transaction
+   * Persist settlement success without interactive multi-statement transactions
    * (avoids "Unable to start a transaction in the given time" after chain latency).
    */
   private async applySettlementSuccess(input: {
@@ -655,7 +835,7 @@ export class BillingService {
     txHash: string;
     newBal: number;
   }) {
-    const write = async () => {
+    await dbWrite("settlement.success", async () => {
       await prisma.settlement.update({
         where: { id: input.settlementId },
         data: {
@@ -664,44 +844,44 @@ export class BillingService {
           completedAt: new Date(),
         },
       });
-      await prisma.chargeRecord.updateMany({
+    });
+    await dbWrite("charges.success", () =>
+      prisma.chargeRecord.updateMany({
         where: { id: { in: input.chargeIds } },
         data: { status: "succeeded", transactionHash: input.txHash },
-      });
-      await prisma.actionRecord.updateMany({
+      }),
+    );
+    await dbWrite("actions.link", () =>
+      prisma.actionRecord.updateMany({
         where: { id: { in: input.actionIds } },
         data: { settlementId: input.settlementId },
-      });
-      const remaining = await prisma.chargeRecord.aggregate({
-        where: {
-          status: "pending",
-          actionRecord: { userId: input.userId, settlementId: null },
-        },
-        _sum: { amount: true },
-      });
-      await prisma.employment.update({
+      }),
+    );
+    const remaining = await prisma.chargeRecord.aggregate({
+      where: {
+        status: "pending",
+        actionRecord: { userId: input.userId, settlementId: null },
+      },
+      _sum: { amount: true },
+    });
+    await dbWrite("employment.clear", () =>
+      prisma.employment.update({
         where: { userId: input.userId },
         data: {
           outstandingCharges: bal(remaining._sum.amount),
           lastSettlementAt: new Date(),
         },
-      });
-      await prisma.wallet.update({
+      }),
+    );
+    await dbWrite("wallet.post_settlement", () =>
+      prisma.wallet.update({
         where: { id: input.walletId },
         data: {
           balance: toWalletBalance(input.newBal),
           balanceCachedAt: new Date(),
         },
-      });
-    };
-
-    try {
-      await write();
-    } catch (err) {
-      console.warn("[billing] settlement persist retry", err);
-      await new Promise((r) => setTimeout(r, 500));
-      await write();
-    }
+      }),
+    );
   }
 
   async retrySettlement(settlementId: string) {
@@ -711,6 +891,16 @@ export class BillingService {
     });
     if (!settlement || settlement.status !== "failed") {
       throw new Error("Settlement not retryable");
+    }
+
+    // If a prior attempt already broadcast a tx, reconcile instead of charging again.
+    if (settlement.transactionHash) {
+      await this.reconcileSubmittedSettlement(
+        settlement.id,
+        settlement.userId,
+        settlement.walletId,
+      );
+      return settlement;
     }
 
     const userId = settlement.userId;
@@ -879,7 +1069,7 @@ export class BillingService {
       currencies,
       chainConfigured: blockchainService.isConfigured(),
       settlement: config,
-      attributionTag: "celo_e3cc4c8d8a0e",
+      attributionTag: CELO_ATTRIBUTION_TAG,
     };
   }
 }

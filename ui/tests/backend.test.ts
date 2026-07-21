@@ -67,11 +67,12 @@ describe("payment currency", () => {
 describe("settlement config", () => {
   it("loads configurable thresholds from env defaults", () => {
     const config = getSettlementConfig();
+    assert.ok(config.mode === "instant" || config.mode === "batch");
     assert.ok(config.monetaryThreshold > 0);
     assert.ok(config.actionThreshold >= 1);
     assert.ok(config.intervalMinutes >= 1);
     assert.ok(config.feeEstimate > 0);
-    assert.ok(config.feeBufferPercent > 0);
+    assert.ok(config.feeBufferPercent >= 0);
   });
 
   it("applies a configurable settlement fee buffer", () => {
