@@ -3,7 +3,7 @@ import type { ActionType } from "@/generated/client";
 import { averageActionCost, priceFor, PRICING_LABELS } from "@/lib/pricing";
 import { blockchainService } from "@/services/blockchain.service";
 import { paymentService } from "@/services/payment.service";
-import { keccak256, toBytes } from "viem";
+import { keccak256, toBytes, type Hex } from "viem";
 import { Errors } from "@/lib/errors";
 import { logEvent } from "@/lib/logger";
 import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
@@ -20,6 +20,11 @@ function bal(value: { toString(): string } | null | undefined) {
   if (!value) return 0;
   return Number(value.toString());
 }
+
+const TX_OPTS = { maxWait: 20_000, timeout: 60_000 } as const;
+
+/** Serialize settlements per user so concurrent actions don't contend on DB txs. */
+const settlementInflight = new Map<string, Promise<unknown>>();
 
 export type BalanceLedger = {
   onChainBalance: number;
@@ -42,6 +47,39 @@ export class BillingService {
 
   estimateSettlementFee() {
     return bufferedSettlementFee();
+  }
+
+  /**
+   * Resolve fee to deduct with the action: configured buffer, optionally raised
+   * from live Celo gas when SETTLEMENT_ESTIMATE_GAS is enabled and currency is CELO.
+   */
+  async resolveSettlementFee(input: {
+    currency: PaymentCurrency;
+    userKey: Hex;
+    serviceAmount: number;
+    settlementId: Hex;
+  }): Promise<number> {
+    const config = getSettlementConfig();
+    let fee = bufferedSettlementFee(config);
+
+    if (
+      config.estimateGasOnChain &&
+      input.currency === "CELO" &&
+      blockchainService.isConfigured()
+    ) {
+      const estimated = await blockchainService.estimateChargeSettlementFeeCelo({
+        userKey: input.userKey,
+        currency: input.currency,
+        serviceAmount: Math.max(input.serviceAmount, 0.000001),
+        settlementFee: Math.max(fee, 0.000001),
+        settlementId: input.settlementId,
+      });
+      if (estimated != null && estimated > fee) {
+        fee = estimated;
+      }
+    }
+
+    return fee;
   }
 
   calculateOutstanding(userId: string) {
@@ -95,7 +133,9 @@ export class BillingService {
   async canPerformAction(userId: string, actionType?: ActionType) {
     const ledger = await this.getBalanceLedger(userId);
     const cost = actionType ? this.calculateCharge(actionType) : averageActionCost();
-    return ledger.availableBalance >= cost;
+    const fee =
+      getSettlementConfig().mode === "instant" ? this.estimateSettlementFee() : 0;
+    return ledger.availableBalance >= cost + fee;
   }
 
   async getSettlementStatus(userId: string) {
@@ -127,10 +167,12 @@ export class BillingService {
       monetary: outstanding >= config.monetaryThreshold,
       actions: unsettledCount >= config.actionThreshold,
       time: elapsed >= settlementIntervalMs(config),
+      instant: config.mode === "instant" && outstanding > 0,
     };
 
     return {
       config,
+      mode: config.mode,
       outstandingCharges: outstanding,
       unsettledActionCount: unsettledCount,
       lastSettlementAt: lastAt,
@@ -151,14 +193,15 @@ export class BillingService {
     lastSettlementAt: Date | null | undefined,
     config: SettlementConfig,
   ) {
+    if (outstanding <= 0) return false;
+    if (config.mode === "instant") return true;
     const elapsed = lastSettlementAt
       ? Date.now() - lastSettlementAt.getTime()
       : settlementIntervalMs(config);
     return (
-      outstanding > 0 &&
-      (outstanding >= config.monetaryThreshold ||
-        unsettledCount >= config.actionThreshold ||
-        elapsed >= settlementIntervalMs(config))
+      outstanding >= config.monetaryThreshold ||
+      unsettledCount >= config.actionThreshold ||
+      elapsed >= settlementIntervalMs(config)
     );
   }
 
@@ -307,7 +350,7 @@ export class BillingService {
     };
   }
 
-  /** Record completed work — increases outstanding charges, no immediate chain tx. */
+  /** Record completed work — increases outstanding charges, then settle per mode. */
   async recordAction(actionRecordId: string) {
     const action = await prisma.actionRecord.findUnique({
       where: { id: actionRecordId },
@@ -323,9 +366,12 @@ export class BillingService {
     if (amount <= 0) return null;
 
     const currency = action.user.wallet.walletCurrency as PaymentCurrency;
+    const config = getSettlementConfig();
+    const feeReserve =
+      config.mode === "instant" ? this.estimateSettlementFee() : 0;
 
     const ledgerBefore = await this.getBalanceLedger(action.userId);
-    if (ledgerBefore.availableBalance < amount) {
+    if (ledgerBefore.availableBalance < amount + feeReserve) {
       await this.exhaustUser(action.userId, "insufficient_available_balance");
       throw Errors.walletNotFunded();
     }
@@ -353,12 +399,17 @@ export class BillingService {
       });
 
       return pending;
+    }, TX_OPTS);
+
+    logEvent("Action Recorded", {
+      actionId: action.id,
+      amount,
+      currency,
+      status: "outstanding",
+      mode: config.mode,
     });
 
-    logEvent("Action Recorded", { actionId: action.id, amount, currency, status: "outstanding" });
-
     const ledgerAfter = await this.getBalanceLedger(action.userId);
-    const config = getSettlementConfig();
     if (ledgerAfter.outstandingCharges >= config.monetaryThreshold * 0.8) {
       await this.notify(
         action.userId,
@@ -376,7 +427,11 @@ export class BillingService {
     }
 
     try {
-      await this.maybeSettle(action.userId);
+      if (config.mode === "instant") {
+        await this.settleEmployment(action.userId);
+      } else {
+        await this.maybeSettle(action.userId);
+      }
     } catch (err) {
       console.warn("[billing] settlement deferred", action.userId, err);
     }
@@ -391,18 +446,58 @@ export class BillingService {
       where: { status: "pending", actionRecord: { userId, settlementId: null } },
     });
     if (
-      this.shouldSettle(outstanding, unsettledCount, employment?.lastSettlementAt, getSettlementConfig())
+      this.shouldSettle(
+        outstanding,
+        unsettledCount,
+        employment?.lastSettlementAt,
+        getSettlementConfig(),
+      )
     ) {
       await this.settleEmployment(userId);
     }
   }
 
   async settleEmployment(userId: string) {
+    const prev = settlementInflight.get(userId) ?? Promise.resolve();
+    const run = prev
+      .catch(() => undefined)
+      .then(() => this.settleEmploymentInner(userId));
+    settlementInflight.set(
+      userId,
+      run.finally(() => {
+        if (settlementInflight.get(userId) === run) {
+          settlementInflight.delete(userId);
+        }
+      }),
+    );
+    return run;
+  }
+
+  private async settleEmploymentInner(userId: string) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     const employment = await prisma.employment.findUnique({ where: { userId } });
     if (!wallet || !employment) return null;
     if (!wallet.identityHash) {
       throw new Error("Wallet identity is missing");
+    }
+
+    const inFlight = await prisma.settlement.findFirst({
+      where: { userId, status: { in: ["pending", "submitted"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (inFlight) {
+      const ageMs = Date.now() - inFlight.createdAt.getTime();
+      if (ageMs < 5 * 60 * 1000) {
+        console.warn("[billing] settlement already in flight", inFlight.id);
+        return inFlight;
+      }
+      await prisma.settlement.update({
+        where: { id: inFlight.id },
+        data: {
+          status: "failed",
+          failureReason: "stale_in_flight_settlement",
+        },
+      });
     }
 
     const pendingCharges = await prisma.chargeRecord.findMany({
@@ -416,9 +511,17 @@ export class BillingService {
     if (pendingCharges.length === 0) return null;
 
     const serviceAmount = pendingCharges.reduce((sum, c) => sum + bal(c.amount), 0);
-    const settlementFee = this.estimateSettlementFee();
-    const totalAmount = serviceAmount + settlementFee;
     const currency = wallet.walletCurrency as PaymentCurrency;
+    const userKey = identityUserKey(wallet.identityHash as `0x${string}`);
+    const settlementIdPreview = keccak256(toBytes(`preview:${userId}:${Date.now()}`));
+
+    const settlementFee = await this.resolveSettlementFee({
+      currency,
+      userKey,
+      serviceAmount,
+      settlementId: settlementIdPreview,
+    });
+    const totalAmount = serviceAmount + settlementFee;
 
     const settlement = await prisma.settlement.create({
       data: {
@@ -440,7 +543,10 @@ export class BillingService {
           failureReason: "Blockchain not configured",
         },
       });
-      logEvent("Settlement Failed", { settlementId: settlement.id, reason: "blockchain_unavailable" });
+      logEvent("Settlement Failed", {
+        settlementId: settlement.id,
+        reason: "blockchain_unavailable",
+      });
       return settlement;
     }
 
@@ -466,7 +572,7 @@ export class BillingService {
       });
 
       const txHash = await blockchainService.chargeSettlementOnChain({
-        userKey: identityUserKey(wallet.identityHash as `0x${string}`),
+        userKey,
         currency,
         serviceAmount,
         settlementFee,
@@ -484,38 +590,15 @@ export class BillingService {
         throw new Error("Could not determine post-settlement wallet balance");
       }
 
-      await prisma.$transaction([
-        prisma.settlement.update({
-          where: { id: settlement.id },
-          data: {
-            status: "succeeded",
-            transactionHash: txHash,
-            completedAt: new Date(),
-          },
-        }),
-        prisma.chargeRecord.updateMany({
-          where: { id: { in: pendingCharges.map((c) => c.id) } },
-          data: { status: "succeeded", transactionHash: txHash },
-        }),
-        prisma.actionRecord.updateMany({
-          where: { id: { in: pendingCharges.map((c) => c.actionRecordId) } },
-          data: { settlementId: settlement.id },
-        }),
-        prisma.employment.update({
-          where: { userId },
-          data: {
-            outstandingCharges: 0,
-            lastSettlementAt: new Date(),
-          },
-        }),
-        prisma.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            balance: toWalletBalance(newBal),
-            balanceCachedAt: new Date(),
-          },
-        }),
-      ]);
+      await this.applySettlementSuccess({
+        settlementId: settlement.id,
+        userId,
+        walletId: wallet.id,
+        chargeIds: pendingCharges.map((c) => c.id),
+        actionIds: pendingCharges.map((c) => c.actionRecordId),
+        txHash,
+        newBal,
+      });
 
       logEvent("Settlement Completed", {
         settlementId: settlement.id,
@@ -523,12 +606,16 @@ export class BillingService {
         serviceAmount,
         settlementFee,
         currency,
+        actionCount: pendingCharges.length,
+        mode: getSettlementConfig().mode,
       });
 
-      await this.notify(
-        userId,
-        `Settlement complete: ${formatAmount(serviceAmount, currency)} + ${formatAmount(settlementFee, currency)} fee (${pendingCharges.length} actions).`,
-      );
+      if (getSettlementConfig().mode === "batch" || pendingCharges.length > 1) {
+        await this.notify(
+          userId,
+          `Settlement complete: ${formatAmount(serviceAmount, currency)} + ${formatAmount(settlementFee, currency)} fee (${pendingCharges.length} actions).`,
+        );
+      }
 
       const ledger = await this.getBalanceLedger(userId);
       if (ledger.availableBalance <= 0 && ledger.onChainBalance <= 0) {
@@ -538,16 +625,82 @@ export class BillingService {
       return settlement;
     } catch (err) {
       const reason = err instanceof Error ? err.message : "settlement_failed";
-      await prisma.settlement.update({
-        where: { id: settlement.id },
-        data: { status: "failed", failureReason: reason },
-      });
+      await prisma.settlement
+        .update({
+          where: { id: settlement.id },
+          data: { status: "failed", failureReason: reason.slice(0, 500) },
+        })
+        .catch((updateErr) => {
+          console.error("[billing] failed to mark settlement failed", updateErr);
+        });
       logEvent("Settlement Failed", { settlementId: settlement.id, reason });
       await this.notify(
         userId,
         `Settlement failed (${reason}). Outstanding charges preserved — will retry automatically.`,
       );
       throw Errors.chargeFailed(reason);
+    }
+  }
+
+  /**
+   * Persist settlement success without a long interactive multi-statement transaction
+   * (avoids "Unable to start a transaction in the given time" after chain latency).
+   */
+  private async applySettlementSuccess(input: {
+    settlementId: string;
+    userId: string;
+    walletId: string;
+    chargeIds: string[];
+    actionIds: string[];
+    txHash: string;
+    newBal: number;
+  }) {
+    const write = async () => {
+      await prisma.settlement.update({
+        where: { id: input.settlementId },
+        data: {
+          status: "succeeded",
+          transactionHash: input.txHash,
+          completedAt: new Date(),
+        },
+      });
+      await prisma.chargeRecord.updateMany({
+        where: { id: { in: input.chargeIds } },
+        data: { status: "succeeded", transactionHash: input.txHash },
+      });
+      await prisma.actionRecord.updateMany({
+        where: { id: { in: input.actionIds } },
+        data: { settlementId: input.settlementId },
+      });
+      const remaining = await prisma.chargeRecord.aggregate({
+        where: {
+          status: "pending",
+          actionRecord: { userId: input.userId, settlementId: null },
+        },
+        _sum: { amount: true },
+      });
+      await prisma.employment.update({
+        where: { userId: input.userId },
+        data: {
+          outstandingCharges: bal(remaining._sum.amount),
+          lastSettlementAt: new Date(),
+        },
+      });
+      await prisma.wallet.update({
+        where: { id: input.walletId },
+        data: {
+          balance: toWalletBalance(input.newBal),
+          balanceCachedAt: new Date(),
+        },
+      });
+    };
+
+    try {
+      await write();
+    } catch (err) {
+      console.warn("[billing] settlement persist retry", err);
+      await new Promise((r) => setTimeout(r, 500));
+      await write();
     }
   }
 
@@ -579,19 +732,23 @@ export class BillingService {
 
     let settled = 0;
     let retried = 0;
+    const config = getSettlementConfig();
 
     for (const employment of employments) {
       try {
         const outstanding = bal(employment.outstandingCharges);
         const unsettledCount = await prisma.chargeRecord.count({
-          where: { status: "pending", actionRecord: { userId: employment.userId, settlementId: null } },
+          where: {
+            status: "pending",
+            actionRecord: { userId: employment.userId, settlementId: null },
+          },
         });
         if (
           this.shouldSettle(
             outstanding,
             unsettledCount,
             employment.lastSettlementAt,
-            getSettlementConfig(),
+            config,
           )
         ) {
           await this.settleEmployment(employment.userId);
@@ -616,7 +773,7 @@ export class BillingService {
       }
     }
 
-    return { settled, retried, evaluated: employments.length };
+    return { settled, retried, evaluated: employments.length, mode: config.mode };
   }
 
   async refund(chargeId: string) {
@@ -649,9 +806,6 @@ export class BillingService {
         data: { enabled: false },
       });
     }
-
-    // Keep on-chain employment Active so outstanding settlements can still execute.
-    // Off-chain Exhausted status is enough to stop new billable work.
 
     logEvent("Employment Exhausted", { userId, reason });
     await this.notify(
@@ -720,10 +874,12 @@ export class BillingService {
     const config = getSettlementConfig();
     return {
       active: true,
-      mode: "prepaid-settlement",
+      mode: config.mode === "instant" ? "instant-on-chain" : "prepaid-settlement",
+      settlementMode: config.mode,
       currencies,
       chainConfigured: blockchainService.isConfigured(),
       settlement: config,
+      attributionTag: "celo_e3cc4c8d8a0e",
     };
   }
 }
