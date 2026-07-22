@@ -405,6 +405,10 @@ model Employment {
   lastSettlementAt   DateTime?
   startedAt          DateTime?
   pausedAt           DateTime?
+  /// Version string of the Employment Agreement last accepted at hire.
+  agreementVersion   String?
+  agreementAcceptedAt DateTime?
+  agreementRejectedAt DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 }

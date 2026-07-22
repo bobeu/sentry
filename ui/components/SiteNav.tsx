@@ -100,9 +100,9 @@ export function SiteNav() {
           <Image
             src="/logo.png"
             alt="Sentry"
-            width={48}
-            height={48}
-            className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
+            width={80}
+            height={80}
+            className="h-16 w-16 sm:h-20 sm:w-20 object-contain"
             priority
           />
           <span className="font-sans text-xl sm:text-2xl font-extrabold tracking-tight">

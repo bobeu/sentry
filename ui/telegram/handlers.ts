@@ -581,7 +581,9 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       intent === "status" ||
       intent === "work" ||
       intent === "report" ||
-      intent === "spam"
+      intent === "spam" ||
+      intent === "agreement" ||
+      intent === "employment"
     ) {
       const report = await employerAgentService.formatDirectReport(user.id, intent);
       await replyPlain(ctx, report, {
