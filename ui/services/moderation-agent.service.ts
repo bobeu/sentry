@@ -160,8 +160,16 @@ export class ModerationAgent {
     text: string;
     groupName: string;
     groupRules?: string | null;
+    spamGuidelines?: string | null;
     fromUsername?: string | null;
-    heuristic: { spam: boolean; reason?: string; confidence: number };
+    hasMedia?: boolean;
+    priorWarnCount?: number;
+    heuristic: {
+      spam: boolean;
+      reason?: string;
+      confidence: number;
+      matchedGuideline?: string;
+    };
   }): Promise<ModerationDecision> {
     // High-confidence obvious scam → delete without spending an LLM call.
     if (input.heuristic.spam && input.heuristic.confidence >= 0.95) {
@@ -173,8 +181,15 @@ export class ModerationAgent {
     }
 
     const hasLink = /https?:\/\/|t\.me\//i.test(input.text);
-    // Skip LLM when clearly clean and no invite/URL risk.
-    if (!input.heuristic.spam && input.heuristic.confidence < 0.4 && !hasLink) {
+    const hasGuidelines = Boolean(input.spamGuidelines?.trim());
+    const needsReview =
+      input.heuristic.spam ||
+      hasLink ||
+      input.hasMedia ||
+      (hasGuidelines && input.heuristic.confidence >= 0.55);
+
+    // Skip LLM when clearly clean and no employer guideline / media risk.
+    if (!needsReview && input.heuristic.confidence < 0.4) {
       return { action: "ignore", reason: "clean", confidence: 0.1 };
     }
 
@@ -185,31 +200,52 @@ export class ModerationAgent {
             role: "system",
             content: [
               "You are Sentry's moderation agent for a Telegram community.",
-              "Decide one action for the member message. Reply with JSON only:",
+              "Reason carefully — do NOT auto-kick for minor noise. Decide one action. Reply with JSON only:",
               '{"action":"ignore"|"warn"|"delete"|"mute"|"ban","reason":"short","confidence":0-1}',
-              "Use mute/ban only for clear scams, harassment, or repeated abuse.",
-              "Prefer delete for spam links; warn for borderline content; ignore for normal chat.",
+              "Policy:",
+              "- ignore: normal chat, on-topic questions, thanks, legitimate discussion.",
+              "- warn: minor offence (off-topic spam phrases like 'when listing?', mild noise) — first/second strike.",
+              "- delete: clear spam/scam links or disallowed media; remove message.",
+              "- mute: repeated warnings or persistent low-signal spam after prior warns.",
+              "- ban: gross misconduct — scams, harassment, hate, repeated abuse after warnings.",
+              "Honor employer spam guidelines when provided. Prefer warn over ban for first minor hits.",
             ].join(" "),
           },
           {
             role: "user",
             content: [
               `Group: ${input.groupName}`,
-              `Rules: ${input.groupRules ?? "(none)"}`,
+              `Community rules: ${input.groupRules ?? "(none)"}`,
+              `Employer spam guidelines:\n${input.spamGuidelines?.trim() || "(none — use judgment)"}`,
               `Member: ${input.fromUsername ?? "unknown"}`,
-              `Heuristic: spam=${input.heuristic.spam} reason=${input.heuristic.reason ?? "n/a"} conf=${input.heuristic.confidence}`,
-              `Message:\n${input.text.slice(0, 1500)}`,
+              `Prior warnings (24h): ${input.priorWarnCount ?? 0}`,
+              `Has media attachment: ${Boolean(input.hasMedia)}`,
+              `Heuristic: spam=${input.heuristic.spam} reason=${input.heuristic.reason ?? "n/a"} conf=${input.heuristic.confidence} guideline=${input.heuristic.matchedGuideline ?? "n/a"}`,
+              `Message:\n${(input.text || "(media only / empty caption)").slice(0, 1500)}`,
             ].join("\n"),
           },
         ],
-        200,
+        220,
       );
       const match = raw.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("no json");
       const parsed = JSON.parse(match[0]) as ModerationDecision;
-      const action = ["ignore", "warn", "delete", "mute", "ban"].includes(parsed.action)
+      let action = ["ignore", "warn", "delete", "mute", "ban"].includes(parsed.action)
         ? parsed.action
         : "warn";
+
+      // Escalate soft warns when the member already has strikes.
+      const warns = input.priorWarnCount ?? 0;
+      if (action === "warn" && warns >= 2) action = "mute";
+      if (action === "mute" && warns >= 4) action = "ban";
+      if (
+        action === "warn" &&
+        input.heuristic.confidence >= 0.9 &&
+        input.heuristic.reason === "scam_link_or_phrase"
+      ) {
+        action = "delete";
+      }
+
       return {
         action,
         reason: String(parsed.reason ?? input.heuristic.reason ?? "moderation").slice(0, 200),
@@ -217,8 +253,23 @@ export class ModerationAgent {
       };
     } catch {
       if (input.heuristic.spam) {
+        const warns = input.priorWarnCount ?? 0;
+        if (input.heuristic.confidence >= 0.9) {
+          return {
+            action: "delete",
+            reason: input.heuristic.reason ?? "heuristic",
+            confidence: input.heuristic.confidence,
+          };
+        }
+        if (warns >= 2) {
+          return {
+            action: "mute",
+            reason: input.heuristic.reason ?? "repeat_offence",
+            confidence: input.heuristic.confidence,
+          };
+        }
         return {
-          action: input.heuristic.confidence >= 0.85 ? "delete" : "warn",
+          action: "warn",
           reason: input.heuristic.reason ?? "heuristic",
           confidence: input.heuristic.confidence,
         };

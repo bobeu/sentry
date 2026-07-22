@@ -310,6 +310,7 @@ export class GroupService {
       birthdayHourUtc?: number;
       workReportIntervalHours?: number;
       lastWorkReportAt?: Date | null;
+      spamGuidelines?: string | null;
       rules?: string | null;
       description?: string | null;
       purpose?: string | null;
@@ -378,6 +379,7 @@ export class GroupService {
         birthdayHourUtc: birthdayHour ?? 9,
         workReportIntervalHours: workInterval ?? 24,
         lastWorkReportAt: data.lastWorkReportAt ?? null,
+        spamGuidelines: data.spamGuidelines ?? null,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
@@ -410,6 +412,7 @@ export class GroupService {
         birthdayHourUtc: birthdayHour,
         workReportIntervalHours: workInterval,
         lastWorkReportAt: data.lastWorkReportAt,
+        spamGuidelines: data.spamGuidelines,
       },
     });
 
