@@ -26,6 +26,8 @@ type DepositConfig = {
   employmentWallet: string;
   currency: string;
   tokenAddress: string | null;
+  /** CIP-64 fee currency; null/undefined → gas paid in CELO (default). */
+  feeCurrency?: string | null;
   methodA: { type: "native-transfer" | "erc20-transfer" };
 };
 
@@ -166,6 +168,9 @@ export function WalletPanel() {
       const employmentWallet = depositConfig.employmentWallet as Address;
 
       let hash: Hash;
+      const feeOpts = depositConfig.feeCurrency
+        ? { feeCurrency: depositConfig.feeCurrency as Address }
+        : {};
       if (depositConfig.currency === "CELO") {
         const amount = parseEther(depositAmount);
         hash = await client.sendTransaction({
@@ -173,6 +178,7 @@ export function WalletPanel() {
           value: amount,
           account,
           data: CELO_ATTRIBUTION_SUFFIX,
+          ...feeOpts,
         });
       } else {
         if (!depositConfig.tokenAddress) throw new Error("Token address is not configured");
@@ -188,6 +194,7 @@ export function WalletPanel() {
           account,
           chain: celo,
           dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+          ...feeOpts,
         });
       }
 
