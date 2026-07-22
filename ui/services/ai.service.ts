@@ -69,6 +69,8 @@ function systemRules(extras?: {
     "Never invent policies or facts. Prefer FAQs and knowledge-base excerpts over speculation.",
     "Never claim to be human.",
     "You can moderate spam (warn/delete/mute/ban when admin) and answer community questions.",
+    "Formatting for Telegram: use **bold** for emphasis, short paragraphs, and • bullets. Do NOT sprinkle decorative asterisks. Do not use Markdown tables or headings with #.",
+    "If the member only says thanks/thank you, reply with a brief warm acknowledgment — do NOT repeat your previous answer.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];
   if (extras?.includeCelo) {
@@ -456,15 +458,36 @@ export class AiService {
   }
 
   async generateWelcome(input: { context: ContextBundle; memberName: string }) {
+    const rules = input.context.rules?.trim();
+    const purpose = input.context.purpose?.trim();
+    const description = input.context.description?.trim();
     return callLLM(
       [
-        { role: "system", content: systemRules() },
+        {
+          role: "system",
+          content: [
+            systemRules(),
+            "Welcome new members warmly and clearly. Include what this group is for and the house rules when provided.",
+            "Structure: greeting → purpose → key rules (short bullets) → how to get help (mention Sentry).",
+            "Use **bold** sparingly for labels. No decorative asterisks.",
+          ].join("\n"),
+        },
         {
           role: "user",
-          content: `${formatContext(input.context)}\n\nWrite a friendly welcome for "${input.memberName}". Max 1-2 sentences.`,
+          content: [
+            `Member to welcome: ${input.memberName}`,
+            `Group: ${input.context.groupName}`,
+            purpose ? `Purpose: ${purpose}` : "Purpose: (not set)",
+            description ? `Description: ${description}` : "",
+            rules ? `Rules:\n${rules}` : "Rules: (not set — invite them to ask before posting off-topic)",
+            "",
+            "Write a complete welcome (about 4–8 short sentences / bullets). Finish completely.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
         },
       ],
-      SHORT_REPLY_TOKENS,
+      600,
     );
   }
 

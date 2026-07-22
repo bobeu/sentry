@@ -13,7 +13,12 @@ import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/logger";
 import { billingService } from "@/services/billing.service";
 import { UNCERTAIN_REPLY } from "@/lib/messages";
-import { splitTelegramMessage } from "@/lib/telegram-message";
+import {
+  GRATITUDE_ACK,
+  isGratitudeOnly,
+  splitTelegramMessage,
+  toTelegramHtml,
+} from "@/lib/telegram-message";
 import {
   detectEmployerIntent,
   employerAgentService,
@@ -87,18 +92,19 @@ async function replyTo(
   if (chunks.length === 0) return;
 
   for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+    const html = toTelegramHtml(chunks[i]);
+    const opts: {
+      parse_mode: "HTML";
+      reply_parameters?: { message_id: number };
+    } = { parse_mode: "HTML" };
     try {
       if (i === 0 && replyToMessageId != null && ctx.chat) {
-        await ctx.reply(chunk, {
-          reply_parameters: { message_id: replyToMessageId },
-        });
-      } else {
-        await ctx.reply(chunk);
+        opts.reply_parameters = { message_id: replyToMessageId };
       }
+      await ctx.reply(html, opts);
     } catch (err) {
       console.warn("[telegram:reply]", err);
-      await ctx.reply(chunk).catch(() => undefined);
+      await ctx.reply(chunks[i]).catch(() => undefined);
     }
   }
 }
@@ -110,16 +116,26 @@ async function replyPlain(
 ) {
   const chunks = splitTelegramMessage(text);
   for (let i = 0; i < chunks.length; i++) {
-    await ctx
-      .reply(
-        chunks[i],
-        i === chunks.length - 1 && extra?.reply_markup
+    const html = toTelegramHtml(chunks[i]);
+    const isLast = i === chunks.length - 1;
+    try {
+      await ctx.reply(html, {
+        parse_mode: "HTML",
+        ...(isLast && extra?.reply_markup
           ? { reply_markup: extra.reply_markup }
-          : undefined,
-      )
-      .catch((err) => {
-        console.warn("[telegram:replyPlain]", err);
+          : {}),
       });
+    } catch (err) {
+      console.warn("[telegram:replyPlain]", err);
+      await ctx
+        .reply(
+          chunks[i],
+          isLast && extra?.reply_markup
+            ? { reply_markup: extra.reply_markup }
+            : undefined,
+        )
+        .catch(() => undefined);
+    }
   }
 }
 
@@ -129,21 +145,32 @@ async function handleModeration(
   text: string,
   fromUserId: string | null,
   fromUsername: string | null,
+  opts?: { hasMedia?: boolean },
 ) {
   if (!runtime.communityMode || !runtime.group.settings?.spamModeration) return false;
   if (!runtime.billable || !runtime.employerUserId) return false;
 
+  const spamGuidelines = runtime.group.settings.spamGuidelines ?? null;
   const heuristic = moderationService.inspect({
     text,
     fromUserId,
     groupId: runtime.group.id,
+    spamGuidelines,
+    hasMedia: opts?.hasMedia,
   });
+
+  const priorWarnCount = fromUserId
+    ? moderationService.warnCount(runtime.group.id, fromUserId)
+    : 0;
 
   const decision = await moderationAgent.decide({
     text,
     groupName: runtime.group.name ?? runtime.group.telegramId,
     groupRules: runtime.group.rules,
+    spamGuidelines,
     fromUsername,
+    hasMedia: opts?.hasMedia,
+    priorWarnCount,
     heuristic,
   });
 
@@ -155,8 +182,22 @@ async function handleModeration(
   const canAdmin =
     settings?.adminModeration !== false && Boolean(fromUserId);
 
-  // Prefer removing the message for delete / mute / ban.
-  if (decision.action === "delete" || decision.action === "mute" || decision.action === "ban") {
+  if (decision.action === "warn") {
+    if (fromUserId) moderationService.noteWarning(runtime.group.id, fromUserId);
+    await ctx
+      .reply(
+        toTelegramHtml(
+          `Heads up — this looks off (**${decision.reason}**). Please keep the chat on-topic and constructive.`,
+        ),
+        { parse_mode: "HTML" },
+      )
+      .catch(() => undefined);
+    actionTaken = "warn";
+  } else if (
+    decision.action === "delete" ||
+    decision.action === "mute" ||
+    decision.action === "ban"
+  ) {
     let deleted = false;
     try {
       if (ctx.message && "message_id" in ctx.message) {
@@ -190,29 +231,28 @@ async function handleModeration(
 
     await ctx
       .reply(
-        actionTaken === "ban"
-          ? `Removed spam and banned the sender (${decision.reason}).`
-          : actionTaken === "mute"
-            ? `Removed spam and muted the sender for 1h (${decision.reason}).`
-            : deleted
-              ? `Removed a spam message (${decision.reason}).`
-              : `Flagged spam (${decision.reason}), but I need delete/restrict permission as admin.`,
+        toTelegramHtml(
+          actionTaken === "ban"
+            ? `Removed spam and **banned** the sender (${decision.reason}).`
+            : actionTaken === "mute"
+              ? `Removed spam and **muted** the sender for 1h (${decision.reason}).`
+              : deleted
+                ? `Removed a spam message (**${decision.reason}**).`
+                : `Flagged spam (**${decision.reason}**), but I need delete/restrict permission as admin.`,
+        ),
+        { parse_mode: "HTML" },
       )
       .catch(() => undefined);
-  } else {
-    await ctx
-      .reply(
-        `Heads up — this looks off (${decision.reason}). Please keep the chat constructive.`,
-      )
-      .catch(() => undefined);
-    actionTaken = "warn";
   }
 
   for (const adminId of runtime.adminTelegramIds.slice(0, 5)) {
     await ctx.telegram
       .sendMessage(
         Number(adminId),
-        `Sentry moderation in ${runtime.group.name ?? telegramId}: ${actionTaken} (${decision.reason}, ${(decision.confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
+        toTelegramHtml(
+          `Sentry moderation in **${runtime.group.name ?? telegramId}**: ${actionTaken} (${decision.reason}, ${(decision.confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
+        ),
+        { parse_mode: "HTML" },
       )
       .catch(() => undefined);
   }
@@ -222,6 +262,8 @@ async function handleModeration(
     confidence: decision.confidence,
     actionTaken,
     heuristicSpam: heuristic.spam,
+    matchedGuideline: heuristic.matchedGuideline ?? null,
+    hasMedia: Boolean(opts?.hasMedia),
   });
   return true;
 }
@@ -317,6 +359,15 @@ async function handleGroupIntelligence(
   const fromAdmin = isAdminSender(runtime.adminTelegramIds, fromUserId);
   const cleaned = stripBotMention(text, username) || text;
   const settings = runtime.group.settings;
+
+  // Gratitude-only: acknowledge without re-answering the previous question.
+  if (isGratitudeOnly(cleaned)) {
+    if (addressed || runtime.communityMode) {
+      await replyTo(ctx, GRATITUDE_ACK, message.message_id);
+      await recordBillable(runtime, "mention_reply", { kind: "gratitude" }, false);
+    }
+    return;
+  }
 
   // Mentions / replies always get a response — agent presence, not a mute bot.
   if (addressed) {
@@ -481,6 +532,13 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   const user = linked.user;
   const active = user.employment?.status === "Active";
   const cleaned = stripBotMention(text, username) || text;
+
+  if (isGratitudeOnly(cleaned)) {
+    await replyPlain(ctx, GRATITUDE_ACK, {
+      reply_markup: employerDmService.mainMenuKeyboard(),
+    });
+    return;
+  }
 
   const intent = detectEmployerIntent(cleaned);
 
@@ -898,14 +956,47 @@ export function registerHandlers(bot: Telegraf) {
           context,
           memberName: name,
         });
-        await ctx.reply(welcome);
+        await ctx.reply(toTelegramHtml(welcome), { parse_mode: "HTML" });
         await recordBillable(runtime, "welcome", { member: name });
       } catch (err) {
         console.error("[welcome]", err);
-        await ctx.reply(`Welcome ${name} — glad you're here.`).catch(() => undefined);
+        const rules = runtime.group.rules?.trim();
+        const purpose = runtime.group.purpose?.trim();
+        const fallback = [
+          `Welcome **${name}** — glad you're here.`,
+          purpose ? `\n**About this group:** ${purpose}` : "",
+          rules ? `\n**House rules:**\n${rules}` : "",
+          "\nAsk questions anytime, or mention me when you need help.",
+        ].join("");
+        await ctx
+          .reply(toTelegramHtml(fallback), { parse_mode: "HTML" })
+          .catch(() => undefined);
       }
     }
   });
+
+  // Media spam path (photos/videos/docs) — caption + employer image guidelines.
+  const mediaHandler = async (ctx: Context) => {
+    if (!isGroupChat(ctx) || !ctx.message) return;
+    const telegramId = chatIdOf(ctx);
+    if (!telegramId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime?.communityMode) return;
+    const caption =
+      "caption" in ctx.message && typeof ctx.message.caption === "string"
+        ? ctx.message.caption
+        : "";
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const fromUsername = ctx.from?.username ?? ctx.from?.first_name ?? null;
+    await handleModeration(ctx, runtime, caption, fromUserId, fromUsername, {
+      hasMedia: true,
+    });
+  };
+  bot.on("photo", mediaHandler);
+  bot.on("video", mediaHandler);
+  bot.on("animation", mediaHandler);
+  bot.on("document", mediaHandler);
+  bot.on("sticker", mediaHandler);
 
   bot.on("text", async (ctx) => {
     if (!ctx.message || !("text" in ctx.message)) return;

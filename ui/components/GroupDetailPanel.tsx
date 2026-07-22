@@ -95,6 +95,7 @@ export function GroupDetailPanel() {
     hireInTelegram: true,
     personaRole: "default",
     personaTone: "",
+    spamGuidelines: "",
   });
   const [rules, setRules] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -154,6 +155,7 @@ export function GroupDetailPanel() {
       hireInTelegram: g.settings?.hireInTelegram ?? true,
       personaRole: g.settings?.personaRole ?? "default",
       personaTone: g.settings?.personaTone ?? "",
+      spamGuidelines: g.settings?.spamGuidelines ?? "",
     });
     setRules(g.rules ?? "");
     setPurpose(g.purpose ?? "");
@@ -575,6 +577,27 @@ export function GroupDetailPanel() {
                   placeholder="1. Keep chats technical.&#10;2. No advertising links.&#10;3. Report scams immediately."
                   className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary leading-relaxed text-xs font-normal"
                 />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Spam listening guide (for Sentry AI)
+                <textarea
+                  value={settings.spamGuidelines}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, spamGuidelines: e.target.value }))
+                  }
+                  rows={5}
+                  placeholder={
+                    "Examples Sentry should treat as spam / off-topic:\n" +
+                    "- when listing?\n" +
+                    "- irrelevant images / memes\n" +
+                    "- wallet-drain DMs\n" +
+                    "Sentry warns for minor hits and escalates mute/ban for repeated or gross misconduct."
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary leading-relaxed text-xs font-normal"
+                />
+                <span className="mt-1 block text-[10px] font-normal text-muted">
+                  One idea per line. Sentry reasons with AI — it warns first for minor noise, and only kicks/bans for scams or repeated abuse.
+                </span>
               </label>
             </div>
 

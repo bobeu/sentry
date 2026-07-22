@@ -81,7 +81,22 @@ function dmMenuExtra(ctx: Context) {
 }
 
 async function replyDm(ctx: Context, text: string, withMenu = true) {
-  await ctx.reply(text, withMenu ? dmMenuExtra(ctx) : undefined);
+  const { splitTelegramMessage, toTelegramHtml } = await import(
+    "@/lib/telegram-message"
+  );
+  const chunks = splitTelegramMessage(text);
+  for (let i = 0; i < chunks.length; i++) {
+    const html = toTelegramHtml(chunks[i]);
+    const isLast = i === chunks.length - 1;
+    try {
+      await ctx.reply(html, {
+        parse_mode: "HTML",
+        ...(isLast && withMenu ? dmMenuExtra(ctx) : {}),
+      });
+    } catch {
+      await ctx.reply(chunks[i], isLast && withMenu ? dmMenuExtra(ctx) : undefined);
+    }
+  }
 }
 
 async function openEmployerMenu(ctx: Context) {
