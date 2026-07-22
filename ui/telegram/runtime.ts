@@ -118,12 +118,13 @@ export function capabilitiesSummary(username: string) {
     "• /announce and birthday celebrations (/birthday MM-DD)",
     "• Secretary Mode: connect me in Telegram Business → Chatbots",
     "• Notify you of @mentions (when linked)",
-    "• Employer DMs: reports, group status, past work, drafting help",
+    "• Employer DMs: tap the menu buttons, or ask in plain language",
     "• Wallet/deposit commands in DM",
     "",
-    `Try: ${tag} what is this group about?`,
-    "Employer DM: \"group status\", \"past work\", \"full report\", or sec: <reply>",
-    "Commands: /help /mywallet /balance /deposit /status /announce /birthday",
+    "DM tip: type / to open commands, or /menu for action buttons.",
+    `Try in a group: ${tag} what is this group about?`,
+    "Commands (DM): /menu /status /report /groups /mywallet",
+    "Commands (group): /ban /mute /announce /birthday /remember",
   ].join("\n");
 }
 

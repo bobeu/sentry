@@ -74,6 +74,13 @@ async function main() {
   }
   console.log(`Webhook set → ${webhookUrl}`);
 
+  // Register `/` command menus (private vs group scopes).
+  const { Telegraf } = await import("telegraf");
+  const { registerBotCommandMenu } = await import("../telegram/bot-commands");
+  const bot = new Telegraf(token as string);
+  await registerBotCommandMenu(bot);
+  console.log("Bot command menus registered");
+
   const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
   const info = await infoRes.json();
   console.log(

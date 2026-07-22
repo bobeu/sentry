@@ -1,7 +1,9 @@
 import { createBot } from "@/telegram/bot";
+import { registerBotCommandMenu } from "@/telegram/bot-commands";
 import type { Telegraf } from "telegraf";
 
 let bot: Telegraf | null = null;
+let commandsRegistered = false;
 
 function requireToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -11,12 +13,23 @@ function requireToken(): string {
   return token;
 }
 
+function ensureCommandMenu(instance: Telegraf) {
+  if (commandsRegistered) return;
+  commandsRegistered = true;
+  void registerBotCommandMenu(instance).catch((err) => {
+    commandsRegistered = false;
+    console.warn("[telegram] setMyCommands failed:", err);
+  });
+}
+
 export function getBot(): Telegraf {
   if (bot) {
+    ensureCommandMenu(bot);
     return bot;
   }
 
   bot = createBot(requireToken());
+  ensureCommandMenu(bot);
   return bot;
 }
 
