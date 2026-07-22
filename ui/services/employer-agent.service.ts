@@ -11,11 +11,19 @@ export type EmployerIntent =
   | "help"
   | "spam"
   | "employment"
+  | "agreement"
   | "general";
 
 export function detectEmployerIntent(text: string): EmployerIntent {
   const t = text.toLowerCase().trim();
   if (!t) return "help";
+  if (
+    /\b(agreement|contract|terms of (employment|service)|employment agreement|show (me )?(the )?agreement|read (the )?agreement)\b/.test(
+      t,
+    )
+  ) {
+    return "agreement";
+  }
   if (
     /\b(spam|moderat|removed|deleted|ban(ned)?|mute(d)?|how many.*(spam|message))\b/.test(
       t,
@@ -24,7 +32,7 @@ export function detectEmployerIntent(text: string): EmployerIntent {
     return "spam";
   }
   if (
-    /\b(employment|hire|salary|charge|billing|agreement|contract|what do you (cost|charge)|prepaid)\b/.test(
+    /\b(employment|hire|salary|charge|billing|what do you (cost|charge)|prepaid)\b/.test(
       t,
     )
   ) {
@@ -193,14 +201,16 @@ export class EmployerAgentService {
         reportLines.length ? reportLines.join("\n") : "- (none yet)",
       );
     }
-    if (intent === "status" || intent === "employment") {
+    if (intent === "status" || intent === "employment" || intent === "agreement") {
       sections.push(
         "",
         "Employment agreement (summary):",
+        "- Employer must Accept the Employment Agreement at hire; Reject cancels hire with no action.",
         "- Employer hires Sentry, funds the employment wallet on Celo, enables groups.",
-        "- Each completed billable action creates a charge; settlements run on-chain (instant or batch per SETTLEMENT_MODE).",
+        "- Each completed billable action creates a charge; settlements run on-chain.",
         "- Sentry stops billable work when available balance is exhausted.",
-        "- Capabilities: FAQ/KB answers, spam moderation (warn/delete/mute/ban), welcomes, summaries, secretary mode when connected.",
+        "- Privacy: group content used only for hired duties; Employer controls FAQs/KB/playbook.",
+        "- Employer may re-read the full agreement anytime via /agreement or Menu → Agreement.",
       );
     }
 
@@ -209,6 +219,19 @@ export class EmployerAgentService {
 
   async formatDirectReport(userId: string, intent: EmployerIntent) {
     if (intent === "spam") return this.buildSpamBrief(userId);
+    if (intent === "agreement") {
+      const { employmentService } = await import("@/services/employment.service");
+      const agreement = await employmentService.getAgreement(userId);
+      return [
+        agreement.title,
+        `Version ${agreement.version}`,
+        agreement.acceptedCurrent
+          ? "You have accepted this version for employment."
+          : "Not yet accepted for the current version — required before hire.",
+        "",
+        agreement.text,
+      ].join("\n");
+    }
     const brief = await this.buildOperationalBrief(userId, intent);
     if (intent === "status") return `Group & employment status\n\n${brief}`;
     if (intent === "work") return `Past work report\n\n${brief}`;

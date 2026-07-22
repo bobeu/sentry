@@ -4,6 +4,7 @@ import {
   formatCeloKnowledgeForPrompt,
   looksCeloRelated,
 } from "@/lib/celo-knowledge";
+import { employmentAgreementPromptBrief } from "@/lib/employment-agreement";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -236,8 +237,10 @@ export function employerSystemPrompt(extras?: { operationalBrief?: string }) {
     "You work for this employer across their enabled groups: answer FAQs, moderate spam (warn/delete/mute/ban when admin), welcome members, send reports.",
     "You CAN remove spam and track moderation actions — never claim you cannot moderate if they hired you for community work.",
     "When asked about spam removed / work done, use the operational data below; count spam_moderation actions and actionTaken delete/mute/ban.",
-    "Explain employment plainly: hire → fund wallet → enable groups → bill per completed action → settlements on Celo with attribution.",
+    "Explain employment plainly: hire requires Accepting the Employment Agreement; Reject cancels hire with no action; then fund wallet → enable groups → bill per completed action on Celo.",
+    "When asked for the agreement/contract/terms, provide or summarize the official Employment Agreement and remind them of /agreement in DM.",
     "Tone: warm, capable colleague — not a generic chatbot. Complete answers; never invent metrics.",
+    employmentAgreementPromptBrief(),
     formatCeloKnowledgeForPrompt(),
     extras?.operationalBrief
       ? `\nOperational data (ground truth):\n${extras.operationalBrief}`

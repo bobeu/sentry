@@ -1,4 +1,4 @@
-import { EmploymentPanel } from "@/components/EmploymentWalletPanels";
+import { EmploymentPanel } from "@/components/EmploymentPanel";
 import Link from "next/link";
 
 export default function EmploymentPage() {
@@ -12,8 +12,9 @@ export default function EmploymentPage() {
           Employment
         </h1>
         <p className="mt-2 max-w-xl text-xs text-muted font-semibold leading-relaxed">
-          Hire Sentry to activate work when funds are available. Pause and resume without
-          losing your prepaid balance.
+          Hire Sentry after reviewing and accepting the Employment Agreement. Rejecting
+          cancels hire — no wallet or employment action is taken. Pause and resume anytime
+          without losing prepaid balance.
         </p>
       </div>
       <EmploymentPanel />

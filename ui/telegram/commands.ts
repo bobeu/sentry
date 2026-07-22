@@ -283,6 +283,31 @@ export function registerCommands(bot: Telegraf) {
     await replyDm(ctx, brief.slice(0, 3900));
   });
 
+  bot.command("agreement", async (ctx) => {
+    if (!isPrivateChat(ctx)) {
+      await ctx.reply("Read the Employment Agreement in a private chat with me (/agreement).");
+      return;
+    }
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const linked = await findLinkedUserByTelegram(fromUserId);
+    if (!linked?.user || !fromUserId) {
+      await replyDm(
+        ctx,
+        "Link your Telegram ID in dashboard Settings, then ask again for the Employment Agreement.",
+      );
+      return;
+    }
+    await employerDmService.handleCallback({
+      data: "emp:agreement",
+      userId: linked.user.id,
+      telegramUserId: fromUserId,
+      answerCb: async () => undefined,
+      editOrReply: async (text, keyboard) => {
+        await ctx.reply(text, keyboard ? { reply_markup: keyboard } : dmMenuExtra(ctx));
+      },
+    });
+  });
+
   bot.command("status", async (ctx) => {
     const telegramUserId = ctx.from?.id ? String(ctx.from.id) : null;
     if (!telegramUserId) return;

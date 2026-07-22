@@ -23,6 +23,9 @@ function mainMenuKeyboard(): InlineKeyboard {
       ],
       [
         { text: "Report cadence", callback_data: "emp:cadence" },
+        { text: "Agreement", callback_data: "emp:agreement" },
+      ],
+      [
         { text: "Help", callback_data: "emp:help" },
       ],
     ],
@@ -165,6 +168,41 @@ export class EmployerDmService {
       await input.answerCb();
       const brief = await employerAgentService.buildSpamBrief(userId);
       await input.editOrReply(brief.slice(0, 3500), mainMenuKeyboard());
+      return true;
+    }
+
+    if (data === "emp:agreement") {
+      await input.answerCb();
+      const { employmentService } = await import("@/services/employment.service");
+      const { agreementChunksForTelegram } = await import(
+        "@/lib/employment-agreement"
+      );
+      const agreement = await employmentService.getAgreement(userId);
+      const chunks = agreementChunksForTelegram(agreement.text);
+      await input.editOrReply(
+        [
+          `${agreement.title}`,
+          `Version ${agreement.version}`,
+          agreement.acceptedCurrent
+            ? "Status: accepted for your current employment."
+            : "Status: not yet accepted for the current version (required at hire).",
+          "",
+          chunks[0] ?? "",
+        ]
+          .join("\n")
+          .slice(0, 3500),
+        mainMenuKeyboard(),
+      );
+      // Follow-up chunks as new messages via bot
+      if (chunks.length > 1) {
+        const { getBot } = await import("@/services/telegram.service");
+        const bot = getBot();
+        for (const chunk of chunks.slice(1, 5)) {
+          await bot.telegram
+            .sendMessage(Number(telegramUserId), chunk)
+            .catch(() => undefined);
+        }
+      }
       return true;
     }
 
