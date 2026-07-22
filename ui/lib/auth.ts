@@ -2,11 +2,15 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { isNonEmptyString } from "@/lib/helpers";
 import { randomBytes } from "crypto";
+import { isAddress } from "viem";
 
 const SESSION_COOKIE = "sentry_session";
 const SESSION_DAYS = 14;
 
-export async function loginWithEmail(email: string) {
+export async function loginWithEmail(
+  email: string,
+  options?: { walletAddress?: string | null },
+) {
   if (!isNonEmptyString(email)) {
     throw new Error("Email is required");
   }
@@ -23,6 +27,24 @@ export async function loginWithEmail(email: string) {
     },
   });
 
+  const walletAddress = options?.walletAddress?.trim();
+  if (walletAddress && isAddress(walletAddress)) {
+    const fresh = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        withdrawalAddress: true,
+        pendingWithdrawalAddress: true,
+      },
+    });
+    // Seed withdrawal destination from the connected EOA when none is set yet.
+    if (!fresh?.withdrawalAddress && !fresh?.pendingWithdrawalAddress) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { pendingWithdrawalAddress: walletAddress },
+      });
+    }
+  }
+
   const token = randomBytes(24).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
 
@@ -34,11 +56,23 @@ export async function loginWithEmail(email: string) {
     },
   });
 
+  const linked = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      id: true,
+      email: true,
+      withdrawalAddress: true,
+      pendingWithdrawalAddress: true,
+    },
+  });
+
   return {
     token,
     user: {
       id: user.id,
       email: user.email,
+      withdrawalAddress: linked?.withdrawalAddress ?? null,
+      pendingWithdrawalAddress: linked?.pendingWithdrawalAddress ?? null,
     },
   };
 }
