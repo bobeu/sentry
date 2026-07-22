@@ -435,7 +435,7 @@ export function WalletPanel() {
         <div className="space-y-2 max-w-xl text-left">
           <h1 className="text-xl font-black tracking-tight leading-tight">Employment Wallet Console</h1>
           <p className="text-[11px] text-white/80 leading-relaxed font-semibold">
-            Fund your employee's on-chain Celo wallet to execute smart contract operations, query data API logs, and settle automated task balances.
+            Fund your employee&apos;s on-chain Celo wallet to execute smart contract operations, query data API logs, and settle automated task balances.
           </p>
         </div>
         <div className="relative h-20 w-28 rounded-xl overflow-hidden border border-white/20 shrink-0">

@@ -164,7 +164,7 @@ export default function DocsPage() {
               <li>
                 <strong className="text-text-dark font-bold">Deposit from wallet:</strong> connect
                 MetaMask or MiniPay on the Wallet page, enter an amount, Deposit. Celo
-                transactions include Sentry's attribution tag for hackathon volume
+                transactions include Sentry&apos;s attribution tag for hackathon volume
                 tracking.
               </li>
               <li>
@@ -372,7 +372,7 @@ export default function DocsPage() {
                 structured operational brief.
               </li>
               <li>
-                <strong className="text-text-dark font-bold">Group detail:</strong> today's actions,
+                <strong className="text-text-dark font-bold">Group detail:</strong> today&apos;s actions,
                 spend, recent mentions, moderation events, and FAQ editor.
               </li>
             </ul>

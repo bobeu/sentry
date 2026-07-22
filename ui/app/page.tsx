@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { APP_NAME } from "@/lib/constants";
 
 type ChatMessage = {
   sender: string;
@@ -258,7 +257,7 @@ export default function HomePage() {
             {Object.entries(SIMULATED_CONVERSATIONS).map(([key, data]) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key as any)}
+                onClick={() => setActiveTab(key as "faq" | "spam" | "handover")}
                 className={`w-full text-left p-4 rounded-2xl border transition-all duration-300 cursor-pointer ${
                   activeTab === key
                     ? "bg-primary border-primary text-white shadow-md"

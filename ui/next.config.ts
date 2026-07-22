@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   transpilePackages: [],
   experimental: {},
+  // Large marketing PNGs in /public — skip sharp at build/runtime to avoid OOM hangs.
+  images: {
+    unoptimized: true,
+  },
   webpack: (config) => {
     config.resolve = config.resolve ?? {};
     config.resolve.alias = {

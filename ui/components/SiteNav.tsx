@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { APP_NAME } from "@/lib/constants";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 
 const primary = [

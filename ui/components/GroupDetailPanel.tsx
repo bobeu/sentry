@@ -662,7 +662,7 @@ export function GroupDetailPanel() {
               </div>
               <div className="px-5 pb-5 pt-2">
                 <h3 className="text-sm font-black text-text-dark">Dynamic Org Roles</h3>
-                <p className="mt-1 text-xs text-muted font-medium leading-relaxed">Assign roles from Technical Support agent to Channel Broadcaster depending on your group chat's structural needs.</p>
+                <p className="mt-1 text-xs text-muted font-medium leading-relaxed">Assign roles from Technical Support agent to Channel Broadcaster depending on your group chat&apos;s structural needs.</p>
               </div>
             </div>
           </div>
