@@ -12,12 +12,16 @@ import {
 } from "@/services/admin-moderation.service";
 import { announcementService } from "@/services/announcement.service";
 import { birthdayService } from "@/services/birthday.service";
+import { employerDmService } from "@/services/employer-dm.service";
+import { employerAgentService } from "@/services/employer-agent.service";
 import {
   botUsername,
   capabilitiesSummary,
   chatIdOf,
+  findLinkedUserByTelegram,
   isAdminSender,
   isGroupChat,
+  isPrivateChat,
   resolveGroupRuntime,
 } from "@/telegram/runtime";
 
@@ -68,6 +72,40 @@ async function walletMessage(telegramUserId: string) {
 function commandArgs(ctx: Context, command: string) {
   const text = ctx.message && "text" in ctx.message ? ctx.message.text : "";
   return text.replace(new RegExp(`^/${command}(@\\w+)?\\s*`, "i"), "").trim();
+}
+
+/** Inline employer menus are DM-only — never attach in groups. */
+function dmMenuExtra(ctx: Context) {
+  if (!isPrivateChat(ctx)) return undefined;
+  return { reply_markup: employerDmService.mainMenuKeyboard() };
+}
+
+async function replyDm(ctx: Context, text: string, withMenu = true) {
+  await ctx.reply(text, withMenu ? dmMenuExtra(ctx) : undefined);
+}
+
+async function openEmployerMenu(ctx: Context) {
+  if (!isPrivateChat(ctx)) {
+    await ctx.reply("Open a private chat with me to use the employer action menu.");
+    return;
+  }
+  const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+  const linked = await findLinkedUserByTelegram(fromUserId);
+  const displayName = ctx.from?.username ?? ctx.from?.first_name ?? undefined;
+  if (linked?.user && fromUserId) {
+    await employerDmService.sendWelcome(fromUserId, linked.user.id, displayName);
+    return;
+  }
+  const username = await botUsername(ctx);
+  await replyDm(
+    ctx,
+    [
+      capabilitiesSummary(username),
+      "",
+      "Sign in on the dashboard and link your Telegram user ID under Settings to unlock the full employer menu.",
+      "Tip: type / to see available commands.",
+    ].join("\n"),
+  );
 }
 
 async function runModerationCommand(ctx: Context, action: ModerationAction) {
@@ -160,24 +198,89 @@ async function runModerationCommand(ctx: Context, action: ModerationAction) {
 
 export function registerCommands(bot: Telegraf) {
   bot.start(async (ctx) => {
+    if (isPrivateChat(ctx)) {
+      await openEmployerMenu(ctx);
+      return;
+    }
     const username = await botUsername(ctx);
     await ctx.reply(
       [
         capabilitiesSummary(username),
         "",
-        "Employers: hire & fund Sentry in the web app, add me to a group, then enable the group.",
-        "Members: ask questions or mention me — I'll help using FAQs and live chat context.",
-        "",
-        "Secretary Mode: Telegram → Settings → Business → Chatbots → connect @" +
-          (username || "tgemployee_bot") +
-          " so I can read/reply in your selected personal chats.",
+        "I'm here for this group. Admins: enable community mode in the dashboard.",
+        "Type / to see group commands (moderation, announce, birthday).",
       ].join("\n"),
     );
   });
 
   bot.help(async (ctx) => {
+    if (isPrivateChat(ctx)) {
+      await openEmployerMenu(ctx);
+      return;
+    }
     const username = await botUsername(ctx);
     await ctx.reply(capabilitiesSummary(username));
+  });
+
+  bot.command("menu", async (ctx) => {
+    await openEmployerMenu(ctx);
+  });
+
+  bot.command("report", async (ctx) => {
+    if (!isPrivateChat(ctx)) {
+      await ctx.reply("Ask for a work report in a private chat with me.");
+      return;
+    }
+    const linked = await findLinkedUserByTelegram(
+      ctx.from?.id ? String(ctx.from.id) : null,
+    );
+    if (!linked?.user) {
+      await replyDm(ctx, "Link your Telegram ID in dashboard Settings first.");
+      return;
+    }
+    const report = await employerAgentService.formatDirectReport(
+      linked.user.id,
+      "report",
+    );
+    await replyDm(ctx, report.slice(0, 3900));
+  });
+
+  bot.command("groups", async (ctx) => {
+    if (!isPrivateChat(ctx)) {
+      await ctx.reply("Manage groups from a private chat with me (/menu).");
+      return;
+    }
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const linked = await findLinkedUserByTelegram(fromUserId);
+    if (!linked?.user || !fromUserId) {
+      await replyDm(ctx, "Link your Telegram ID in dashboard Settings first.");
+      return;
+    }
+    await employerDmService.handleCallback({
+      data: "emp:groups",
+      userId: linked.user.id,
+      telegramUserId: fromUserId,
+      answerCb: async () => undefined,
+      editOrReply: async (text, keyboard) => {
+        await ctx.reply(text, keyboard ? { reply_markup: keyboard } : dmMenuExtra(ctx));
+      },
+    });
+  });
+
+  bot.command("spam", async (ctx) => {
+    if (!isPrivateChat(ctx)) {
+      await ctx.reply("Spam summaries are available in a private chat with me.");
+      return;
+    }
+    const linked = await findLinkedUserByTelegram(
+      ctx.from?.id ? String(ctx.from.id) : null,
+    );
+    if (!linked?.user) {
+      await replyDm(ctx, "Link your Telegram ID in dashboard Settings first.");
+      return;
+    }
+    const brief = await employerAgentService.buildSpamBrief(linked.user.id);
+    await replyDm(ctx, brief.slice(0, 3900));
   });
 
   bot.command("status", async (ctx) => {
@@ -188,7 +291,10 @@ export function registerCommands(bot: Telegraf) {
       include: { user: { include: { employment: true, wallet: true } } },
     });
     if (!settings?.user) {
-      await ctx.reply("No linked dashboard account. Connect your Telegram user ID in Settings.");
+      await replyDm(
+        ctx,
+        "No linked dashboard account. Connect your Telegram user ID in Settings.",
+      );
       return;
     }
     let available: number | null = null;
@@ -197,14 +303,19 @@ export function registerCommands(bot: Telegraf) {
     } catch {
       available = null;
     }
-    await ctx.reply(
+    await replyDm(
+      ctx,
       [
         `Account: ${settings.user.email}`,
         `Employment: ${settings.user.employment?.status ?? "Inactive"}`,
         `Wallet: ${settings.user.wallet?.address ?? "none"}`,
-        available == null ? "Available balance: (unavailable)" : `Available balance: ${available}`,
+        available == null
+          ? "Available balance: (unavailable)"
+          : `Available balance: ${available}`,
         "",
-        "I'm an AI agent on Telegram — mention me in an enabled group or chat here in DM.",
+        isPrivateChat(ctx)
+          ? "Use the buttons below, or type / for more commands."
+          : "DM me for the employer action menu.",
       ].join("\n"),
     );
   });
@@ -351,20 +462,20 @@ export function registerCommands(bot: Telegraf) {
     const userId = ctx.from?.id ? String(ctx.from.id) : null;
     if (!userId) return;
     const text = await walletMessage(userId);
-    await ctx.reply(text).catch(() => undefined);
+    await replyDm(ctx, text);
   });
 
   bot.command("balance", async (ctx) => {
     const userId = ctx.from?.id ? String(ctx.from.id) : null;
     if (!userId) return;
     const text = await walletMessage(userId);
-    await ctx.reply(text).catch(() => undefined);
+    await replyDm(ctx, text);
   });
 
   bot.command("deposit", async (ctx) => {
     const userId = ctx.from?.id ? String(ctx.from.id) : null;
     if (!userId) return;
     const text = await walletMessage(userId);
-    await ctx.reply(text).catch(() => undefined);
+    await replyDm(ctx, text);
   });
 }

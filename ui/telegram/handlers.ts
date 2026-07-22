@@ -459,7 +459,11 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   const linked = await findLinkedUserByTelegram(fromUserId);
   const username = await botUsername(ctx);
   const displayName = ctx.from?.username ?? ctx.from?.first_name ?? undefined;
-  const isStart = /^\/start(?:@\w+)?(?:\s|$)/i.test(text.trim());
+
+  // Slash commands are handled exclusively by registerCommands (menus stay DM-scoped there).
+  if (text.trim().startsWith("/")) {
+    return;
+  }
 
   if (!linked?.user) {
     await ctx.reply(
@@ -467,7 +471,9 @@ async function handlePrivateAgent(ctx: Context, text: string) {
         capabilitiesSummary(username),
         "",
         "Personal mode: sign in on the dashboard and link your Telegram user ID under Settings, then hire & fund Sentry.",
+        "Tip: type / for commands, or /menu after linking.",
       ].join("\n"),
+      { reply_markup: employerDmService.mainMenuKeyboard() },
     );
     return;
   }
@@ -475,11 +481,6 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   const user = linked.user;
   const active = user.employment?.status === "Active";
   const cleaned = stripBotMention(text, username) || text;
-
-  if (isStart) {
-    await employerDmService.sendWelcome(fromUserId!, user.id, displayName);
-    return;
-  }
 
   const intent = detectEmployerIntent(cleaned);
 
@@ -507,7 +508,7 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     }
   }
 
-  if (intent === "help" || shouldOfferHelpOnly(text, username) || /\/help/i.test(text)) {
+  if (intent === "help" || shouldOfferHelpOnly(text, username)) {
     await employerDmService.sendWelcome(fromUserId!, user.id, displayName);
     return;
   }
