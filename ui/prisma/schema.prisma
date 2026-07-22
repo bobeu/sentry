@@ -67,6 +67,7 @@ enum ReportKind {
   daily
   shift
   proof
+  work
 }
 
 enum PlaybookSource {
@@ -194,6 +195,9 @@ model GroupSettings {
   announcementsEnabled  Boolean       @default(true)
   birthdaysEnabled      Boolean       @default(true)
   birthdayHourUtc       Int           @default(9)
+  /// Employer work-report cadence in hours (default 24). Scheduler checks hourly.
+  workReportIntervalHours Int         @default(24)
+  lastWorkReportAt      DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 }

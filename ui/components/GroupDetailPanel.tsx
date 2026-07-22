@@ -78,6 +78,7 @@ export function GroupDetailPanel() {
     spamModeration: true,
     mentionNotifications: true,
     dailySummaryHour: 9,
+    workReportIntervalHours: 24,
     shiftHandover: true,
     escalationLadder: true,
     livingPlaybook: true,
@@ -136,6 +137,7 @@ export function GroupDetailPanel() {
       spamModeration: g.settings?.spamModeration ?? true,
       mentionNotifications: g.settings?.mentionNotifications ?? true,
       dailySummaryHour: g.settings?.dailySummaryHour ?? 9,
+      workReportIntervalHours: g.settings?.workReportIntervalHours ?? 24,
       shiftHandover: g.settings?.shiftHandover ?? true,
       escalationLadder: g.settings?.escalationLadder ?? true,
       livingPlaybook: g.settings?.livingPlaybook ?? true,
@@ -617,6 +619,25 @@ export function GroupDetailPanel() {
                   }
                   className="mt-2 w-28 rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary font-mono text-xs font-normal"
                 />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Employer work report every (hours)
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={settings.workReportIntervalHours}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      workReportIntervalHours: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-2 w-28 rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary font-mono text-xs font-normal"
+                />
+                <span className="mt-1 block font-normal text-[10px] text-muted">
+                  Default 24. Sentry DMs you a work summary on this cadence.
+                </span>
               </label>
               <label className="block text-xs font-bold text-muted">
                 Birthday Congratulate Hour (UTC 0-23)

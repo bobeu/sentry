@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "GroupSettings" ADD COLUMN IF NOT EXISTS "workReportIntervalHours" INTEGER NOT NULL DEFAULT 24;
+ALTER TABLE "GroupSettings" ADD COLUMN IF NOT EXISTS "lastWorkReportAt" TIMESTAMP(3);

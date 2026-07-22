@@ -63,6 +63,16 @@ export class SchedulerService {
       });
     });
 
+    cron.schedule("20 * * * *", async () => {
+      await this.runJob("employer work reports", async () => {
+        const { workReportService } = await import(
+          "@/services/work-report.service"
+        );
+        await workReportService.runHourlyPass();
+        console.log("[scheduler] employer work reports pass");
+      });
+    });
+
     cron.schedule("*/15 * * * *", async () => {
       await this.runJob("employment reminders", async () => {
         const paused = await prisma.employment.findMany({
