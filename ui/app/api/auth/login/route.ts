@@ -4,13 +4,14 @@ import { z } from "zod";
 
 const bodySchema = z.object({
   email: z.string().email(),
+  walletAddress: z.string().optional().nullable(),
 });
 
 export async function POST(request: Request) {
   try {
     const json = await request.json();
-    const { email } = bodySchema.parse(json);
-    const session = await loginWithEmail(email);
+    const { email, walletAddress } = bodySchema.parse(json);
+    const session = await loginWithEmail(email, { walletAddress });
     await setSessionCookie(session.token);
     return NextResponse.json(session);
   } catch (error) {

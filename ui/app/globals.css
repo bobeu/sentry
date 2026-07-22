@@ -74,7 +74,7 @@ a {
 .surface-card {
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 1.75rem;
+  border-radius: 0.75rem;
   box-shadow: 
     0 4px 20px rgba(0, 82, 255, 0.03),
     0 1px 2px rgba(0, 0, 0, 0.05);

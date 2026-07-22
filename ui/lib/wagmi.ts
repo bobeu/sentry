@@ -1,6 +1,6 @@
-import { http, createConfig } from "wagmi";
+import { http } from "wagmi";
+import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { celo } from "wagmi/chains";
-import { injected, walletConnect } from "wagmi/connectors";
 
 export const isMiniPay = (): boolean => {
   if (typeof window === "undefined") return false;
@@ -33,30 +33,24 @@ const rpc =
 
 const projectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_ID?.trim() ||
-  "00000000000000000000000000000000";
+  "444e8c9b1c9d0a1e5f2b2c3d4e5f6a7";
 
-export const wagmiConfig = createConfig({
+const appUrl =
+  process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+  "https://sentry-sigma-two.vercel.app";
+
+export const wagmiConfig = getDefaultConfig({
+  appName: "Sentry",
+  projectId,
+  appDescription: "AI employee for Telegram communities on Celo",
+  appUrl,
+  appIcon: `${appUrl.replace(/\/$/, "")}/logo.png`,
   chains: [celo],
-  connectors: [
-    injected({ shimDisconnect: true }),
-    walletConnect({
-      projectId,
-      metadata: {
-        name: "Sentry",
-        description: "AI employee for Telegram communities on Celo",
-        url:
-          process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-          "https://sentry-sigma-two.vercel.app",
-        icons: [],
-      },
-      showQrModal: true,
-    }),
-  ],
+  ssr: true,
+  multiInjectedProviderDiscovery: true,
   transports: {
     [celo.id]: http(rpc),
   },
-  ssr: true,
-  multiInjectedProviderDiscovery: true,
 });
 
 declare module "wagmi" {

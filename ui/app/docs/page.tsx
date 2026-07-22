@@ -71,7 +71,7 @@ export default function DocsPage() {
                 <Link href="/login" className="text-primary font-bold hover:underline">
                   Sign in
                 </Link>{" "}
-                and enter your email (creates an account on first use).
+                with your Celo wallet and email (creates an account on first use).
               </li>
               <li>
                 Go to{" "}
