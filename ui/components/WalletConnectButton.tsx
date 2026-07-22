@@ -19,8 +19,8 @@ export function WalletConnectButton() {
 
   if (implicit) {
     return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--accent)]">
-        <span className="status-pulse h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+      <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary">
+        <span className="status-pulse h-1.5 w-1.5 rounded-full bg-primary" />
         MiniPay connected
       </span>
     );
@@ -34,7 +34,7 @@ export function WalletConnectButton() {
           <button
             type="button"
             onClick={() => switchChain({ chainId: celo.id })}
-            className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-100"
+            className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs font-bold text-text-dark"
           >
             Switch to Celo
           </button>
@@ -42,7 +42,7 @@ export function WalletConnectButton() {
         <button
           type="button"
           onClick={() => disconnect()}
-          className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-[#e8f5d8] transition hover:border-[var(--accent)]/40"
+          className="rounded-full border border-primary/20 bg-white px-3 py-1.5 text-xs font-bold text-text-dark transition hover:border-primary hover:text-primary shadow-sm"
         >
           {address.slice(0, 6)}…{address.slice(-4)}
         </button>
@@ -56,17 +56,17 @@ export function WalletConnectButton() {
         type="button"
         disabled={isPending}
         onClick={() => setOpen((v) => !v)}
-        className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#061008] transition hover:brightness-110 disabled:opacity-60"
+        className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition hover:bg-primary/90 disabled:opacity-60 shadow-sm"
       >
         {isPending ? "Connecting…" : "Connect wallet"}
       </button>
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 min-w-[12rem] overflow-hidden rounded-xl border border-white/15 bg-[#101610] shadow-xl">
+        <div className="absolute right-0 z-50 mt-2 min-w-[12rem] overflow-hidden rounded-2xl border border-primary/10 bg-white shadow-xl">
           {connectors.map((connector) => (
             <button
               key={connector.uid}
               type="button"
-              className="block w-full px-4 py-2.5 text-left text-sm text-[#e8f5d8] transition hover:bg-white/5"
+              className="block w-full px-4 py-2.5 text-left text-xs font-bold text-text-dark transition hover:bg-primary/5 hover:text-primary"
               onClick={() => {
                 connect({ connector, chainId: celo.id });
                 setOpen(false);
@@ -80,3 +80,4 @@ export function WalletConnectButton() {
     </div>
   );
 }
+

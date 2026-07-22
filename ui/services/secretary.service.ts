@@ -314,7 +314,6 @@ export class SecretaryService {
     if (!pending.pendingDraft || !pending.pendingChatId || !conn.canReply) {
       return false;
     }
-    const bot = getBot();
     await sendAsBusiness(
       Number(pending.pendingChatId),
       pending.pendingDraft,

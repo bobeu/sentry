@@ -2,19 +2,19 @@ import type { ReactNode } from "react";
 
 type CardProps = {
   title: string;
-  value: string | number;
+  value: ReactNode;
   description?: string;
   children?: ReactNode;
 };
 
 export function Card({ title, value, description, children }: CardProps) {
   return (
-    <div className="surface-card p-6 backdrop-blur">
-      <p className="text-sm uppercase tracking-[0.18em] text-[#9aa89a]">{title}</p>
-      <p className="mt-3 font-[family-name:var(--font-display)] text-3xl text-[#f4f7f0]">
+    <div className="surface-card p-6 border border-primary/10">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">{title}</p>
+      <div className="mt-3 font-sans text-2xl font-black text-text-dark">
         {value}
-      </p>
-      {description ? <p className="mt-2 text-sm text-[#b7c4b5]">{description}</p> : null}
+      </div>
+      {description ? <p className="mt-2 text-xs font-semibold text-muted">{description}</p> : null}
       {children}
     </div>
   );

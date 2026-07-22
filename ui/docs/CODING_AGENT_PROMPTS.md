@@ -6809,3 +6809,99 @@ At the end, provide:
 
 ---
 
+Sentry’s edge isn’t “another smart bot” — it’s a **hireable on-chain employee** that lives where community already happens (Telegram) and gets paid from a wallet. Lean into that, not into more FAQ matching.
+
+### Positioning that makes people hire
+Sell **outcomes employers pay for**, not capabilities:
+- “Keeps the group useful while you sleep”
+- “Turns chat noise into decisions and follow-ups”
+- “Only works when funded — like a real contractor”
+
+---
+
+### Wow features worth building
+
+**1. Shift handover (the “employee” moment)**  
+Each morning/evening the employer gets a private brief: what happened, who’s angry, what’s unanswered, what Sentry already handled, what needs a human. Feels like a real staffer clocking out — not a bot dump.
+
+**2. Trust & escalation ladder**  
+Sentry answers routine stuff alone; ambiguous/high-stakes items get a draft + “Approve / Edit / Ignore” in DM. Businesses hire agents they can **supervise**, not agents that freestyle forever.
+
+**3. Living playbook (learns from the employer)**  
+When the employer corrects a reply, Sentry stores it as policy (“we never promise refunds in public”). Over time it becomes *their* employee, not a generic LLM. Switching cost = moat.
+
+**4. Revenue / conversion sensing (for product & Web3 groups)**  
+Detect buying intent, support crises, scam patterns, and “where do I buy / claim / bridge?” — then route: answer FAQ, DM the right link, or ping sales/admin. That’s ROI language founders understand.
+
+**5. Proof-of-work ledger employers can share**  
+A public-ish weekly card: messages handled, spam stopped, questions resolved, CELO spent, estimated hours saved. Makes hiring Sentry **braggable** and ties perfectly to Celo/agent payments.
+
+**6. Multi-group “org chart” mode**  
+One hire → many communities, with different personas (support vs. announcements vs. VIP). Businesses don’t want 5 bots; they want **one employee with roles**.
+
+**7. Incident mode* *  
+One command or auto-detect (“hack”, “rug”, “outage”) → calm template replies, pin guidance, mute chaos, alert admins with a timeline. In crypto Telegram, this alone can justify the salary.
+
+**8. Member memory (with consent)**  
+“You asked about vesting last week — here’s the update.” Feels personal; most bots are amnesiac. Pair with clear privacy controls so it feels premium, not creepy.
+
+**9. Hire-in-Telegram loop**  
+Someone tags Sentry in a wild group → short demo reply → “Hire me for this community” deep link with prepaid wallet. Growth happens **inside Telegram**, not only on a landing page.
+
+**10. Agent-to-agent / pay-per-task (DeFAI-native)**  
+Other agents or tools can request “summarize this thread” or “answer this FAQ pack” and settle in CELO. That’s uniquely *your* stack, not ChatGPT-in-a-bot.
+
+---
+
+### What I’d ship first (highest “want to hire” per effort)
+1. **Shift handover + escalation approvals** — instantly feels like employment  
+2. **Living playbook from corrections** — becomes sticky  
+3. **Incident mode** — crypto/community killer feature  
+4. **Proof-of-work spend report** — makes the wallet fee feel fair
+
+If you want one sentence for the homepage: **Sentry is the Telegram employee you fund, supervise, and measure — not another bot you hope remembers your FAQ.**
+
+---
+
+**1. Can Sentry answer without being tagged?**
+
+**Yes — but only if Telegram actually delivers the message to the bot.**
+
+Telegram does not give every bot every group message by default. Without a tag/reply, Sentry can only see and answer chat when:
+
+- it’s a **group admin**, or  
+- **privacy mode is off** in BotFather (`/setprivacy` → Disable)
+
+If neither is true, the bot simply never receives most messages, so no agent logic can run — tagging (or replying to Sentry) is required.
+
+When those conditions *are* met and community Q&A is enabled/funded, Sentry is already designed to answer questions **without** a mention (FAQs / question-like messages). Mentions still work as a fallback when visibility is limited.
+
+So: **possible in product terms, yes; possible in practice, only with admin (or privacy off).**
+
+---
+
+**2. Can a regular group member hire Sentry to watch patterns / daily digests for them?**
+
+**Conceptually yes. With the product as it exists today, not really.**
+
+What you’re describing is a strong “personal analyst” hire:
+
+- member hires + funds their own wallet  
+- asks Sentry to watch a **shared** Celo group for themes (airdrops, bounties, announcements, etc.)  
+- pays per completed task (daily summary, alerts, etc.)
+
+That’s viable as a direction, but it is **not** how Sentry works now. Today the model is closer to: **one employer enables the group, funds work for that community, and is billed.** A random developer in the group can’t independently “contract” Sentry for private monitoring of that group the way an employer can hire it for the whole community.
+
+Also honesty checks on feasibility:
+
+- **Visibility:** same Telegram rule — Sentry must already see the group traffic (admin / privacy off). A member can’t secretly give the bot access the bot doesn’t have.  
+- **Privacy / trust:** scanning a whole group for one member’s private digests is sensitive; you’d want clear consent, scope, and ideally admin awareness.  
+- **Billing:** doable (member wallet, per-task charges), but it’s a **new hiring surface**, not a small toggle.  
+- **Noise vs. value:** “summarize everything daily + flag airdrops/bounties” is exactly the kind of paid recurring job that fits the employee metaphor — if scoped well so it doesn’t spam or hallucinate “opportunities.”
+
+**Bottom line:**  
+(1) Untagged answers are possible **when the bot can see the chat**.  
+(2) Member-as-customer monitoring of a shared group is a **good hireable product idea**, but it would be a deliberate new mode — not something members can do today just because Sentry is already admin for the group’s employer.
+
+---
+

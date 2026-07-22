@@ -57,19 +57,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((item) => (
           <div
             key={item.id}
-            className={`pointer-events-auto animate-toast-in rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur-md ${
+            className={`pointer-events-auto animate-toast-in rounded-2xl border px-4 py-3 text-sm shadow-lg ${
               item.kind === "error"
-                ? "border-red-400/30 bg-[#2a1212]/92 text-red-100"
+                ? "border-alert/25 bg-white text-alert"
                 : item.kind === "success"
-                  ? "border-[var(--accent)]/35 bg-[#102016]/95 text-[#dff7e8]"
-                  : "border-white/15 bg-[#121812]/95 text-[#e8f5d8]"
+                  ? "border-accent/30 bg-white text-text-dark"
+                  : "border-primary/15 bg-white text-text-dark"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-              <p>{item.message}</p>
+              <p className="font-semibold text-xs leading-relaxed">{item.message}</p>
               <button
                 type="button"
-                className="text-xs opacity-70 transition hover:opacity-100"
+                className="text-xs opacity-50 transition hover:opacity-100 shrink-0"
                 onClick={() => dismiss(item.id)}
                 aria-label="Dismiss"
               >

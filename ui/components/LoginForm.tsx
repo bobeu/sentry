@@ -31,26 +31,31 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-8 max-w-md space-y-4">
-      <label className="block text-sm text-[#9aa89a]">
-        Email
+    <form onSubmit={onSubmit} className="space-y-5">
+      <label className="block text-xs font-bold uppercase tracking-wider text-muted">
+        Corporate Email Address
         <input
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-[#e8f5d8] outline-none focus:border-[#35d07f]"
+          className="mt-2.5 w-full rounded-xl border border-primary/20 bg-white px-4 py-3 text-text-dark outline-none focus:border-primary transition text-sm font-normal placeholder:text-muted/60"
           placeholder="you@company.com"
         />
       </label>
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {error && (
+        <p className="text-xs text-alert font-bold bg-alert/10 border border-alert/20 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         disabled={loading}
-        className="rounded-full bg-[#35d07f] px-6 py-3 text-sm font-semibold text-[#061008] disabled:opacity-60"
+        className="w-full rounded-full bg-primary px-6 py-3.5 text-xs font-bold text-white shadow hover:bg-primary/95 cursor-pointer disabled:opacity-60 transition"
       >
-        {loading ? "Signing in…" : "Sign in"}
+        {loading ? "Verifying Credentials…" : "Establish Connection"}
       </button>
     </form>
   );
 }
+
