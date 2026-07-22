@@ -7,6 +7,10 @@ import { faqService } from "@/services/faq.service";
 import { knowledgeService } from "@/services/knowledge.service";
 import { Errors } from "@/lib/errors";
 import { UNCERTAIN_REPLY } from "@/lib/messages";
+import {
+  formatCeloKnowledgeForPrompt,
+  looksCeloRelated,
+} from "@/lib/celo-knowledge";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -55,6 +59,7 @@ function systemRules(extras?: {
   personaRole?: string | null;
   personaTone?: string | null;
   memberNote?: string | null;
+  includeCelo?: boolean;
 }) {
   const parts = [
     "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee.",
@@ -63,8 +68,12 @@ function systemRules(extras?: {
     "Always finish your answer — never stop mid-sentence or mid-list. If space is tight, prioritize completeness over fluff.",
     "Never invent policies or facts. Prefer FAQs and knowledge-base excerpts over speculation.",
     "Never claim to be human.",
+    "You can moderate spam (warn/delete/mute/ban when admin) and answer community questions.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];
+  if (extras?.includeCelo) {
+    parts.push(formatCeloKnowledgeForPrompt());
+  }
   if (extras?.personaRole && extras.personaRole !== "default") {
     parts.push(
       `Persona role for this group: ${extras.personaRole}.` +
@@ -77,16 +86,18 @@ function systemRules(extras?: {
   if (extras?.memberNote) {
     parts.push(`Consented member memory note: ${extras.memberNote}`);
   }
-  return parts.join(" ");
+  return parts.join("\n");
 }
 
 function employerSystemRules() {
   return [
-    systemRules(),
+    systemRules({ includeCelo: true }),
     "This is a private DM with the employer who hired you.",
-    "You can explain past work, group status, wallet/funding needs, and draft community replies.",
+    "You work as their employee across enabled Telegram groups: moderate spam, answer FAQs/KB, welcome members, send reports.",
+    "You CAN remove spam and track moderation — never claim you cannot.",
+    "Explain past work, group status, wallet/funding, and employment agreement using operational data when provided.",
     "When operational data is provided below, ground your answer in it. Do not invent metrics.",
-  ].join(" ");
+  ].join("\n");
 }
 
 function formatContext(context: ContextBundle) {
@@ -408,6 +419,7 @@ export class AiService {
       personaRole: input.personaRole,
       personaTone: input.personaTone,
       memberNote: input.memberNote,
+      includeCelo: looksCeloRelated(input.userQuestion),
     });
 
     const text = await callLLM(
@@ -420,6 +432,9 @@ export class AiService {
             "",
             "Agent tool results (use these to narrow and ground your reply):",
             toolBlock,
+            looksCeloRelated(input.userQuestion)
+              ? `\nCelo ecosystem references (link official sources; do not invent addresses):\n${formatCeloKnowledgeForPrompt()}`
+              : "",
             "",
             `User (${input.userName ?? "member"}) asked:`,
             input.userQuestion,
@@ -427,7 +442,9 @@ export class AiService {
             "Write a complete, helpful reply grounded in the tool results and group context.",
             "Use as many sentences or short paragraphs as needed — do not cut off mid-thought.",
             "If tool results fully answer the question, prefer them. If not, say what is known and what is not.",
-          ].join("\n"),
+          ]
+            .filter(Boolean)
+            .join("\n"),
         },
       ],
       DEFAULT_REPLY_TOKENS,

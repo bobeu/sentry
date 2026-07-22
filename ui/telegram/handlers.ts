@@ -5,6 +5,9 @@ import { contextService } from "@/services/context.service";
 import { aiService } from "@/services/ai.service";
 import { actionService } from "@/services/action.service";
 import { moderationService } from "@/services/moderation.service";
+import { moderationAgent } from "@/services/moderation-agent.service";
+import { generateEmployerAnswer } from "@/services/moderation-agent.service";
+import { adminModerationService } from "@/services/admin-moderation.service";
 import { notificationService } from "@/services/notification.service";
 import { prisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/logger";
@@ -15,6 +18,7 @@ import {
   detectEmployerIntent,
   employerAgentService,
 } from "@/services/employer-agent.service";
+import { employerDmService } from "@/services/employer-dm.service";
 import { playbookService } from "@/services/playbook.service";
 import {
   escalationService,
@@ -99,11 +103,23 @@ async function replyTo(
   }
 }
 
-async function replyPlain(ctx: Context, text: string) {
-  for (const chunk of splitTelegramMessage(text)) {
-    await ctx.reply(chunk).catch((err) => {
-      console.warn("[telegram:replyPlain]", err);
-    });
+async function replyPlain(
+  ctx: Context,
+  text: string,
+  extra?: { reply_markup?: ReturnType<typeof employerDmService.mainMenuKeyboard> },
+) {
+  const chunks = splitTelegramMessage(text);
+  for (let i = 0; i < chunks.length; i++) {
+    await ctx
+      .reply(
+        chunks[i],
+        i === chunks.length - 1 && extra?.reply_markup
+          ? { reply_markup: extra.reply_markup }
+          : undefined,
+      )
+      .catch((err) => {
+        console.warn("[telegram:replyPlain]", err);
+      });
   }
 }
 
@@ -117,39 +133,30 @@ async function handleModeration(
   if (!runtime.communityMode || !runtime.group.settings?.spamModeration) return false;
   if (!runtime.billable || !runtime.employerUserId) return false;
 
-  const verdict = moderationService.inspect({
+  const heuristic = moderationService.inspect({
     text,
     fromUserId,
     groupId: runtime.group.id,
   });
-  if (!verdict.spam) return false;
 
-  const confidence = verdict.confidence ?? 0;
-  let actionTaken: "warn" | "notify_admin" | "delete" = "warn";
+  const decision = await moderationAgent.decide({
+    text,
+    groupName: runtime.group.name ?? runtime.group.telegramId,
+    groupRules: runtime.group.rules,
+    fromUsername,
+    heuristic,
+  });
+
+  if (decision.action === "ignore") return false;
+
   const telegramId = chatIdOf(ctx) ?? runtime.group.telegramId;
+  let actionTaken: "warn" | "delete" | "mute" | "ban" = "warn";
+  const settings = runtime.group.settings;
+  const canAdmin =
+    settings?.adminModeration !== false && Boolean(fromUserId);
 
-  if (confidence < 0.7) {
-    await ctx
-      .reply(
-        `Heads up — this looks off (${verdict.reason ?? "spam"}). Please keep the chat constructive.`,
-      )
-      .catch(() => undefined);
-  } else if (confidence <= 0.9) {
-    await ctx
-      .reply(
-        `This may be spam (${verdict.reason ?? "spam"}). I've flagged it for admins.`,
-      )
-      .catch(() => undefined);
-    for (const adminId of runtime.adminTelegramIds.slice(0, 5)) {
-      await ctx.telegram
-        .sendMessage(
-          Number(adminId),
-          `Sentry moderation in ${runtime.group.name ?? telegramId}: possible spam (${verdict.reason}, ${(confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
-        )
-        .catch(() => undefined);
-    }
-    actionTaken = "notify_admin";
-  } else {
+  // Prefer removing the message for delete / mute / ban.
+  if (decision.action === "delete" || decision.action === "mute" || decision.action === "ban") {
     let deleted = false;
     try {
       if (ctx.message && "message_id" in ctx.message) {
@@ -157,30 +164,64 @@ async function handleModeration(
         deleted = true;
       }
     } catch {
-      // no delete permission
+      // missing delete permission
     }
+    if (deleted) actionTaken = "delete";
+
+    if (canAdmin && fromUserId && (decision.action === "mute" || decision.action === "ban")) {
+      try {
+        await adminModerationService.execute({
+          groupId: runtime.group.id,
+          telegramChatId: telegramId,
+          employerUserId: runtime.employerUserId,
+          billable: false,
+          action: decision.action,
+          targetUserId: fromUserId,
+          durationSec: decision.action === "mute" ? 3600 : undefined,
+          reason: decision.reason,
+          roseRelayEnabled: Boolean(settings?.roseRelayEnabled),
+          roseBotUsername: settings?.roseBotUsername,
+        });
+        actionTaken = decision.action;
+      } catch (err) {
+        console.warn("[moderation:restrict]", err);
+      }
+    }
+
     await ctx
       .reply(
-        deleted
-          ? `Removed a high-confidence spam message (${verdict.reason ?? "spam"}).`
-          : `High-confidence spam (${verdict.reason ?? "spam"}), but I need delete permission to remove it.`,
+        actionTaken === "ban"
+          ? `Removed spam and banned the sender (${decision.reason}).`
+          : actionTaken === "mute"
+            ? `Removed spam and muted the sender for 1h (${decision.reason}).`
+            : deleted
+              ? `Removed a spam message (${decision.reason}).`
+              : `Flagged spam (${decision.reason}), but I need delete/restrict permission as admin.`,
       )
       .catch(() => undefined);
-    for (const adminId of runtime.adminTelegramIds.slice(0, 5)) {
-      await ctx.telegram
-        .sendMessage(
-          Number(adminId),
-          `Sentry moderation in ${runtime.group.name ?? telegramId}: ${deleted ? "removed" : "flagged"} spam (${verdict.reason}) from ${fromUsername ?? fromUserId}`,
-        )
-        .catch(() => undefined);
-    }
-    actionTaken = deleted ? "delete" : "warn";
+  } else {
+    await ctx
+      .reply(
+        `Heads up — this looks off (${decision.reason}). Please keep the chat constructive.`,
+      )
+      .catch(() => undefined);
+    actionTaken = "warn";
+  }
+
+  for (const adminId of runtime.adminTelegramIds.slice(0, 5)) {
+    await ctx.telegram
+      .sendMessage(
+        Number(adminId),
+        `Sentry moderation in ${runtime.group.name ?? telegramId}: ${actionTaken} (${decision.reason}, ${(decision.confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
+      )
+      .catch(() => undefined);
   }
 
   await recordBillable(runtime, "spam_moderation", {
-    reason: verdict.reason,
-    confidence: verdict.confidence,
+    reason: decision.reason,
+    confidence: decision.confidence,
     actionTaken,
+    heuristicSpam: heuristic.spam,
   });
   return true;
 }
@@ -417,6 +458,8 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
   const linked = await findLinkedUserByTelegram(fromUserId);
   const username = await botUsername(ctx);
+  const displayName = ctx.from?.username ?? ctx.from?.first_name ?? undefined;
+  const isStart = /^\/start(?:@\w+)?(?:\s|$)/i.test(text.trim());
 
   if (!linked?.user) {
     await ctx.reply(
@@ -432,31 +475,51 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   const user = linked.user;
   const active = user.employment?.status === "Active";
   const cleaned = stripBotMention(text, username) || text;
+
+  if (isStart) {
+    await employerDmService.sendWelcome(fromUserId!, user.id, displayName);
+    return;
+  }
+
   const intent = detectEmployerIntent(cleaned);
 
+  const groupPick = cleaned.match(
+    /^(?:open|select|group|use)\s+(?:group\s+)?(?:#?(\d+)|(.+))$/i,
+  );
+  if (groupPick && active) {
+    const groups = await groupService.listForUser(user.id);
+    const byIndex = groupPick[1] ? groups[Number(groupPick[1]) - 1] : null;
+    const needle = (groupPick[2] ?? "").trim().toLowerCase();
+    const byName = needle
+      ? groups.find(
+          (g) =>
+            (g.name ?? "").toLowerCase().includes(needle) ||
+            g.telegramId.includes(needle),
+        )
+      : null;
+    const picked = byIndex ?? byName;
+    if (picked) {
+      const card = await employerAgentService.formatGroupCard(user.id, picked.id);
+      await replyPlain(ctx, card, {
+        reply_markup: employerDmService.mainMenuKeyboard(),
+      });
+      return;
+    }
+  }
+
   if (intent === "help" || shouldOfferHelpOnly(text, username) || /\/help/i.test(text)) {
-    await ctx.reply(
-      [
-        capabilitiesSummary(username),
-        "",
-        `Linked account: ${user.email}`,
-        `Employment: ${user.employment?.status ?? "Inactive"}`,
-        active
-          ? 'Ask anything — or try: "group status", "past work", "full report".'
-          : "Hire Sentry in the dashboard to unlock personal agent work.",
-      ].join("\n"),
-    );
+    await employerDmService.sendWelcome(fromUserId!, user.id, displayName);
     return;
   }
 
   if (!active || !user.wallet) {
     await ctx.reply(
       "Your account is linked, but Sentry isn't actively employed yet. Hire and fund the employment wallet in the dashboard, then ask again.",
+      { reply_markup: employerDmService.mainMenuKeyboard() },
     );
     return;
   }
 
-  // Living playbook: "correct: trigger → instruction"
   const learned = await playbookService.learnFromCorrection({
     userId: user.id,
     text: cleaned,
@@ -464,11 +527,11 @@ async function handlePrivateAgent(ctx: Context, text: string) {
   if (learned) {
     await ctx.reply(
       `Playbook updated.\nWhen "${learned.trigger}": ${learned.instruction}`,
+      { reply_markup: employerDmService.mainMenuKeyboard() },
     );
     return;
   }
 
-  // Secretary Mode manual send: "sec: reply text"
   const secMatch = cleaned.match(/^sec\s*:\s*(.+)$/is);
   if (secMatch) {
     const conn = await prisma.businessConnectionRecord.findFirst({
@@ -492,7 +555,6 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     return;
   }
 
-  // Escalation edit: "edit: <text>" while a pending escalation exists
   const editMatch = cleaned.match(/^edit\s*:\s*(.+)$/is);
   if (editMatch) {
     const pending = await escalationService.listPending(user.id);
@@ -509,14 +571,21 @@ async function handlePrivateAgent(ctx: Context, text: string) {
     if (ledger.availableBalance <= 0) {
       await ctx.reply(
         "I'm ready, but your employment wallet has no available balance. Deposit funds, then ask me anything.",
+        { reply_markup: employerDmService.mainMenuKeyboard() },
       );
       return;
     }
 
-    // Structured employer reports — deterministic data, then optional AI polish for "general".
-    if (intent === "status" || intent === "work" || intent === "report") {
+    if (
+      intent === "status" ||
+      intent === "work" ||
+      intent === "report" ||
+      intent === "spam"
+    ) {
       const report = await employerAgentService.formatDirectReport(user.id, intent);
-      await replyPlain(ctx, report);
+      await replyPlain(ctx, report, {
+        reply_markup: employerDmService.mainMenuKeyboard(),
+      });
       await actionService.record({
         type: "mention_reply",
         userId: user.id,
@@ -526,53 +595,20 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       return;
     }
 
-    const link = await prisma.groupEmployment.findFirst({
-      where: { userId: user.id, enabled: true },
-      include: { group: { include: { settings: true, faqs: true } } },
-      orderBy: { updatedAt: "desc" },
-    });
-
     const brief = await employerAgentService.buildOperationalBrief(user.id, intent);
-    const displayName = ctx.from?.username ?? ctx.from?.first_name ?? undefined;
-
-    // Employer DMs also go through the agent with FAQ + knowledge tools.
-    if (link?.group.settings?.enabled) {
-      const context = await contextService.build(link.group.id);
-      const agent = await aiService.generateReply({
-        context,
-        userQuestion: cleaned,
-        userName: displayName,
-        preferFaq: false,
-        groupId: link.group.id,
-      });
-      await replyPlain(ctx, agent.text);
-      await actionService.record({
-        type: agent.viaFaq ? "faq_answer" : "mention_reply",
-        groupId: link.groupId,
-        userId: user.id,
-        billable: true,
-        metadata: {
-          channel: "private",
-          viaFaq: agent.viaFaq,
-          intent,
-          briefPreview: brief.slice(0, 200),
-        },
-      });
-      return;
-    }
-
-    const textOut = await aiService.generatePersonalReply({
-      userQuestion: cleaned,
-      userName: displayName,
-      employerEmail: user.email,
+    const textOut = await generateEmployerAnswer({
+      question: cleaned,
+      displayName,
       operationalBrief: brief,
     });
-    await replyPlain(ctx, textOut);
+    await replyPlain(ctx, textOut, {
+      reply_markup: employerDmService.mainMenuKeyboard(),
+    });
     await actionService.record({
       type: "mention_reply",
       userId: user.id,
       billable: true,
-      metadata: { channel: "private", personal: true, intent },
+      metadata: { channel: "private", intent, employerAnswer: true },
     });
   } catch (err) {
     console.error("[agent:private]", err);
@@ -615,6 +651,32 @@ export function registerHandlers(bot: Telegraf) {
           .catch(() => undefined);
       }
       return;
+    }
+
+    if (data.startsWith("emp:")) {
+      const linkedEmp = await findLinkedUserByTelegram(fromUserId);
+      if (!linkedEmp?.user) {
+        await ctx.answerCbQuery("Link your Telegram ID in Settings first.").catch(() => undefined);
+        return;
+      }
+      const handled = await employerDmService.handleCallback({
+        data,
+        userId: linkedEmp.user.id,
+        telegramUserId: fromUserId!,
+        answerCb: (t) => ctx.answerCbQuery(t).catch(() => undefined),
+        editOrReply: async (msg, keyboard) => {
+          try {
+            await ctx.editMessageText(msg.slice(0, 3900), {
+              reply_markup: keyboard,
+            });
+          } catch {
+            await ctx.reply(msg.slice(0, 3900), {
+              reply_markup: keyboard ?? employerDmService.mainMenuKeyboard(),
+            });
+          }
+        },
+      });
+      if (handled) return;
     }
 
     if (!data.startsWith("esc:")) return;

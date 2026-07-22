@@ -308,6 +308,8 @@ export class GroupService {
       announcementsEnabled?: boolean;
       birthdaysEnabled?: boolean;
       birthdayHourUtc?: number;
+      workReportIntervalHours?: number;
+      lastWorkReportAt?: Date | null;
       rules?: string | null;
       description?: string | null;
       purpose?: string | null;
@@ -338,6 +340,10 @@ export class GroupService {
     const birthdayHour =
       data.birthdayHourUtc !== undefined
         ? Math.min(23, Math.max(0, Math.floor(data.birthdayHourUtc)))
+        : undefined;
+    const workInterval =
+      data.workReportIntervalHours !== undefined
+        ? Math.min(168, Math.max(1, Math.floor(data.workReportIntervalHours)))
         : undefined;
 
     const settings = await prisma.groupSettings.upsert({
@@ -370,6 +376,8 @@ export class GroupService {
         announcementsEnabled: data.announcementsEnabled ?? true,
         birthdaysEnabled: data.birthdaysEnabled ?? true,
         birthdayHourUtc: birthdayHour ?? 9,
+        workReportIntervalHours: workInterval ?? 24,
+        lastWorkReportAt: data.lastWorkReportAt ?? null,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
@@ -400,6 +408,8 @@ export class GroupService {
         announcementsEnabled: data.announcementsEnabled,
         birthdaysEnabled: data.birthdaysEnabled,
         birthdayHourUtc: birthdayHour,
+        workReportIntervalHours: workInterval,
+        lastWorkReportAt: data.lastWorkReportAt,
       },
     });
 
