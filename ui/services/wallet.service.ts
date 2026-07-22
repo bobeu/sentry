@@ -9,6 +9,11 @@ import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
 import { formatAmount, type PaymentCurrency } from "@/lib/payment-currency";
 import { isFiniteBalance, toWalletBalance } from "@/lib/wallet-balance";
+import {
+  getFeeCurrencyMode,
+  getStableFeeToken,
+  getTxFeeCurrency,
+} from "@/lib/fee-currency";
 
 function number(value: { toString(): string } | string | number | null | undefined) {
   return value == null ? 0 : Number(value.toString());
@@ -343,10 +348,16 @@ export class WalletService {
         ? null
         : await blockchainService.getWalletTokenAddress(wallet.address as Address);
 
+    const feeCurrency = getTxFeeCurrency() ?? null;
+
     return {
       employmentWallet: wallet.address,
       currency,
       tokenAddress,
+      /** CIP-64 gas token; null means pay gas in CELO (default / unchanged). */
+      feeCurrency,
+      feeCurrencyMode: getFeeCurrencyMode(),
+      feeCurrencyStable: getStableFeeToken(),
       methodA: {
         description: "Transfer the wallet's configured currency directly to SentryWallet",
         type: currency === "CELO" ? "native-transfer" : "erc20-transfer",

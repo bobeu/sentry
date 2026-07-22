@@ -93,6 +93,9 @@ Point Telegram webhook to `POST /api/telegram`.
 | `SETTLEMENT_INTERVAL_MINUTES` | Maximum time between settlements |
 | `SETTLEMENT_FEE_ESTIMATE` | Estimated gas fee added to each settlement |
 | `SETTLEMENT_FEE_BUFFER_PERCENT` | Extra buffer on settlement fee estimates (default 10) |
+| `FEE_CURRENCY` | Gas payment mode: omit/`celo` (default) or `stable` for CIP-64 fee abstraction |
+| `FEE_CURRENCY_STABLE` | When `FEE_CURRENCY=stable`: `USDm` (default), `USDC`, or `USDT` |
+| `FEE_CURRENCY_ADDRESS` | Optional override of the CIP-64 `feeCurrency` address (use adapter for USDC/USDT) |
 
 ## Testing
 

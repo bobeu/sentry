@@ -85,3 +85,40 @@ describe("settlement config", () => {
     process.env.SETTLEMENT_FEE_BUFFER_PERCENT = prevBuffer;
   });
 });
+
+describe("fee currency (gas)", () => {
+  it("defaults to CELO (no feeCurrency) so existing txs stay unchanged", async () => {
+    const prev = process.env.FEE_CURRENCY;
+    delete process.env.FEE_CURRENCY;
+    const { getTxFeeCurrency, getFeeCurrencyMode, txFeeOpts } = await import(
+      "../lib/fee-currency"
+    );
+    assert.equal(getFeeCurrencyMode(), "celo");
+    assert.equal(getTxFeeCurrency(), undefined);
+    assert.deepEqual(txFeeOpts(), {});
+    process.env.FEE_CURRENCY = prev;
+  });
+
+  it("resolves a stable feeCurrency when FEE_CURRENCY=stable", async () => {
+    const prevMode = process.env.FEE_CURRENCY;
+    const prevStable = process.env.FEE_CURRENCY_STABLE;
+    const prevAddr = process.env.FEE_CURRENCY_ADDRESS;
+    const prevUsdm = process.env.CELO_USDM_ADDRESS;
+    process.env.FEE_CURRENCY = "stable";
+    process.env.FEE_CURRENCY_STABLE = "USDC";
+    delete process.env.FEE_CURRENCY_ADDRESS;
+    const { getTxFeeCurrency, getFeeCurrencyMode, getStableFeeToken, txFeeOpts } =
+      await import("../lib/fee-currency");
+    assert.equal(getFeeCurrencyMode(), "stable");
+    assert.equal(getStableFeeToken(), "USDC");
+    assert.equal(
+      getTxFeeCurrency()?.toLowerCase(),
+      "0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B".toLowerCase(),
+    );
+    assert.ok(txFeeOpts().feeCurrency);
+    process.env.FEE_CURRENCY = prevMode;
+    process.env.FEE_CURRENCY_STABLE = prevStable;
+    process.env.FEE_CURRENCY_ADDRESS = prevAddr;
+    process.env.CELO_USDM_ADDRESS = prevUsdm;
+  });
+});

@@ -14,6 +14,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { CONTRACTS } from "@/lib/contracts";
+import { txFeeOpts } from "@/lib/fee-currency";
 import type { PaymentCurrency } from "@/lib/payment-currency";
 import { tokenDecimals } from "@/lib/payment-currency";
 import { Errors } from "@/lib/errors";
@@ -577,6 +578,7 @@ export class BlockchainService {
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return (await this.client().readContract({
@@ -611,6 +613,7 @@ export class BlockchainService {
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -640,6 +643,7 @@ export class BlockchainService {
       chain: celo,
       // ERC-8021 DeFAI attribution — required on every operator settlement tx
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -701,6 +705,7 @@ export class BlockchainService {
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -727,6 +732,7 @@ export class BlockchainService {
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -761,6 +767,7 @@ export class BlockchainService {
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -778,6 +785,7 @@ export class BlockchainService {
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -795,6 +803,7 @@ export class BlockchainService {
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
@@ -823,6 +832,7 @@ export class BlockchainService {
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
     });
     await this.requireSuccess(hash);
     return hash;
