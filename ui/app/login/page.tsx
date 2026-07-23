@@ -3,7 +3,7 @@ import Image from "next/image";
 
 export default function LoginPage() {
   return (
-    <main className="relative isolate min-h-[calc(100vh-4.5rem)] flex items-center justify-center px-6 py-14 bg-bg-light">
+    <main className="relative isolate min-h-[calc(100vh-4.5rem)] flex items-center justify-center px-4 py-10 sm:px-6 sm:py-14 bg-bg-light">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_30%,rgba(0,82,255,0.06),transparent_60%)]" />
 
       <div className="surface-card p-8 sm:p-10 w-full max-w-md space-y-7 shadow-lg border border-primary/10 relative">

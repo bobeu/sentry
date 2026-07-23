@@ -90,7 +90,7 @@ export default function HomePage() {
       <div className="pointer-events-none absolute inset-0 -z-10 hero-noise" />
 
       {/* Hero Section */}
-      <section className="mx-auto max-w-6xl px-6 pt-16 pb-16 sm:pt-24">
+      <section className="mx-auto max-w-6xl px-4 pt-10 pb-14 sm:px-6 sm:pt-24 sm:pb-16">
         <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
           <div className="lg:col-span-6 space-y-6">
             <h1 className="font-sans text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-text-dark leading-[1.05] animate-rise">
@@ -241,7 +241,7 @@ export default function HomePage() {
       </section>
 
       {/* Interactive Telegram Sandbox Simulator */}
-      <section className="mx-auto max-w-6xl px-6 py-20 border-t border-primary/10">
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20 border-t border-primary/10">
         <div className="text-center space-y-3 mb-12">
           <h2 className="text-3xl font-extrabold tracking-tight text-text-dark sm:text-4xl">
             Watch Sentry Work in Real-Time
@@ -344,7 +344,7 @@ export default function HomePage() {
       </section>
 
       {/* Feature Alternator Spotlight */}
-      <section className="mx-auto max-w-6xl px-6 py-20 border-t border-primary/10">
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20 border-t border-primary/10">
         <div className="text-center space-y-3 mb-12">
           <h2 className="text-3xl font-extrabold tracking-tight text-text-dark sm:text-4xl">
             A Clean Dashboard for Complex Tasks

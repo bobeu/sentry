@@ -8,7 +8,7 @@ export default async function PricingPage() {
   const currency = pricing[0]?.currency ?? "USDm";
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-14 space-y-8">
+    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14 space-y-8">
       <div className="border-b border-primary/15 pb-5">
         <Link href="/dashboard" className="text-xs font-bold text-muted hover:text-primary uppercase tracking-wider transition">
           ← Back to Dashboard

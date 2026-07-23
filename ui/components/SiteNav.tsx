@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 
 const primary = [
@@ -39,6 +39,7 @@ type SessionUser = { id: string; email: string } | null;
 export function SiteNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const panelId = useId();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<SessionUser>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -65,8 +66,14 @@ export function SiteNav() {
   }, [pathname]);
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
     return () => {
+      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
   }, [open]);
@@ -80,6 +87,7 @@ export function SiteNav() {
       router.refresh();
     } finally {
       setSigningOut(false);
+      setOpen(false);
     }
   }
 
@@ -90,22 +98,30 @@ export function SiteNav() {
         : "text-text-dark hover:text-primary hover:bg-primary/5"
     }`;
 
+  const mobileLinkClass = (href: string) =>
+    `flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition ${
+      pathname === href || pathname.startsWith(`${href}/`)
+        ? "bg-primary text-white"
+        : "text-text-dark hover:bg-primary/5 hover:text-primary"
+    }`;
+
   return (
-    <header className="sticky top-0 z-40 w-full bg-transparent px-3 py-3 sm:px-4 sm:py-4">
-      <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-3 overflow-hidden rounded-xl border border-primary/10 bg-white px-3 py-2.5 shadow-md sm:px-4 sm:py-3">
+    <header className="sticky top-0 z-50 w-full bg-transparent px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-4 sm:py-4">
+      <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 rounded-xl border border-primary/10 bg-white px-3 py-2 shadow-md sm:gap-3 sm:px-4 sm:py-3">
         <Link
           href="/"
-          className="flex min-w-0 shrink-0 items-center gap-2.5 font-[family-name:var(--font-display)] text-text-dark transition hover:opacity-90"
+          className="flex min-w-0 shrink items-center gap-2 font-[family-name:var(--font-display)] text-text-dark transition hover:opacity-90"
+          onClick={() => setOpen(false)}
         >
           <Image
             src="/logo.png"
             alt="Sentry"
-            width={80}
-            height={80}
-            className="h-16 w-16 sm:h-20 sm:w-20 object-contain"
+            width={64}
+            height={64}
+            className="h-10 w-10 shrink-0 object-contain sm:h-14 sm:w-14 md:h-16 md:w-16"
             priority
           />
-          <span className="font-sans text-xl sm:text-2xl font-extrabold tracking-tight">
+          <span className="truncate font-sans text-lg font-extrabold tracking-tight sm:text-xl md:text-2xl">
             Sentry
           </span>
         </Link>
@@ -145,35 +161,59 @@ export function SiteNav() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 xl:hidden">
-          {authChecked && user ? <WalletConnectButton /> : null}
+          {authChecked && user ? (
+            <div className="max-w-[42vw] overflow-hidden sm:max-w-none">
+              <WalletConnectButton />
+            </div>
+          ) : null}
           <button
             type="button"
-            className="rounded-xl bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow transition hover:bg-primary/90 cursor-pointer"
-            aria-label={open ? "Close menu" : "Menu"}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-primary px-3 py-2 text-xs font-bold uppercase tracking-wider text-white shadow transition hover:bg-primary/90"
+            aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
+            aria-controls={panelId}
             onClick={() => setOpen((v) => !v)}
           >
-            Menu
+            {open ? (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
 
-      <div
-        className={`nav-drawer mx-auto mt-2 max-w-6xl overflow-hidden rounded-xl shadow-xl transition-all duration-300 xl:hidden ${
-          open ? "max-h-[32rem] border border-primary/10 py-3 px-4" : "max-h-0 pointer-events-none"
+      {/* Backdrop — xl+ never shown */}
+      <button
+        type="button"
+        aria-label="Close menu"
+        className={`fixed inset-0 z-40 bg-text-dark/35 backdrop-blur-[1px] transition-opacity xl:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
+        tabIndex={open ? 0 : -1}
+        onClick={() => setOpen(false)}
+      />
+
+      {/* Mobile drawer — CSS class controls height so Tailwind can't be overridden by .nav-drawer { max-height:0 } */}
+      <div
+        id={panelId}
+        className={`nav-drawer fixed inset-x-3 z-50 mx-auto mt-2 max-w-6xl rounded-xl border border-primary/10 bg-white shadow-xl xl:hidden ${
+          open ? "nav-drawer-open" : ""
+        }`}
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 4.25rem)" }}
         aria-hidden={!open}
       >
-        <div className="space-y-1">
+        <nav className="max-h-[min(70vh,28rem)] space-y-1 overflow-y-auto overscroll-contain px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {[...primary, ...secondaryBase].map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition ${
-                pathname === link.href
-                  ? "bg-primary text-white"
-                  : "text-text-dark hover:bg-primary/5 hover:text-primary"
-              }`}
+              className={mobileLinkClass(link.href)}
+              onClick={() => setOpen(false)}
             >
               {icons[link.href] ? <NavIcon d={icons[link.href]} /> : null}
               {link.label}
@@ -184,19 +224,20 @@ export function SiteNav() {
               type="button"
               onClick={() => void signOut()}
               disabled={signingOut}
-              className="flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary disabled:opacity-60"
+              className="flex min-h-11 w-full items-center rounded-xl px-4 py-3 text-left text-sm font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary disabled:opacity-60"
             >
               {signingOut ? "Signing out…" : "Sign out"}
             </button>
           ) : (
             <Link
               href="/login"
-              className="flex items-center rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary"
+              className={mobileLinkClass("/login")}
+              onClick={() => setOpen(false)}
             >
               Sign in
             </Link>
           )}
-        </div>
+        </nav>
       </div>
     </header>
   );
