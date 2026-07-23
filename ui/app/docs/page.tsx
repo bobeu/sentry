@@ -5,7 +5,7 @@ const appUrl = "https://sentry-sigma-two.vercel.app";
 
 export default function DocsPage() {
   return (
-    <main className="mx-auto max-w-6xl px-6 py-14 space-y-6">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 space-y-6">
       <div className="border-b border-primary/15 pb-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">Technical Guide</p>
         <h1 className="mt-3 text-4xl font-black text-text-dark">

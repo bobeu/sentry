@@ -108,7 +108,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-14 space-y-8 animate-rise">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 space-y-8 animate-rise">
       <div className="border-b border-primary/15 pb-5">
         <Link href="/dashboard" className="text-xs font-bold text-muted hover:text-primary uppercase tracking-wider transition">
           ← Back to Dashboard

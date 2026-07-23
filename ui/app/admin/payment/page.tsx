@@ -53,7 +53,7 @@ export default function AdminPaymentPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-14">
+    <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-14">
       <Link href="/dashboard" className="text-sm text-[#9aa89a] hover:text-white">
         ← Dashboard
       </Link>

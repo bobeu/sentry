@@ -130,19 +130,31 @@ a {
   box-shadow: 0 2px 10px rgba(36, 161, 222, 0.15);
 }
 
-/* Navigation Drawer */
+/* Navigation Drawer (mobile / MiniApp)
+   Closed state must win over utilities — open toggles via .nav-drawer-open only. */
 .nav-drawer {
   max-height: 0;
   overflow: hidden;
-  border-top: 1px solid transparent;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
   background: #ffffff;
   box-shadow: 0 8px 30px rgba(0, 82, 255, 0.08);
-  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1), border-color 300ms ease;
+  transition:
+    max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease,
+    visibility 0s linear 280ms;
 }
 
-.nav-drawer-open {
-  max-height: 32rem;
-  border-top-color: rgba(255, 255, 255, 0.15);
+.nav-drawer.nav-drawer-open {
+  max-height: min(70vh, 32rem);
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  transition:
+    max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease,
+    visibility 0s;
 }
 
 /* Custom rise keyframes for clean entrance animations */

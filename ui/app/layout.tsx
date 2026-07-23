@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Newsreader } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
 import { Providers } from "@/app/providers";
@@ -29,6 +29,15 @@ export const metadata: Metadata = {
     : {}),
 };
 
+/** Mobile-first / MiniApp viewport (Celo MiniPay, in-app browsers). */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#0052FF",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,7 +45,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${display.variable} ${body.variable} antialiased`}>
+      <body
+        className={`${display.variable} ${body.variable} antialiased pb-[env(safe-area-inset-bottom)]`}
+      >
         <Providers>
           <SiteNav />
           {children}

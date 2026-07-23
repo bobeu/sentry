@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export default function EmploymentPage() {
   return (
-    <main className="mx-auto max-w-6xl px-6 py-14">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
       <div className="border-b border-primary/15 pb-5">
         <Link href="/dashboard" className="text-xs font-bold text-muted hover:text-primary uppercase tracking-wider transition">
           ← Dashboard
