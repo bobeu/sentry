@@ -219,6 +219,10 @@ model GroupSettings {
   /// Soft prompt cadence for offering fun (hours). 0 = never auto-offer.
   funPromptIntervalHours Int          @default(48)
   lastFunPromptAt       DateTime?
+  /// Friendly humor / comedy vibes in group chat (employer-configurable).
+  humorEnabled          Boolean       @default(true)
+  /// friendly | witty | wholesome | off
+  humorStyle            String        @default("friendly")
   /// Cash rewards for points (paid from RewardAccount, not employment wallet).
   rewardEnabled         Boolean       @default(false)
   rewardPaused          Boolean       @default(false)

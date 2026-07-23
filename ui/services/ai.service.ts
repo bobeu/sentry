@@ -26,6 +26,8 @@ type ReplyInput = {
   memberNote?: string | null;
   groupId?: string;
   engagementContext?: string | null;
+  humorEnabled?: boolean | null;
+  humorStyle?: string | null;
 };
 
 /** Default completion budget. Gemini 2.5 thinking can consume part of this. */
@@ -62,16 +64,22 @@ function systemRules(extras?: {
   memberNote?: string | null;
   includeCelo?: boolean;
   engagementContext?: string | null;
+  humorEnabled?: boolean | null;
+  humorStyle?: string | null;
 }) {
+  const humorOn = extras?.humorEnabled !== false && extras?.humorStyle !== "off";
+  const humorStyle = (extras?.humorStyle ?? "friendly").toLowerCase();
   const parts = [
-    "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee.",
+    "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee — and a friendly teammate.",
     "You are not a shallow chatbot: reason carefully, use FAQs, knowledge-base tool results, and recent chat context.",
-    "Tone: warm, clear, and lively — helpful without being stiff. Prefer short paragraphs over walls of text.",
+    "Tone: talk like a sharp, warm friend — clear and lively, never stiff or corporate. Prefer short paragraphs over walls of text.",
     "Always finish your answer — never stop mid-sentence or mid-list. If space is tight, prioritize completeness over fluff.",
     "CRITICAL — no hallucination: Never invent policies, prices, balances, tx hashes, links, or facts. Prefer FAQs/KB excerpts. If unknown, say so.",
     "CRITICAL — answer only what was asked. Do not dump unrelated FAQs, prior answers, or capability lists unless asked.",
     "CRITICAL — if the member only greets (hi/hello) or only says thanks, keep it to 1–2 short friendly sentences. Do NOT re-answer previous questions.",
     "CRITICAL — recent chat is context only. Do not restate prior Q&A unless the member asks you to repeat or clarify.",
+    "CRITICAL — NEVER pretend you created a poll/quiz/activity in chat. The runtime creates activities. If asked when a poll ends or what's active, answer from engagement context / say you don't see one — do NOT invent a new poll.",
+    "CRITICAL — questions about polls (end time, status, points, rules) are answers, not create-commands.",
     "Never claim to be human.",
     "You can moderate spam (warn/delete/mute/ban when admin), answer community questions, and (when enabled) run light fun/polls/games/learn activities.",
     "When engagement is enabled and the vibe fits, you may briefly offer a poll, trivia, or learn-and-earn — never force it into serious support questions.",
@@ -79,6 +87,13 @@ function systemRules(extras?: {
     "Formatting for Telegram: use **bold** for emphasis, short paragraphs, and • bullets. Do NOT sprinkle decorative asterisks. Do not use Markdown tables or headings with #.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];
+  if (humorOn) {
+    parts.push(
+      `Humor mode ON (style: ${humorStyle}). Sprinkle light jokes, playful asides, or wholesome comedy when it fits — never at someone's expense, never during moderation/safety/billing crises.`,
+    );
+  } else {
+    parts.push("Humor mode OFF — stay friendly but skip jokes.");
+  }
   if (extras?.includeCelo) {
     parts.push(formatCeloKnowledgeForPrompt());
   }
@@ -87,6 +102,8 @@ function systemRules(extras?: {
       `Persona role for this group: ${extras.personaRole}.` +
         (extras.personaTone ? ` Tone guidance: ${extras.personaTone}.` : ""),
     );
+  } else if (extras?.personaTone) {
+    parts.push(`Tone guidance: ${extras.personaTone}.`);
   }
   if (extras?.playbookRules) {
     parts.push(`Employer playbook rules (must follow):\n${extras.playbookRules}`);
@@ -431,6 +448,8 @@ export class AiService {
       personaRole: input.personaRole,
       personaTone: input.personaTone,
       memberNote: input.memberNote,
+      humorEnabled: input.humorEnabled,
+      humorStyle: input.humorStyle,
       includeCelo: looksCeloRelated(input.userQuestion),
       engagementContext: input.engagementContext,
     });
@@ -581,12 +600,14 @@ export class AiService {
           content: [
             "You invent short, lively community engagement activities for Telegram.",
             "Return ONLY valid JSON (no markdown fences) with keys: title, description, config.",
-            "For poll/learn/game: config = { question, options: string[2..6], correctIndex?: number, explanation?: string }.",
-            "For learn/game quizzes, correctIndex is required (0-based).",
-            "For fun/comic: config = { question, options } still works as a light vibe check.",
+            "config.format must be one of: single | multiple | quiz | open.",
+            "single: one-choice poll (options required). multiple: multi-select poll (options required). quiz: Telegram quiz with correctIndex (0-based) + explanation. open: no options — put acceptedAnswers: string[] for free-text grading.",
+            "For learn/game prefer format=quiz unless the hint asks for open/multiple.",
+            "For poll prefer format=single unless hint says multiple.",
+            "For fun/comic: vibe check with options OR open joke punchline with acceptedAnswers.",
             "Keep questions under 280 chars. Options under 80 chars each.",
             "Stay on-brand for the group's purpose; never invent fake company policies as quiz facts.",
-            "Be playful but wholesome — no harassment, politics bait, or adult content.",
+            "Be playful, funny, wholesome — no harassment, politics bait, or adult content.",
           ].join("\n"),
         },
         {
@@ -599,7 +620,7 @@ export class AiService {
               ? `Employer guidelines:\n${input.guidelines.trim()}`
               : "",
             input.hint?.trim() ? `Extra hint: ${input.hint.trim()}` : "",
-            "Invent one activity now as JSON.",
+            "Invent one fun activity now as JSON.",
           ]
             .filter(Boolean)
             .join("\n"),
