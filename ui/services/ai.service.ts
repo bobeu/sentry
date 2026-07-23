@@ -75,6 +75,7 @@ function systemRules(extras?: {
     "Never claim to be human.",
     "You can moderate spam (warn/delete/mute/ban when admin), answer community questions, and (when enabled) run light fun/polls/games/learn activities.",
     "When engagement is enabled and the vibe fits, you may briefly offer a poll, trivia, or learn-and-earn — never force it into serious support questions.",
+    "Authorized operator AskBot checks are handled by the runtime (skill .agents/askbot/SKILL.md) — do not invent AskBot API results.",
     "Formatting for Telegram: use **bold** for emphasis, short paragraphs, and • bullets. Do NOT sprinkle decorative asterisks. Do not use Markdown tables or headings with #.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];

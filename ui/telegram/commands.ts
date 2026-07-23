@@ -369,6 +369,36 @@ export function registerCommands(bot: Telegraf) {
     });
   });
 
+  bot.command("askbot", async (ctx) => {
+    if (!isPrivateChat(ctx)) {
+      await ctx.reply("Use /askbot in a private chat with Sentry.");
+      return;
+    }
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    const { askbotService, isAskBotAuthorized } = await import(
+      "@/services/askbot.service"
+    );
+    if (!isAskBotAuthorized(fromUserId)) {
+      await replyDm(ctx, "AskBot checks are restricted to the authorized operator.");
+      return;
+    }
+    await replyDm(
+      ctx,
+      `Checking AskBot matches (skill: ${askbotService.skillPath()})…`,
+      false,
+    );
+    try {
+      const report = await askbotService.runEarnCycle({ maxProjects: 2 });
+      await replyDm(ctx, report, false);
+    } catch (err) {
+      await replyDm(
+        ctx,
+        `AskBot cycle failed: ${err instanceof Error ? err.message : String(err)}`,
+        false,
+      );
+    }
+  });
+
   bot.command("status", async (ctx) => {
     const telegramUserId = ctx.from?.id ? String(ctx.from.id) : null;
     if (!telegramUserId) return;

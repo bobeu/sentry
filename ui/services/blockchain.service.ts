@@ -464,10 +464,10 @@ export class BlockchainService {
   }
 
   private rewardFactoryAddress() {
-    return configuredAddress(
-      "REWARD_FACTORY_ADDRESS",
-      CONTRACTS.RewardFactory.address,
-    );
+    // Use synced CONTRACTS address only (same source as EmploymentManager / SentryWalletFactory
+    // after `sync-data.js`) — do not require REWARD_FACTORY_ADDRESS env.
+    const addr = CONTRACTS.RewardFactory.address;
+    return addr && isAddress(addr) && addr !== zeroAddress ? addr : null;
   }
 
   private walletClient(kind: "owner" | "operator", address: Address | null) {
@@ -493,6 +493,11 @@ export class BlockchainService {
     return Boolean(this.factoryAddress() && key("owner"));
   }
 
+  isRewardFactoryConfigured() {
+    const addr = this.rewardFactoryAddress();
+    return Boolean(addr && (CONTRACTS.RewardFactory.abi?.length ?? 0) > 0);
+  }
+
   connect() {
     return {
       connected: this.isConfigured(),
@@ -500,6 +505,7 @@ export class BlockchainService {
       chainId: 42220,
       employmentManager: this.managerAddress(),
       walletFactory: this.factoryAddress(),
+      rewardFactory: this.rewardFactoryAddress(),
     };
   }
 
@@ -850,16 +856,6 @@ export class BlockchainService {
     if (receipt.status !== "success") {
       throw Errors.chargeFailed("Transaction reverted on-chain");
     }
-  }
-
-  isRewardFactoryConfigured() {
-    const addr = this.rewardFactoryAddress();
-    return Boolean(
-      addr &&
-        addr !== zeroAddress &&
-        key("owner") &&
-        (CONTRACTS.RewardFactory.abi?.length ?? 0) > 0,
-    );
   }
 
   /**
