@@ -46,6 +46,11 @@ import { incidentService } from "@/services/incident.service";
 import { memoryService } from "@/services/memory.service";
 import { secretaryService } from "@/services/secretary.service";
 import {
+  askbotService,
+  isAskBotAuthorized,
+  isAskBotCheckRequest,
+} from "@/services/askbot.service";
+import {
   botUsername,
   capabilitiesSummary,
   chatIdOf,
@@ -790,6 +795,27 @@ async function handlePrivateAgent(ctx: Context, text: string) {
 
   // Slash commands are handled exclusively by registerCommands (menus stay DM-scoped there).
   if (text.trim().startsWith("/")) {
+    return;
+  }
+
+  const cleanedEarly = stripBotMention(text, username) || text;
+
+  // AskBot matched-review check — ONLY Telegram user 805099765.
+  // Points Sentry at .agents/askbot/SKILL.md and runs the earn cycle.
+  if (isAskBotAuthorized(fromUserId) && isAskBotCheckRequest(cleanedEarly)) {
+    await replyPlain(
+      ctx,
+      `Checking AskBot matches (skill: ${askbotService.skillPath()})…`,
+    );
+    try {
+      const report = await askbotService.runEarnCycle({ maxProjects: 2 });
+      await replyPlain(ctx, report);
+    } catch (err) {
+      await replyPlain(
+        ctx,
+        `AskBot cycle failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     return;
   }
 

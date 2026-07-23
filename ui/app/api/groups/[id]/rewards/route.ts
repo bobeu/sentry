@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json(
         {
           error:
-            "RewardFactory is not deployed/configured yet. Set REWARD_FACTORY_ADDRESS after deploy.",
+            "RewardFactory is not configured. Deploy on Celo and run smartContracts sync-data so ui/lib/contracts has the address and ABI.",
         },
         { status: 503 },
       );

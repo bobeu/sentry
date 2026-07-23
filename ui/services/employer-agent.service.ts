@@ -256,7 +256,7 @@ export class EmployerAgentService {
     const lines: string[] = [
       "Engagement & rewards",
       "",
-      `RewardFactory configured: ${blockchainService.isRewardFactoryConfigured() ? "yes" : "NO — deploy & set REWARD_FACTORY_ADDRESS"}`,
+      `RewardFactory configured: ${blockchainService.isRewardFactoryConfigured() ? "yes" : "NO — sync RewardFactory via smartContracts sync-data after deploy"}`,
       "",
       "Say: create reward account for <group>, pause rewards, resume rewards.",
       "Dashboard: group → Capabilities → Engagement & Rewards.",
@@ -292,7 +292,7 @@ export class EmployerAgentService {
       const g = pickGroup();
       if (!g) return "No groups linked yet. Enable a group first.";
       if (!blockchainService.isRewardFactoryConfigured()) {
-        return "RewardFactory is not deployed yet. After deploy, set REWARD_FACTORY_ADDRESS and ask me again.";
+        return "RewardFactory is not synced yet. Deploy on Celo, run sync-data, then ask me again.";
       }
       try {
         const account = await rewardService.ensureRewardAccount({

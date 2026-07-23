@@ -369,13 +369,17 @@ export class EngagementService {
         ? `profile:${profileMatch[1]}`
         : "unrecognized-url";
 
-    // Optional deeper check when bearer token is configured.
-    const bearer = process.env.TWITTER_BEARER_TOKEN?.trim();
-    if (bearer && statusMatch && config.targetUrl) {
+    // Optional deeper check only when TWITTER_BEARER_TOKEN is set.
+    // Missing/empty token must never break verification — URL heuristics still apply.
+    const bearer = (process.env.TWITTER_BEARER_TOKEN ?? "").trim();
+    if (bearer.length > 0 && statusMatch && config.targetUrl) {
       try {
         const api = await fetch(
           `https://api.twitter.com/2/tweets/${statusMatch[1]}?expansions=referenced_tweets.id&tweet.fields=text,referenced_tweets`,
-          { headers: { Authorization: `Bearer ${bearer}` } },
+          {
+            headers: { Authorization: `Bearer ${bearer}` },
+            signal: AbortSignal.timeout(8_000),
+          },
         );
         if (api.ok) {
           const body = (await api.json()) as {
@@ -395,10 +399,11 @@ export class EngagementService {
             notes = verified ? `api-verified:${action}` : "api-mismatch";
           }
         } else {
-          notes = `api-http-${api.status}`;
+          // Keep URL-heuristic verification; only annotate the advisory API failure.
+          notes = `${notes}|api-http-${api.status}`;
         }
       } catch (err) {
-        notes = `api-error:${err instanceof Error ? err.message : "fail"}`;
+        notes = `${notes}|api-error:${err instanceof Error ? err.message : "fail"}`;
       }
     }
 

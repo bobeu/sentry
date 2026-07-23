@@ -13,6 +13,7 @@ export const PRIVATE_BOT_COMMANDS = [
   { command: "balance", description: "Available wallet balance" },
   { command: "deposit", description: "How to fund your wallet" },
   { command: "agreement", description: "Read the Employment Agreement" },
+  { command: "askbot", description: "Check AskBot matched reviews (owner)" },
 ] as const;
 
 /** Commands shown when the user types `/` inside a group. */

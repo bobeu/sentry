@@ -38,6 +38,24 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const owner = await read("EmploymentManager", "owner");
   log(`EmploymentManager owner: ${owner}`);
 
+  // --- RewardFactory ---
+
+  log("----------------------------------------------------");
+  log(`Deploying RewardFactory on ${network.name}`);
+  log(`Owner: ${deployer}`);
+  log(`Operator (Sentry): ${operator}`);
+
+  const rewardFactory = await deploy("RewardFactory", {
+    from: deployer,
+    args: [deployer, operator, usdm, usdc, usdt],
+    log: true,
+    waitConfirmations: network.live ? 2 : 1,
+  });
+
+  log(`RewardFactory deployed at ${rewardFactory.address}`);
+  log("Next: run `node sync-data.js` to sync address + ABI into ui/lib/contracts");
+
+
   // try {
   //   log("Transferring ownership of EmploymentManager to new owner");
   //   const newOnwer = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
@@ -57,4 +75,4 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 };
 
 export default func;
-func.tags = ["EmploymentManager", "SentryWalletFactory"];
+func.tags = ["EmploymentManager", "SentryWalletFactory", "RewardFactory"];
