@@ -24,6 +24,9 @@ export const PRICING_AMOUNTS: Record<ActionType, number> = {
   birthday: 0.01,
   secretary_reply: 0.015,
   secretary_escalation: 0.02,
+  engagement_activity: 0.02,
+  reward_payout: 0.01,
+  points_award: 0.005,
 };
 
 export const PRICING_LABELS: Record<ActionType, string> = {
@@ -47,6 +50,9 @@ export const PRICING_LABELS: Record<ActionType, string> = {
   birthday: "Birthday Celebration",
   secretary_reply: "Secretary Reply",
   secretary_escalation: "Secretary Escalation",
+  engagement_activity: "Engagement Activity",
+  reward_payout: "Reward Payout",
+  points_award: "Points Award",
 };
 
 export function getPricing(currency: PaymentCurrency = "USDm") {

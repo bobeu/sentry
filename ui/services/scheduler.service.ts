@@ -83,6 +83,18 @@ export class SchedulerService {
       });
     });
 
+    cron.schedule("*/10 * * * *", async () => {
+      await this.runJob("pending reward payouts", async () => {
+        const { rewardService } = await import("@/services/reward.service");
+        const result = await rewardService.retryPendingPayouts(20);
+        if (result.attempted > 0) {
+          console.log(
+            `[scheduler] reward payouts attempted=${result.attempted} sent=${result.sent}`,
+          );
+        }
+      });
+    });
+
     cron.schedule("0 3 * * 0", async () => {
       await this.runJob("maintenance", async () => {
         await contextService.pruneExpired();

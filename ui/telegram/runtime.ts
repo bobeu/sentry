@@ -4,6 +4,7 @@ import { billingService } from "@/services/billing.service";
 import { normalizeTelegramChatId } from "@/lib/telegram-id";
 import { faqService } from "@/services/faq.service";
 import { prisma } from "@/lib/prisma";
+import { isCasualGreeting, isHelpRequest } from "@/lib/telegram-message";
 
 export type GroupRuntime = {
   group: NonNullable<Awaited<ReturnType<typeof groupService.findActiveGroupByTelegramId>>>;
@@ -112,10 +113,12 @@ export function capabilitiesSummary(username: string) {
     "I can:",
     "• Read group chats and answer with agentic reasoning (when I'm a group admin, or privacy mode is off)",
     "• Answer from FAQs and your knowledge base (docs / blog / uploaded files)",
-    "• Reply when mentioned or replied to",
+    "• Reply when mentioned or replied to — without dumping unrelated FAQs",
     "• Welcome new members + moderate spam (when enabled)",
+    "• Run polls, trivia, learn-and-earn, comics & social campaigns (when employer enables them)",
+    "• Award points; pay cash rewards from a separate RewardAccount when funded",
     "• Admin moderation: /ban /unban /mute /unmute (native; optional Rose relay)",
-    "• /announce and birthday celebrations (/birthday MM-DD)",
+    "• /announce, /poll, /trivia, /campaign and birthday celebrations",
     "• Secretary Mode: connect me in Telegram Business → Chatbots",
     "• Notify you of @mentions (when linked)",
     "• Employer DMs: tap the menu buttons, or ask in plain language",
@@ -124,7 +127,7 @@ export function capabilitiesSummary(username: string) {
     "DM tip: type / to open commands, or /menu for action buttons.",
     `Try in a group: ${tag} what is this group about?`,
     "Commands (DM): /menu /status /report /groups /mywallet",
-    "Commands (group): /ban /mute /announce /birthday /remember",
+    "Commands (group): /ban /mute /announce /poll /trivia /campaign /birthday /remember",
   ].join("\n");
 }
 
@@ -194,9 +197,11 @@ export function stripBotMention(text: string, username: string) {
 }
 
 export function shouldOfferHelpOnly(text: string, username: string) {
-  const cleaned = stripBotMention(text, username).toLowerCase();
-  if (!cleaned) return true;
-  return /^(hi|hello|hey|help|commands?|what can you do|who are you)\b/.test(cleaned);
+  const cleaned = stripBotMention(text, username);
+  if (!cleaned.trim()) return true;
+  // Bare greetings are handled separately — do not dump the capabilities wall.
+  if (isCasualGreeting(cleaned)) return false;
+  return isHelpRequest(cleaned);
 }
 
 export async function matchFaqForGroup(

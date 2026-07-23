@@ -211,6 +211,52 @@ async function runModerationCommand(ctx: Context, action: ModerationAction) {
   }
 }
 
+async function startGroupActivityCommand(
+  ctx: Context,
+  type: "poll" | "learn" | "game" | "fun",
+) {
+  if (!isGroupChat(ctx)) {
+    await ctx.reply(`Use /${type === "learn" ? "trivia" : type} inside the group.`);
+    return;
+  }
+  const telegramId = chatIdOf(ctx);
+  const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+  if (!telegramId || !fromUserId) return;
+  const runtime = await resolveGroupRuntime(telegramId);
+  if (!runtime?.communityMode) {
+    await ctx.reply("Community mode isn't enabled here.");
+    return;
+  }
+  const { engagementService } = await import("@/services/engagement.service");
+  const { contextService } = await import("@/services/context.service");
+  if (!engagementService.typeAllowed(type, runtime.group.settings)) {
+    await ctx.reply(
+      `${type} activities are disabled. Enable them under group Capabilities.`,
+    );
+    return;
+  }
+  try {
+    const context = await contextService.build(runtime.group.id);
+    const activity = await engagementService.inventActivity({
+      groupId: runtime.group.id,
+      type,
+      context,
+      guidelines: runtime.group.settings?.engagementGuidelines,
+      createdByUserId: runtime.employerUserId,
+      hint: commandArgs(ctx, type === "learn" ? "trivia" : type),
+    });
+    if (type === "poll" || type === "learn" || type === "game") {
+      await engagementService.postTelegramPoll(ctx, activity);
+    } else {
+      await ctx.reply(
+        [`**${activity.title}**`, activity.description ?? ""].filter(Boolean).join("\n"),
+      );
+    }
+  } catch (err) {
+    await ctx.reply(err instanceof Error ? err.message : "Could not start activity.");
+  }
+}
+
 export function registerCommands(bot: Telegraf) {
   bot.start(async (ctx) => {
     if (isPrivateChat(ctx)) {
@@ -448,6 +494,90 @@ export function registerCommands(bot: Telegraf) {
     } catch (err) {
       await ctx.reply(err instanceof Error ? err.message : "Announce failed.");
     }
+  });
+
+  bot.command("poll", async (ctx) => {
+    await startGroupActivityCommand(ctx, "poll");
+  });
+  bot.command("trivia", async (ctx) => {
+    await startGroupActivityCommand(ctx, "learn");
+  });
+  bot.command("campaign", async (ctx) => {
+    if (!isGroupChat(ctx)) {
+      await ctx.reply("Use /campaign inside the group with a Twitter/X URL.");
+      return;
+    }
+    const telegramId = chatIdOf(ctx);
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId || !fromUserId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime?.communityMode) {
+      await ctx.reply("Community mode isn't enabled here.");
+      return;
+    }
+    if (!isAdminSender(runtime.adminTelegramIds, fromUserId)) {
+      await ctx.reply("Only admins can launch social campaigns.");
+      return;
+    }
+    const arg = commandArgs(ctx, "campaign");
+    const { engagementService } = await import("@/services/engagement.service");
+    const url = engagementService.extractUrl(arg);
+    if (!url) {
+      await ctx.reply("Usage: /campaign https://x.com/.../status/... [like|retweet]");
+      return;
+    }
+    const action = /\blike\b/i.test(arg) ? "like" : "retweet";
+    try {
+      const activity = await engagementService.createSocialCampaign({
+        groupId: runtime.group.id,
+        targetUrl: url,
+        action,
+        createdByUserId: runtime.employerUserId,
+      });
+      await ctx.reply(
+        [
+          `Social campaign live: ${activity.title}`,
+          `Do the ${action} on: ${url}`,
+          `Then tag Sentry with your proof link (+${activity.pointsReward} pts).`,
+        ].join("\n"),
+      );
+    } catch (err) {
+      await ctx.reply(err instanceof Error ? err.message : "Campaign failed.");
+    }
+  });
+
+  bot.command("points", async (ctx) => {
+    if (!isGroupChat(ctx)) {
+      await ctx.reply("Use /points inside a group.");
+      return;
+    }
+    const telegramId = chatIdOf(ctx);
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId || !fromUserId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime?.communityMode) {
+      await ctx.reply("Community mode isn't enabled here.");
+      return;
+    }
+    const arg = commandArgs(ctx, "points").toLowerCase();
+    const { rewardService } = await import("@/services/reward.service");
+    if (arg.includes("top") || arg.includes("board")) {
+      const top = await rewardService.leaderboard(runtime.group.id, 8);
+      const lines = top.map(
+        (m, i) =>
+          `${i + 1}. ${m.username ? `@${m.username}` : m.telegramUserId} — ${m.points}`,
+      );
+      await ctx.reply(lines.length ? `Leaderboard:\n${lines.join("\n")}` : "No points yet.");
+      return;
+    }
+    const mine = await rewardService.getOrCreateMemberPoints({
+      groupId: runtime.group.id,
+      telegramUserId: fromUserId,
+      username: ctx.from?.username ?? null,
+    });
+    await ctx.reply(
+      `Your points: ${mine.points} (lifetime ${mine.lifetimePoints}). Pending reward: ${mine.pendingReward.toString()}.`,
+    );
   });
 
   bot.command("birthday", async (ctx) => {

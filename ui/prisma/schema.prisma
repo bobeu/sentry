@@ -35,6 +35,9 @@ enum ActionType {
   birthday
   secretary_reply
   secretary_escalation
+  engagement_activity
+  reward_payout
+  points_award
 }
 
 enum AnnouncementStatus {
@@ -98,6 +101,7 @@ model User {
   agentApiKeys         AgentApiKey[]
   businessConnections  BusinessConnectionRecord[]
   announcements        GroupAnnouncement[]
+  rewardAccounts       RewardAccount[]
 }
 
 model Session {
@@ -160,6 +164,10 @@ model TelegramGroup {
   incidents    IncidentEvent[]
   announcements GroupAnnouncement[]
   birthdays    MemberBirthday[]
+  rewardAccount RewardAccount?
+  memberPoints MemberPoints[]
+  engagementActivities EngagementActivity[]
+  rewardLedgers RewardLedger[]
 }
 
 model GroupSettings {
@@ -200,6 +208,26 @@ model GroupSettings {
   /// Employer work-report cadence in hours (default 24). Scheduler checks hourly.
   workReportIntervalHours Int         @default(24)
   lastWorkReportAt      DateTime?
+  /// Engagement / liveliness flags (employer-configurable).
+  allowGames            Boolean       @default(false)
+  allowPolls            Boolean       @default(false)
+  allowFun              Boolean       @default(false)
+  allowComics           Boolean       @default(false)
+  allowSocialCampaigns  Boolean       @default(false)
+  /// Free-text guidance for games / learn-and-earn Sentry should invent.
+  engagementGuidelines  String?
+  /// Soft prompt cadence for offering fun (hours). 0 = never auto-offer.
+  funPromptIntervalHours Int          @default(48)
+  lastFunPromptAt       DateTime?
+  /// Cash rewards for points (paid from RewardAccount, not employment wallet).
+  rewardEnabled         Boolean       @default(false)
+  rewardPaused          Boolean       @default(false)
+  rewardAmountPerPoint  Decimal       @default(0) @db.Decimal(18, 8)
+  rewardCurrency        String        @default("USDm")
+  pointsPerCorrect      Int           @default(10)
+  pointsPerPoll         Int           @default(5)
+  pointsPerGame         Int           @default(15)
+  pointsPerSocial       Int           @default(20)
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 }
@@ -591,4 +619,145 @@ model MemberBirthday {
 
   @@unique([groupId, telegramUserId])
   @@index([month, day])
+}
+
+enum RewardAccountStatus {
+  Provisioning
+  Active
+  Paused
+  Archived
+}
+
+enum EngagementActivityType {
+  poll
+  game
+  learn
+  social
+  comic
+  fun
+}
+
+enum EngagementActivityStatus {
+  draft
+  active
+  closed
+  cancelled
+}
+
+enum RewardLedgerKind {
+  award_points
+  reset_points
+  update_points
+  payout
+  payout_failed
+  accumulate
+}
+
+enum RewardLedgerStatus {
+  pending
+  sent
+  failed
+  cancelled
+}
+
+/// On-chain RewardAccount (RewardFactory) linked to a Telegram group.
+model RewardAccount {
+  id              String              @id @default(cuid())
+  groupId         String              @unique
+  group           TelegramGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  /// Employer who requested creation (manages via Sentry, not direct on-chain access).
+  ownerUserId     String
+  owner           User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  address         String
+  accountKey      String              @unique
+  currency        String              @default("USDm")
+  status          RewardAccountStatus @default(Provisioning)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  ledgers RewardLedger[]
+
+  @@index([ownerUserId])
+}
+
+model MemberPoints {
+  id               String        @id @default(cuid())
+  groupId          String
+  group            TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramUserId   String
+  username         String?
+  points           Int           @default(0)
+  lifetimePoints   Int           @default(0)
+  /// Cash reward accrued but not yet paid on-chain (wallet currency units).
+  pendingReward    Decimal       @default(0) @db.Decimal(18, 8)
+  lifetimeRewarded Decimal       @default(0) @db.Decimal(18, 8)
+  payoutAddress    String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([groupId, telegramUserId])
+  @@index([groupId, points])
+}
+
+model EngagementActivity {
+  id              String                   @id @default(cuid())
+  groupId         String
+  group           TelegramGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type            EngagementActivityType
+  status          EngagementActivityStatus @default(active)
+  title           String
+  description     String?
+  /// JSON config: poll options, quiz answer, social URL, etc.
+  configJson      String                   @default("{}")
+  pointsReward    Int                      @default(10)
+  telegramPollId  String?
+  telegramMsgId   String?
+  createdByUserId String?
+  closesAt        DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  submissions ActivitySubmission[]
+
+  @@index([groupId, status, type])
+}
+
+model ActivitySubmission {
+  id             String             @id @default(cuid())
+  activityId     String
+  activity       EngagementActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  telegramUserId String
+  username       String?
+  payload        String
+  verified       Boolean            @default(false)
+  pointsAwarded  Int                @default(0)
+  notes          String?
+  createdAt      DateTime           @default(now())
+
+  @@unique([activityId, telegramUserId])
+  @@index([telegramUserId])
+}
+
+model RewardLedger {
+  id               String             @id @default(cuid())
+  groupId          String
+  group            TelegramGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  rewardAccountId  String?
+  rewardAccount    RewardAccount?     @relation(fields: [rewardAccountId], references: [id], onDelete: SetNull)
+  telegramUserId   String
+  kind             RewardLedgerKind
+  status           RewardLedgerStatus @default(pending)
+  pointsDelta      Int                @default(0)
+  amount           Decimal            @default(0) @db.Decimal(18, 8)
+  currency         String             @default("USDm")
+  payoutId         String?            @unique
+  destination      String?
+  txHash           String?
+  failureReason    String?
+  metaJson         String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([groupId, telegramUserId, status])
+  @@index([status, kind])
 }

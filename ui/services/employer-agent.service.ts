@@ -12,6 +12,7 @@ export type EmployerIntent =
   | "spam"
   | "employment"
   | "agreement"
+  | "rewards"
   | "general";
 
 export function detectEmployerIntent(text: string): EmployerIntent {
@@ -23,6 +24,13 @@ export function detectEmployerIntent(text: string): EmployerIntent {
     )
   ) {
     return "agreement";
+  }
+  if (
+    /\b(reward account|create reward|pause reward|resume reward|points|leaderboard|engagement|allow[- ]?(games|polls|fun)|cash reward)\b/.test(
+      t,
+    )
+  ) {
+    return "rewards";
   }
   if (
     /\b(spam|moderat|removed|deleted|ban(ned)?|mute(d)?|how many.*(spam|message))\b/.test(
@@ -237,7 +245,89 @@ export class EmployerAgentService {
     if (intent === "work") return `Past work report\n\n${brief}`;
     if (intent === "report") return `Full Sentry report\n\n${brief}`;
     if (intent === "employment") return `Employment & billing\n\n${brief}`;
+    if (intent === "rewards") return this.buildRewardsBrief(userId);
     return brief;
+  }
+
+  async buildRewardsBrief(userId: string) {
+    const groups = await groupService.listForUser(userId);
+    const { rewardService } = await import("@/services/reward.service");
+    const { blockchainService } = await import("@/services/blockchain.service");
+    const lines: string[] = [
+      "Engagement & rewards",
+      "",
+      `RewardFactory configured: ${blockchainService.isRewardFactoryConfigured() ? "yes" : "NO — deploy & set REWARD_FACTORY_ADDRESS"}`,
+      "",
+      "Say: create reward account for <group>, pause rewards, resume rewards.",
+      "Dashboard: group → Capabilities → Engagement & Rewards.",
+      "",
+    ];
+    for (const g of groups.slice(0, 8)) {
+      const account = await rewardService.getAccount(g.id);
+      const s = g.settings;
+      lines.push(
+        `• ${g.name ?? g.telegramId}: fun=${s?.allowFun ? "on" : "off"} games=${s?.allowGames ? "on" : "off"} polls=${s?.allowPolls ? "on" : "off"} social=${s?.allowSocialCampaigns ? "on" : "off"} | rewards=${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"} | account=${account?.address ?? "(none)"}`,
+      );
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * Handle employer natural-language reward account ops. Returns reply text or null.
+   */
+  async tryHandleRewardCommand(userId: string, text: string): Promise<string | null> {
+    const t = text.toLowerCase();
+    const { rewardService } = await import("@/services/reward.service");
+    const { blockchainService } = await import("@/services/blockchain.service");
+    const groups = await groupService.listForUser(userId);
+
+    const pickGroup = () => {
+      const byName = groups.find((g) =>
+        (g.name ?? "").toLowerCase() && t.includes((g.name ?? "").toLowerCase()),
+      );
+      return byName ?? groups[0] ?? null;
+    };
+
+    if (/\b(create|ensure|open)\b.*\breward\b/.test(t) || /\breward account\b/.test(t)) {
+      const g = pickGroup();
+      if (!g) return "No groups linked yet. Enable a group first.";
+      if (!blockchainService.isRewardFactoryConfigured()) {
+        return "RewardFactory is not deployed yet. After deploy, set REWARD_FACTORY_ADDRESS and ask me again.";
+      }
+      try {
+        const account = await rewardService.ensureRewardAccount({
+          groupId: g.id,
+          ownerUserId: userId,
+        });
+        await rewardService.setRewardConfig(g.id, {
+          rewardEnabled: true,
+          rewardPaused: false,
+        });
+        return [
+          `Reward account ready for ${g.name ?? g.telegramId}.`,
+          `Address: ${account.address}`,
+          `Currency: ${account.currency}`,
+          "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x wallet.",
+        ].join("\n");
+      } catch (err) {
+        return err instanceof Error ? err.message : "Could not create reward account.";
+      }
+    }
+
+    if (/\bpause\b.*\breward/.test(t)) {
+      const g = pickGroup();
+      if (!g) return "No groups linked.";
+      await rewardService.pauseRewards(g.id);
+      return `Rewards paused for ${g.name ?? g.telegramId}.`;
+    }
+    if (/\bresume\b.*\breward/.test(t) || /\bunpause\b.*\breward/.test(t)) {
+      const g = pickGroup();
+      if (!g) return "No groups linked.";
+      await rewardService.resumeRewards(g.id);
+      return `Rewards resumed for ${g.name ?? g.telegramId}.`;
+    }
+
+    return null;
   }
 
   async formatGroupCard(userId: string, groupId: string) {

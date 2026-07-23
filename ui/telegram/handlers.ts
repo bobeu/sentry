@@ -15,10 +15,22 @@ import { billingService } from "@/services/billing.service";
 import { UNCERTAIN_REPLY } from "@/lib/messages";
 import {
   GRATITUDE_ACK,
+  casualGreetingReply,
+  isCasualGreeting,
   isGratitudeOnly,
   splitTelegramMessage,
   toTelegramHtml,
 } from "@/lib/telegram-message";
+import {
+  engagementService,
+  detectEngagementIntent,
+  isEngagementStartCommand,
+} from "@/services/engagement.service";
+import {
+  rewardService,
+  extractWalletAddress,
+  isRewardWithdrawRequest,
+} from "@/services/reward.service";
 import {
   detectEmployerIntent,
   employerAgentService,
@@ -283,6 +295,9 @@ async function agentAnswerForGroup(
         )
       : "";
   const memberNote = await memoryService.getNote(runtime.group.id, fromUserId);
+  const engagementContext = rewardService.formatEngagementContext(
+    runtime.group.settings,
+  );
   return aiService.generateReply({
     context,
     userQuestion: cleaned,
@@ -293,8 +308,232 @@ async function agentAnswerForGroup(
     personaRole: runtime.group.settings?.personaRole,
     personaTone: runtime.group.settings?.personaTone,
     memberNote,
+    engagementContext,
   });
 }
+
+/**
+ * Engagement / rewards path: withdraw, social proof, start activity.
+ * Returns true when the message was fully handled.
+ */
+async function handleEngagementAndRewards(
+  ctx: Context,
+  runtime: GroupRuntime,
+  text: string,
+  cleaned: string,
+  fromUserId: string | null,
+  fromUsername: string | null,
+  addressed: boolean,
+  fromAdmin: boolean,
+): Promise<boolean> {
+  const message = ctx.message && "message_id" in ctx.message ? ctx.message : null;
+  if (!message || !fromUserId) return false;
+  if (!runtime.communityMode) return false;
+
+  const settings = runtime.group.settings;
+
+  // Member withdraw / claim reward (wallet in message + tag Sentry, or withdraw keywords).
+  const wallet = extractWalletAddress(cleaned);
+  if (
+    addressed &&
+    (isRewardWithdrawRequest(cleaned) || (wallet && /\b(reward|points|withdraw|claim|payout)\b/i.test(cleaned)))
+  ) {
+    if (wallet) {
+      await rewardService.setPayoutAddress(
+        runtime.group.id,
+        fromUserId,
+        wallet,
+        fromUsername,
+      );
+    }
+    const result = await rewardService.tryPayoutMember({
+      groupId: runtime.group.id,
+      telegramUserId: fromUserId,
+      destination: wallet ?? undefined,
+    });
+    await replyTo(ctx, result.message, message.message_id);
+    if (result.ok && runtime.billable) {
+      await recordBillable(runtime, "reward_payout", {
+        amount: result.amount,
+        currency: result.currency,
+      });
+    }
+    return true;
+  }
+
+  // Social campaign proof (URL) when tagging Sentry or replying under an active campaign.
+  const url = engagementService.extractUrl(cleaned);
+  if (url && (addressed || TWITTERISH.test(url))) {
+    const social = await engagementService.findOpenSocial(runtime.group.id);
+    if (social && settings?.allowSocialCampaigns) {
+      const verified = await engagementService.verifySocialSubmission({
+        activityId: social.id,
+        telegramUserId: fromUserId,
+        username: fromUsername,
+        text: cleaned,
+      });
+      if (addressed || verified.ok) {
+        await replyTo(ctx, verified.message, message.message_id);
+        if (verified.ok && runtime.billable) {
+          await recordBillable(runtime, "points_award", {
+            kind: "social",
+            points: verified.points,
+          });
+        }
+        return true;
+      }
+    }
+  }
+
+  // Start activity (admin/employer or when fun flags allow member-initiated).
+  const wantStart =
+    addressed &&
+    (isEngagementStartCommand(cleaned) ||
+      (detectEngagementIntent(cleaned) &&
+        /\b(start|launch|begin|create|run|play|let'?s)\b/i.test(cleaned)));
+  if (wantStart) {
+    const type = detectEngagementIntent(cleaned) ?? "fun";
+    if (!engagementService.typeAllowed(type, settings)) {
+      if (addressed) {
+        await replyTo(
+          ctx,
+          `That activity type isn't enabled here. An employer can turn on allow-${type === "learn" ? "games" : type} in the dashboard.`,
+          message.message_id,
+        );
+        return true;
+      }
+      return false;
+    }
+
+    // Social campaign: employer/admin posts URL + start command.
+    if (type === "social") {
+      if (!fromAdmin && !runtime.employerUserId) {
+        await replyTo(
+          ctx,
+          "Only admins can launch social campaigns. Paste the post link and ask an admin to start it with me.",
+          message.message_id,
+        );
+        return true;
+      }
+      const target = url ?? engagementService.extractUrl(text);
+      if (!target) {
+        await replyTo(
+          ctx,
+          "Share the Twitter/X post URL and say e.g. `start social retweet` tagging me.",
+          message.message_id,
+        );
+        return true;
+      }
+      const action = /\blike\b/i.test(cleaned)
+        ? "like"
+        : /\bfollow\b/i.test(cleaned)
+          ? "follow"
+          : "retweet";
+      try {
+        const activity = await engagementService.createSocialCampaign({
+          groupId: runtime.group.id,
+          targetUrl: target,
+          action,
+          createdByUserId: runtime.employerUserId,
+        });
+        await replyTo(
+          ctx,
+          [
+            `Social campaign live: **${activity.title}**`,
+            `Do the ${action} on: ${target}`,
+            `Then reply tagging me with your proof link to earn **${activity.pointsReward}** points.`,
+          ].join("\n"),
+          message.message_id,
+        );
+        if (runtime.billable) {
+          await recordBillable(runtime, "engagement_activity", {
+            type: "social",
+            activityId: activity.id,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Could not start campaign";
+        await replyTo(ctx, msg, message.message_id);
+      }
+      return true;
+    }
+
+    try {
+      const context = await contextService.build(runtime.group.id);
+      const activity = await engagementService.inventActivity({
+        groupId: runtime.group.id,
+        type,
+        context,
+        guidelines: settings?.engagementGuidelines,
+        createdByUserId: runtime.employerUserId,
+        hint: cleaned,
+      });
+      if (type === "poll" || type === "learn" || type === "game") {
+        await engagementService.postTelegramPoll(ctx, activity);
+        await replyTo(
+          ctx,
+          `Activity started — earn up to **${activity.pointsReward}** points. Good luck!`,
+          message.message_id,
+        ).catch(() => undefined);
+      } else {
+        await replyTo(
+          ctx,
+          [
+            `**${activity.title}**`,
+            activity.description ?? "",
+            "",
+            "Reply with your answer tagging me to earn points.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          message.message_id,
+        );
+      }
+      if (runtime.billable) {
+        await recordBillable(runtime, "engagement_activity", {
+          type,
+          activityId: activity.id,
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not start activity";
+      await replyTo(ctx, msg, message.message_id);
+    }
+    return true;
+  }
+
+  // Points / leaderboard quick ask
+  if (addressed && /\b(my\s+points|leaderboard|top\s+points|scoreboard)\b/i.test(cleaned)) {
+    if (/\bleaderboard|top\s+points|scoreboard\b/i.test(cleaned)) {
+      const top = await rewardService.leaderboard(runtime.group.id, 8);
+      const lines = top.map(
+        (m, i) =>
+          `${i + 1}. ${m.username ? `@${m.username}` : m.telegramUserId} — ${m.points} pts`,
+      );
+      await replyTo(
+        ctx,
+        lines.length ? `Leaderboard:\n${lines.join("\n")}` : "No points yet — join the next activity!",
+        message.message_id,
+      );
+    } else {
+      const mine = await rewardService.getOrCreateMemberPoints({
+        groupId: runtime.group.id,
+        telegramUserId: fromUserId,
+        username: fromUsername,
+      });
+      await replyTo(
+        ctx,
+        `You have **${mine.points}** points (lifetime ${mine.lifetimePoints}). Pending cash: ${mine.pendingReward.toString()}.`,
+        message.message_id,
+      );
+    }
+    return true;
+  }
+
+  return false;
+}
+
+const TWITTERISH = /(?:twitter\.com|x\.com)\//i;
 
 async function deliverOrEscalate(input: {
   ctx: Context;
@@ -368,6 +607,44 @@ async function handleGroupIntelligence(
     }
     return;
   }
+
+  // Casual hi/hey — short lively reply only (never dump FAQs or capability walls).
+  if (addressed && isCasualGreeting(cleaned)) {
+    const funHint =
+      runtime.group.settings?.allowFun || runtime.group.settings?.allowGames
+        ? "Want a quick poll, trivia, or learn-and-earn round? Just say the word."
+        : null;
+    await replyTo(
+      ctx,
+      casualGreetingReply(
+        fromUsername ? `@${fromUsername.replace(/^@/, "")}` : null,
+        funHint,
+      ),
+      message.message_id,
+    );
+    await recordBillable(runtime, "mention_reply", { kind: "greeting" }, false);
+    // Soft cadence offer (non-blocking).
+    void engagementService
+      .maybeOfferFun({
+        groupId: runtime.group.id,
+        send: (t) => replyTo(ctx, t, message.message_id),
+      })
+      .catch(() => undefined);
+    return;
+  }
+
+  // Engagement / rewards before general Q&A — prevents dumping FAQs into activity flows.
+  const engagementHandled = await handleEngagementAndRewards(
+    ctx,
+    runtime,
+    text,
+    cleaned,
+    fromUserId,
+    fromUsername,
+    addressed,
+    fromAdmin,
+  );
+  if (engagementHandled) return;
 
   // Mentions / replies always get a response — agent presence, not a mute bot.
   if (addressed) {
@@ -542,6 +819,19 @@ async function handlePrivateAgent(ctx: Context, text: string) {
 
   const intent = detectEmployerIntent(cleaned);
 
+  if (intent === "rewards") {
+    const handled = await employerAgentService.tryHandleRewardCommand(
+      user.id,
+      cleaned,
+    );
+    if (handled) {
+      await replyPlain(ctx, handled, {
+        reply_markup: employerDmService.mainMenuKeyboard(),
+      });
+      return;
+    }
+  }
+
   const groupPick = cleaned.match(
     /^(?:open|select|group|use)\s+(?:group\s+)?(?:#?(\d+)|(.+))$/i,
   );
@@ -641,7 +931,8 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       intent === "report" ||
       intent === "spam" ||
       intent === "agreement" ||
-      intent === "employment"
+      intent === "employment" ||
+      intent === "rewards"
     ) {
       const report = await employerAgentService.formatDirectReport(user.id, intent);
       await replyPlain(ctx, report, {
@@ -946,31 +1237,46 @@ export function registerHandlers(bot: Telegraf) {
       }
 
       const runtime = await resolveGroupRuntime(telegramId);
-      if (!runtime?.communityMode || !runtime.billable) continue;
+      // Welcome whenever community mode is on and welcome is enabled.
+      // Do not require billable — a short welcome should not fail when wallet is low.
+      if (!runtime?.communityMode) continue;
       if (!runtime.group.settings?.welcomeMembers) continue;
 
       const context = await contextService.build(runtime.group.id);
       const name = member.username ? `@${member.username}` : member.first_name;
       try {
-        const welcome = await aiService.generateWelcome({
-          context,
-          memberName: name,
-        });
+        const welcome = await Promise.race([
+          aiService.generateWelcome({
+            context,
+            memberName: name,
+          }),
+          new Promise<string>((_, reject) =>
+            setTimeout(() => reject(new Error("welcome-timeout")), 12_000),
+          ),
+        ]);
         await ctx.reply(toTelegramHtml(welcome), { parse_mode: "HTML" });
-        await recordBillable(runtime, "welcome", { member: name });
+        if (runtime.billable) {
+          await recordBillable(runtime, "welcome", { member: name });
+        }
       } catch (err) {
         console.error("[welcome]", err);
         const rules = runtime.group.rules?.trim();
         const purpose = runtime.group.purpose?.trim();
         const fallback = [
-          `Welcome **${name}** — glad you're here.`,
-          purpose ? `\n**About this group:** ${purpose}` : "",
-          rules ? `\n**House rules:**\n${rules}` : "",
-          "\nAsk questions anytime, or mention me when you need help.",
-        ].join("");
-        await ctx
-          .reply(toTelegramHtml(fallback), { parse_mode: "HTML" })
-          .catch(() => undefined);
+          `Welcome ${name}!`,
+          purpose ? `This group: ${purpose}` : "Glad you're here.",
+          rules ? `House rules:\n${rules.slice(0, 800)}` : null,
+          "Tag me anytime if you need help — happy to assist.",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        await ctx.reply(fallback).catch(() => undefined);
+        if (runtime.billable) {
+          await recordBillable(runtime, "welcome", {
+            member: name,
+            fallback: true,
+          }).catch(() => undefined);
+        }
       }
     }
   });
@@ -997,6 +1303,31 @@ export function registerHandlers(bot: Telegraf) {
   bot.on("animation", mediaHandler);
   bot.on("document", mediaHandler);
   bot.on("sticker", mediaHandler);
+
+  bot.on("poll_answer", async (ctx) => {
+    const answer = ctx.pollAnswer;
+    if (!answer?.user?.id || !answer.poll_id) return;
+    try {
+      const result = await engagementService.handlePollAnswer({
+        pollId: answer.poll_id,
+        telegramUserId: String(answer.user.id),
+        username: answer.user.username ?? answer.user.first_name ?? null,
+        optionIds: answer.option_ids ?? [],
+      });
+      if (!result || result.duplicate || !result.points) return;
+      // Best-effort DM ack — group reply needs chat id which poll_answer may lack.
+      await ctx.telegram
+        .sendMessage(
+          answer.user.id,
+          result.verified
+            ? `Nice! +${result.points} points for "${result.activity.title}".`
+            : `Thanks for playing "${result.activity.title}".`,
+        )
+        .catch(() => undefined);
+    } catch (err) {
+      console.error("[poll_answer]", err);
+    }
+  });
 
   bot.on("text", async (ctx) => {
     if (!ctx.message || !("text" in ctx.message)) return;

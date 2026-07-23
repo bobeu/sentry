@@ -25,6 +25,7 @@ type ReplyInput = {
   personaTone?: string | null;
   memberNote?: string | null;
   groupId?: string;
+  engagementContext?: string | null;
 };
 
 /** Default completion budget. Gemini 2.5 thinking can consume part of this. */
@@ -60,17 +61,21 @@ function systemRules(extras?: {
   personaTone?: string | null;
   memberNote?: string | null;
   includeCelo?: boolean;
+  engagementContext?: string | null;
 }) {
   const parts = [
     "You are Sentry, a highly capable AI agent embedded in Telegram as a community employee.",
     "You are not a shallow chatbot: reason carefully, use FAQs, knowledge-base tool results, and recent chat context.",
-    "Tone: clear, confident, and complete. Prefer short paragraphs over one-liners when detail is needed.",
+    "Tone: warm, clear, and lively — helpful without being stiff. Prefer short paragraphs over walls of text.",
     "Always finish your answer — never stop mid-sentence or mid-list. If space is tight, prioritize completeness over fluff.",
-    "Never invent policies or facts. Prefer FAQs and knowledge-base excerpts over speculation.",
+    "CRITICAL — no hallucination: Never invent policies, prices, balances, tx hashes, links, or facts. Prefer FAQs/KB excerpts. If unknown, say so.",
+    "CRITICAL — answer only what was asked. Do not dump unrelated FAQs, prior answers, or capability lists unless asked.",
+    "CRITICAL — if the member only greets (hi/hello) or only says thanks, keep it to 1–2 short friendly sentences. Do NOT re-answer previous questions.",
+    "CRITICAL — recent chat is context only. Do not restate prior Q&A unless the member asks you to repeat or clarify.",
     "Never claim to be human.",
-    "You can moderate spam (warn/delete/mute/ban when admin) and answer community questions.",
+    "You can moderate spam (warn/delete/mute/ban when admin), answer community questions, and (when enabled) run light fun/polls/games/learn activities.",
+    "When engagement is enabled and the vibe fits, you may briefly offer a poll, trivia, or learn-and-earn — never force it into serious support questions.",
     "Formatting for Telegram: use **bold** for emphasis, short paragraphs, and • bullets. Do NOT sprinkle decorative asterisks. Do not use Markdown tables or headings with #.",
-    "If the member only says thanks/thank you, reply with a brief warm acknowledgment — do NOT repeat your previous answer.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];
   if (extras?.includeCelo) {
@@ -88,6 +93,9 @@ function systemRules(extras?: {
   if (extras?.memberNote) {
     parts.push(`Consented member memory note: ${extras.memberNote}`);
   }
+  if (extras?.engagementContext) {
+    parts.push(`Engagement / rewards settings for this group:\n${extras.engagementContext}`);
+  }
   return parts.join("\n");
 }
 
@@ -104,12 +112,13 @@ function employerSystemRules() {
 
 function formatContext(context: ContextBundle) {
   const recent = context.recentMessages
-    .slice(-25)
+    .slice(-15)
     .map((m) => `${m.from}: ${m.text}`)
     .join("\n");
+  // Titles only — full answers come from tool results to reduce FAQ dumping / hallucination.
   const faqs = context.faqs
-    .slice(0, 20)
-    .map((f, i) => `${i + 1}. Q: ${f.question}\n   A: ${f.answer}`)
+    .slice(0, 12)
+    .map((f, i) => `${i + 1}. ${f.question}`)
     .join("\n");
   const kb = (context.knowledgeSources ?? [])
     .slice(0, 10)
@@ -121,9 +130,9 @@ function formatContext(context: ContextBundle) {
     `Purpose: ${context.purpose ?? "(none)"}`,
     `Description: ${context.description ?? "(none)"}`,
     `Rules: ${context.rules ?? "(none)"}`,
-    `FAQs:\n${faqs || "(none)"}`,
+    `FAQ topics (use tool results for answers — do not invent):\n${faqs || "(none)"}`,
     `Knowledge sources:\n${kb || "(none)"}`,
-    `Recent messages:\n${recent || "(none)"}`,
+    `Recent messages (context only — do not re-answer unless asked):\n${recent || "(none)"}`,
   ].join("\n\n");
 }
 
@@ -422,6 +431,7 @@ export class AiService {
       personaTone: input.personaTone,
       memberNote: input.memberNote,
       includeCelo: looksCeloRelated(input.userQuestion),
+      engagementContext: input.engagementContext,
     });
 
     const text = await callLLM(
@@ -442,7 +452,7 @@ export class AiService {
             input.userQuestion,
             "",
             "Write a complete, helpful reply grounded in the tool results and group context.",
-            "Use as many sentences or short paragraphs as needed — do not cut off mid-thought.",
+            "Answer ONLY this ask. Do not dump FAQ lists, prior answers, or capability walls.",
             "If tool results fully answer the question, prefer them. If not, say what is known and what is not.",
           ]
             .filter(Boolean)
@@ -548,6 +558,91 @@ export class AiService {
       ],
       DEFAULT_REPLY_TOKENS,
     );
+  }
+
+  /**
+   * Draft a poll / trivia / fun activity as strict JSON for Telegram posting.
+   */
+  async generateEngagementActivity(input: {
+    type: "poll" | "game" | "learn" | "social" | "comic" | "fun";
+    context: ContextBundle;
+    guidelines?: string | null;
+    hint?: string | null;
+  }): Promise<{
+    title: string;
+    description: string;
+    config: Record<string, unknown>;
+  }> {
+    const raw = await callLLM(
+      [
+        {
+          role: "system",
+          content: [
+            "You invent short, lively community engagement activities for Telegram.",
+            "Return ONLY valid JSON (no markdown fences) with keys: title, description, config.",
+            "For poll/learn/game: config = { question, options: string[2..6], correctIndex?: number, explanation?: string }.",
+            "For learn/game quizzes, correctIndex is required (0-based).",
+            "For fun/comic: config = { question, options } still works as a light vibe check.",
+            "Keep questions under 280 chars. Options under 80 chars each.",
+            "Stay on-brand for the group's purpose; never invent fake company policies as quiz facts.",
+            "Be playful but wholesome — no harassment, politics bait, or adult content.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `Activity type: ${input.type}`,
+            `Group: ${input.context.groupName}`,
+            `Purpose: ${input.context.purpose ?? "(none)"}`,
+            input.guidelines?.trim()
+              ? `Employer guidelines:\n${input.guidelines.trim()}`
+              : "",
+            input.hint?.trim() ? `Extra hint: ${input.hint.trim()}` : "",
+            "Invent one activity now as JSON.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        },
+      ],
+      700,
+    );
+
+    try {
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const parsed = JSON.parse(cleaned) as {
+        title?: string;
+        description?: string;
+        config?: Record<string, unknown>;
+      };
+      const title = (parsed.title ?? `${input.type} time`).slice(0, 120);
+      const description = (parsed.description ?? "Join in!").slice(0, 500);
+      const config = parsed.config ?? {
+        question: title,
+        options: ["A", "B", "C", "D"],
+        correctIndex: 0,
+      };
+      return { title, description, config };
+    } catch {
+      return {
+        title: input.type === "poll" ? "Quick pulse check" : "Trivia time",
+        description: "Tap an option — winners earn points!",
+        config: {
+          question:
+            input.type === "poll"
+              ? "How's the vibe in this group today?"
+              : "Which chain is Celo built for?",
+          options:
+            input.type === "poll"
+              ? ["Great", "Okay", "Needs energy", "Surprise me"]
+              : ["Mobile-first payments", "Only NFTs", "Gaming only", "Private intranet"],
+          correctIndex: input.type === "poll" ? undefined : 0,
+          explanation:
+            input.type === "poll"
+              ? undefined
+              : "Celo focuses on mobile-first, accessible payments and DeFi.",
+        },
+      };
+    }
   }
 }
 
