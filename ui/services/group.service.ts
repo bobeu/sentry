@@ -311,6 +311,21 @@ export class GroupService {
       workReportIntervalHours?: number;
       lastWorkReportAt?: Date | null;
       spamGuidelines?: string | null;
+      allowGames?: boolean;
+      allowPolls?: boolean;
+      allowFun?: boolean;
+      allowComics?: boolean;
+      allowSocialCampaigns?: boolean;
+      engagementGuidelines?: string | null;
+      funPromptIntervalHours?: number;
+      rewardEnabled?: boolean;
+      rewardPaused?: boolean;
+      rewardAmountPerPoint?: number;
+      rewardCurrency?: string;
+      pointsPerCorrect?: number;
+      pointsPerPoll?: number;
+      pointsPerGame?: number;
+      pointsPerSocial?: number;
       rules?: string | null;
       description?: string | null;
       purpose?: string | null;
@@ -346,6 +361,10 @@ export class GroupService {
       data.workReportIntervalHours !== undefined
         ? Math.min(168, Math.max(1, Math.floor(data.workReportIntervalHours)))
         : undefined;
+    const funInterval =
+      data.funPromptIntervalHours !== undefined
+        ? Math.min(168, Math.max(0, Math.floor(data.funPromptIntervalHours)))
+        : undefined;
 
     const settings = await prisma.groupSettings.upsert({
       where: { groupId },
@@ -380,6 +399,21 @@ export class GroupService {
         workReportIntervalHours: workInterval ?? 24,
         lastWorkReportAt: data.lastWorkReportAt ?? null,
         spamGuidelines: data.spamGuidelines ?? null,
+        allowGames: data.allowGames ?? false,
+        allowPolls: data.allowPolls ?? false,
+        allowFun: data.allowFun ?? false,
+        allowComics: data.allowComics ?? false,
+        allowSocialCampaigns: data.allowSocialCampaigns ?? false,
+        engagementGuidelines: data.engagementGuidelines ?? null,
+        funPromptIntervalHours: funInterval ?? 48,
+        rewardEnabled: data.rewardEnabled ?? false,
+        rewardPaused: data.rewardPaused ?? false,
+        rewardAmountPerPoint: data.rewardAmountPerPoint ?? 0,
+        rewardCurrency: data.rewardCurrency ?? "USDm",
+        pointsPerCorrect: data.pointsPerCorrect ?? 10,
+        pointsPerPoll: data.pointsPerPoll ?? 5,
+        pointsPerGame: data.pointsPerGame ?? 15,
+        pointsPerSocial: data.pointsPerSocial ?? 20,
       },
       update: {
         welcomeMembers: data.welcomeMembers,
@@ -413,6 +447,21 @@ export class GroupService {
         workReportIntervalHours: workInterval,
         lastWorkReportAt: data.lastWorkReportAt,
         spamGuidelines: data.spamGuidelines,
+        allowGames: data.allowGames,
+        allowPolls: data.allowPolls,
+        allowFun: data.allowFun,
+        allowComics: data.allowComics,
+        allowSocialCampaigns: data.allowSocialCampaigns,
+        engagementGuidelines: data.engagementGuidelines,
+        funPromptIntervalHours: funInterval,
+        rewardEnabled: data.rewardEnabled,
+        rewardPaused: data.rewardPaused,
+        rewardAmountPerPoint: data.rewardAmountPerPoint,
+        rewardCurrency: data.rewardCurrency,
+        pointsPerCorrect: data.pointsPerCorrect,
+        pointsPerPoll: data.pointsPerPoll,
+        pointsPerGame: data.pointsPerGame,
+        pointsPerSocial: data.pointsPerSocial,
       },
     });
 

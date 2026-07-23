@@ -13,7 +13,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
-import { CONTRACTS } from "@/lib/contracts";
+import { CONTRACTS, REWARD_ACCOUNT_ABI } from "@/lib/contracts";
 import { txFeeOpts } from "@/lib/fee-currency";
 import type { PaymentCurrency } from "@/lib/payment-currency";
 import { tokenDecimals } from "@/lib/payment-currency";
@@ -463,6 +463,13 @@ export class BlockchainService {
     );
   }
 
+  private rewardFactoryAddress() {
+    return configuredAddress(
+      "REWARD_FACTORY_ADDRESS",
+      CONTRACTS.RewardFactory.address,
+    );
+  }
+
   private walletClient(kind: "owner" | "operator", address: Address | null) {
     const privateKey = key(kind);
     if (!privateKey || !address) return null;
@@ -843,6 +850,124 @@ export class BlockchainService {
     if (receipt.status !== "success") {
       throw Errors.chargeFailed("Transaction reverted on-chain");
     }
+  }
+
+  isRewardFactoryConfigured() {
+    const addr = this.rewardFactoryAddress();
+    return Boolean(
+      addr &&
+        addr !== zeroAddress &&
+        key("owner") &&
+        (CONTRACTS.RewardFactory.abi?.length ?? 0) > 0,
+    );
+  }
+
+  /**
+   * Create or return existing RewardAccount for accountKey (independent of employment wallets).
+   */
+  async ensureRewardAccount(input: {
+    accountKey: Hex;
+    currency: PaymentCurrency;
+  }): Promise<Address> {
+    const factory = this.rewardFactoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+
+    const existing = await this.client().readContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "accountOfKey",
+      args: [input.accountKey],
+    });
+    if (existing && (existing as Address) !== zeroAddress) {
+      return existing as Address;
+    }
+
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "createAccount",
+      args: [input.accountKey, TOKEN_INDEX[input.currency]],
+      account: owner.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return (await this.client().readContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "accountOfKey",
+      args: [input.accountKey],
+    })) as Address;
+  }
+
+  async rewardAccountBalance(accountAddress: Address): Promise<bigint> {
+    return (await this.client().readContract({
+      address: accountAddress,
+      abi: REWARD_ACCOUNT_ABI,
+      functionName: "balance",
+    })) as bigint;
+  }
+
+  async payoutReward(input: {
+    accountAddress: Address;
+    to: Address;
+    amount: bigint;
+    payoutId: Hex;
+  }): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const operator = this.walletClient("operator", factory);
+    if (!factory || !operator) throw Errors.blockchainUnavailable();
+
+    const hash = await operator.wallet.writeContract({
+      address: input.accountAddress,
+      abi: REWARD_ACCOUNT_ABI,
+      functionName: "payout",
+      args: [input.to, input.amount, input.payoutId],
+      account: operator.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async pauseRewardAccount(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "pauseAccount",
+      args: [accountKey],
+      account: owner.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async resumeRewardAccount(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "resumeAccount",
+      args: [accountKey],
+      account: owner.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
   }
 }
 

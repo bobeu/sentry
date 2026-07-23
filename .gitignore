@@ -9,3 +9,7 @@ node_modules
 **/defai_registration_details.md
 8004_registration/.env
 agent/out/
+
+# Local agent work reports (not for git)
+REPORT.md
+**/REPORT.md

@@ -96,6 +96,21 @@ export function GroupDetailPanel() {
     personaRole: "default",
     personaTone: "",
     spamGuidelines: "",
+    allowGames: false,
+    allowPolls: false,
+    allowFun: false,
+    allowComics: false,
+    allowSocialCampaigns: false,
+    engagementGuidelines: "",
+    funPromptIntervalHours: 48,
+    rewardEnabled: false,
+    rewardPaused: false,
+    rewardAmountPerPoint: 0,
+    rewardCurrency: "USDm",
+    pointsPerCorrect: 10,
+    pointsPerPoll: 5,
+    pointsPerGame: 15,
+    pointsPerSocial: 20,
   });
   const [rules, setRules] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -156,6 +171,21 @@ export function GroupDetailPanel() {
       personaRole: g.settings?.personaRole ?? "default",
       personaTone: g.settings?.personaTone ?? "",
       spamGuidelines: g.settings?.spamGuidelines ?? "",
+      allowGames: g.settings?.allowGames ?? false,
+      allowPolls: g.settings?.allowPolls ?? false,
+      allowFun: g.settings?.allowFun ?? false,
+      allowComics: g.settings?.allowComics ?? false,
+      allowSocialCampaigns: g.settings?.allowSocialCampaigns ?? false,
+      engagementGuidelines: g.settings?.engagementGuidelines ?? "",
+      funPromptIntervalHours: g.settings?.funPromptIntervalHours ?? 48,
+      rewardEnabled: g.settings?.rewardEnabled ?? false,
+      rewardPaused: g.settings?.rewardPaused ?? false,
+      rewardAmountPerPoint: Number(g.settings?.rewardAmountPerPoint ?? 0),
+      rewardCurrency: g.settings?.rewardCurrency ?? "USDm",
+      pointsPerCorrect: g.settings?.pointsPerCorrect ?? 10,
+      pointsPerPoll: g.settings?.pointsPerPoll ?? 5,
+      pointsPerGame: g.settings?.pointsPerGame ?? 15,
+      pointsPerSocial: g.settings?.pointsPerSocial ?? 20,
     });
     setRules(g.rules ?? "");
     setPurpose(g.purpose ?? "");
@@ -515,6 +545,184 @@ export function GroupDetailPanel() {
                 label="Birthday Celebrations"
                 description="Congratulates members on their birthdays."
               />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Engagement &amp; Fun</h2>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Toggle
+                checked={settings.allowFun}
+                onChange={(v) => setSettings((s) => ({ ...s, allowFun: v }))}
+                label="Allow Fun"
+                description="Lets Sentry offer light, lively activities."
+              />
+              <Toggle
+                checked={settings.allowGames}
+                onChange={(v) => setSettings((s) => ({ ...s, allowGames: v }))}
+                label="Allow Games"
+                description="Trivia / learn-and-earn quizzes."
+              />
+              <Toggle
+                checked={settings.allowPolls}
+                onChange={(v) => setSettings((s) => ({ ...s, allowPolls: v }))}
+                label="Allow Polls"
+                description="Native Telegram polls in the group."
+              />
+              <Toggle
+                checked={settings.allowComics}
+                onChange={(v) => setSettings((s) => ({ ...s, allowComics: v }))}
+                label="Allow Comics"
+                description="Short comic / meme-style prompts."
+              />
+              <Toggle
+                checked={settings.allowSocialCampaigns}
+                onChange={(v) => setSettings((s) => ({ ...s, allowSocialCampaigns: v }))}
+                label="Social Campaigns"
+                description="Twitter/X like / retweet verification."
+              />
+            </div>
+            <label className="block text-xs font-bold text-muted">
+              Engagement guidelines (what Sentry should invent)
+              <textarea
+                value={settings.engagementGuidelines}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, engagementGuidelines: e.target.value }))
+                }
+                rows={3}
+                placeholder="Prefer Celo education quizzes; keep polls short; no politics."
+                className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary leading-relaxed text-xs font-normal"
+              />
+            </label>
+            <label className="block text-xs font-bold text-muted">
+              Fun prompt interval (hours, 0 = never auto-offer)
+              <input
+                type="number"
+                min={0}
+                max={168}
+                value={settings.funPromptIntervalHours}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    funPromptIntervalHours: Number(e.target.value) || 0,
+                  }))
+                }
+                className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+              />
+            </label>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Rewards (points → cash)</h2>
+            <p className="text-xs text-muted">
+              Cash pays from a separate RewardAccount (not the employment wallet). Create the account via Sentry DM or the Rewards API after deploy.
+            </p>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Toggle
+                checked={settings.rewardEnabled}
+                onChange={(v) => setSettings((s) => ({ ...s, rewardEnabled: v }))}
+                label="Enable cash rewards"
+                description="Convert points to pending cash when earned."
+              />
+              <Toggle
+                checked={settings.rewardPaused}
+                onChange={(v) => setSettings((s) => ({ ...s, rewardPaused: v }))}
+                label="Pause rewards"
+                description="Stops new cash accrual and payouts."
+              />
+            </div>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <label className="block text-xs font-bold text-muted">
+                Amount per point
+                <input
+                  type="number"
+                  step="0.0001"
+                  min={0}
+                  value={settings.rewardAmountPerPoint}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      rewardAmountPerPoint: Number(e.target.value) || 0,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Reward currency
+                <select
+                  value={settings.rewardCurrency}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, rewardCurrency: e.target.value }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                >
+                  <option value="USDm">USDm</option>
+                  <option value="USDC">USDC</option>
+                  <option value="USDT">USDT</option>
+                  <option value="CELO">CELO</option>
+                </select>
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Points / correct answer
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.pointsPerCorrect}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      pointsPerCorrect: Number(e.target.value) || 0,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Points / poll
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.pointsPerPoll}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      pointsPerPoll: Number(e.target.value) || 0,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Points / game
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.pointsPerGame}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      pointsPerGame: Number(e.target.value) || 0,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                />
+              </label>
+              <label className="block text-xs font-bold text-muted">
+                Points / social
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.pointsPerSocial}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      pointsPerSocial: Number(e.target.value) || 0,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
+                />
+              </label>
             </div>
           </div>
 

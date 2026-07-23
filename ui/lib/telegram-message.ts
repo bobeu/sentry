@@ -90,19 +90,67 @@ export function toTelegramHtml(raw: string): string {
   return text;
 }
 
-/** True when the message is only gratitude / acknowledgment (no new question). */
-export function isGratitudeOnly(text: string) {
-  const t = text
+function normalizeIntentText(text: string) {
+  return text
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s']/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!t || t.length > 80) return false;
-  return /^(thanks|thank you|thank u|thx|ty|tysm|appreciate it|appreciated|grateful|much appreciated|ok thanks|okay thanks|cool thanks|got it|perfect|awesome thanks|cheers)( .+)?$/.test(
+}
+
+/** True when the message is only gratitude / acknowledgment (no new question). */
+export function isGratitudeOnly(text: string) {
+  const t = normalizeIntentText(text);
+  if (!t || t.length > 100) return false;
+  // Strip trailing bot name if present (mention already stripped elsewhere).
+  const bare = t
+    .replace(/\b(sentry|tgemployee[_\s]?bot)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!bare || bare.length > 80) return false;
+  return /^(thanks|thank you|thank u|thx|ty|tysm|thankya|thankya|appreciate(?:\s+it)?|appreciated|grateful|much appreciated|ok thanks|okay thanks|cool thanks|got it|perfect|awesome thanks|cheers|nice one|many thanks|thanks a lot|thanks so much|thank you so much|thnks|thnx)(?:\s+(so much|a lot|again|mate|bro|sis|friend|guys|team))?$/.test(
+    bare,
+  );
+}
+
+/**
+ * Casual greeting / vibe check with no real question.
+ * Should get a short lively reply — never dump FAQs, capabilities walls, or prior answers.
+ */
+export function isCasualGreeting(text: string) {
+  const t = normalizeIntentText(text)
+    .replace(/\b(sentry|tgemployee[_\s]?bot)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t || t.length > 60) return false;
+  if (/\b(what|who|when|where|why|how|can you|could you|please|help|faq|price|wallet|deposit)\b/.test(t)) {
+    return false;
+  }
+  return /^(hi|hii+|hello|heya?|hey|yo|sup|what'?s up|whats up|good (morning|afternoon|evening|day)|gm|gn|howdy|hiya)(?:\s+\w+){0,4}$/.test(
+    t,
+  );
+}
+
+/** Explicit help / capabilities request (not a bare hi). */
+export function isHelpRequest(text: string) {
+  const t = normalizeIntentText(text)
+    .replace(/\b(sentry|tgemployee[_\s]?bot)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t) return false;
+  return /^(help|commands?|menu|what can you do|who are you|your (capabilities|features)|how do you work)\b/.test(
     t,
   );
 }
 
 export const GRATITUDE_ACK =
   "You're welcome — happy to help. Ping me anytime if you need anything else.";
+
+export function casualGreetingReply(memberName?: string | null, funHint?: string | null) {
+  const who = memberName ? ` ${memberName}` : "";
+  const fun = funHint?.trim()
+    ? `\n\n${funHint.trim()}`
+    : "";
+  return `Hey${who} — good to see you. What can I help with?${fun}`;
+}
