@@ -246,10 +246,10 @@ async function startGroupActivityCommand(
       hint: commandArgs(ctx, type === "learn" ? "trivia" : type),
     });
     if (type === "poll" || type === "learn" || type === "game") {
-      await engagementService.postTelegramPoll(ctx, activity);
+      await engagementService.postTelegramPoll(ctx, activity, runtime.group.settings);
     } else {
       await ctx.reply(
-        [`**${activity.title}**`, activity.description ?? ""].filter(Boolean).join("\n"),
+        engagementService.formatActivityBrief(activity, runtime.group.settings),
       );
     }
   } catch (err) {

@@ -103,6 +103,8 @@ export function GroupDetailPanel() {
     allowSocialCampaigns: false,
     engagementGuidelines: "",
     funPromptIntervalHours: 48,
+    humorEnabled: true,
+    humorStyle: "friendly",
     rewardEnabled: false,
     rewardPaused: false,
     rewardAmountPerPoint: 0,
@@ -178,6 +180,8 @@ export function GroupDetailPanel() {
       allowSocialCampaigns: g.settings?.allowSocialCampaigns ?? false,
       engagementGuidelines: g.settings?.engagementGuidelines ?? "",
       funPromptIntervalHours: g.settings?.funPromptIntervalHours ?? 48,
+      humorEnabled: g.settings?.humorEnabled ?? true,
+      humorStyle: g.settings?.humorStyle ?? "friendly",
       rewardEnabled: g.settings?.rewardEnabled ?? false,
       rewardPaused: g.settings?.rewardPaused ?? false,
       rewardAmountPerPoint: Number(g.settings?.rewardAmountPerPoint ?? 0),
@@ -610,6 +614,27 @@ export function GroupDetailPanel() {
                 className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
               />
             </label>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Toggle
+                checked={settings.humorEnabled}
+                onChange={(v) => setSettings((s) => ({ ...s, humorEnabled: v }))}
+                label="Humor / comedy vibes"
+                description="Lets Sentry joke and keep chats playful with members."
+              />
+              <label className="block text-xs font-bold text-muted">
+                Humor style
+                <select
+                  value={settings.humorStyle}
+                  onChange={(e) => setSettings((s) => ({ ...s, humorStyle: e.target.value }))}
+                  className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-semibold"
+                >
+                  <option value="friendly">Friendly</option>
+                  <option value="witty">Witty</option>
+                  <option value="wholesome">Wholesome</option>
+                  <option value="off">Off</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           <div className="space-y-4">

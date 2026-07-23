@@ -521,6 +521,8 @@ export class RewardService {
     allowComics?: boolean | null;
     allowSocialCampaigns?: boolean | null;
     engagementGuidelines?: string | null;
+    humorEnabled?: boolean | null;
+    humorStyle?: string | null;
     rewardEnabled?: boolean | null;
     rewardPaused?: boolean | null;
     rewardAmountPerPoint?: { toString(): string } | number | null;
@@ -540,13 +542,18 @@ export class RewardService {
     ].filter(Boolean);
     const reward =
       settings.rewardEnabled && !settings.rewardPaused
-        ? `cash rewards ON (${decimalNumber(settings.rewardAmountPerPoint)} ${settings.rewardCurrency ?? "USDm"}/point)`
+        ? `cash rewards ON (${decimalNumber(settings.rewardAmountPerPoint)} ${settings.rewardCurrency ?? "USDm"}/point); members withdraw by tagging Sentry with a 0x wallet`
         : settings.rewardEnabled && settings.rewardPaused
           ? "cash rewards PAUSED"
           : "cash rewards OFF (points only)";
+    const humor =
+      settings.humorEnabled === false || settings.humorStyle === "off"
+        ? "humor OFF"
+        : `humor ON (${settings.humorStyle ?? "friendly"})`;
     return [
       `Enabled engagement: ${flags.length ? flags.join(", ") : "none"}`,
       reward,
+      humor,
       `Default points — correct:${settings.pointsPerCorrect ?? 10} poll:${settings.pointsPerPoll ?? 5} game:${settings.pointsPerGame ?? 15} social:${settings.pointsPerSocial ?? 20}`,
       settings.engagementGuidelines?.trim()
         ? `Employer engagement guidelines:\n${settings.engagementGuidelines.trim()}`

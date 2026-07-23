@@ -318,6 +318,8 @@ export class GroupService {
       allowSocialCampaigns?: boolean;
       engagementGuidelines?: string | null;
       funPromptIntervalHours?: number;
+      humorEnabled?: boolean;
+      humorStyle?: string | null;
       rewardEnabled?: boolean;
       rewardPaused?: boolean;
       rewardAmountPerPoint?: number;
@@ -406,6 +408,8 @@ export class GroupService {
         allowSocialCampaigns: data.allowSocialCampaigns ?? false,
         engagementGuidelines: data.engagementGuidelines ?? null,
         funPromptIntervalHours: funInterval ?? 48,
+        humorEnabled: data.humorEnabled ?? true,
+        humorStyle: data.humorStyle ?? "friendly",
         rewardEnabled: data.rewardEnabled ?? false,
         rewardPaused: data.rewardPaused ?? false,
         rewardAmountPerPoint: data.rewardAmountPerPoint ?? 0,
@@ -454,6 +458,11 @@ export class GroupService {
         allowSocialCampaigns: data.allowSocialCampaigns,
         engagementGuidelines: data.engagementGuidelines,
         funPromptIntervalHours: funInterval,
+        humorEnabled: data.humorEnabled,
+        humorStyle:
+          data.humorStyle === undefined
+            ? undefined
+            : data.humorStyle?.trim() || "friendly",
         rewardEnabled: data.rewardEnabled,
         rewardPaused: data.rewardPaused,
         rewardAmountPerPoint: data.rewardAmountPerPoint,

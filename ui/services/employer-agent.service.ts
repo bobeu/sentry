@@ -13,6 +13,7 @@ export type EmployerIntent =
   | "employment"
   | "agreement"
   | "rewards"
+  | "engagement"
   | "general";
 
 export function detectEmployerIntent(text: string): EmployerIntent {
@@ -24,6 +25,13 @@ export function detectEmployerIntent(text: string): EmployerIntent {
     )
   ) {
     return "agreement";
+  }
+  if (
+    /\b(start|launch|create|end|close|stop)\b.*\b(poll|trivia|quiz|activity)\b/.test(t) ||
+    /\b(poll|trivia|quiz)\b.*\b(start|launch|create|end|close|stop)\b/.test(t) ||
+    /\b(humor|jokes?|comedy|be\s+funny|tone)\b/.test(t)
+  ) {
+    return "engagement";
   }
   if (
     /\b(reward account|create reward|pause reward|resume reward|points|leaderboard|engagement|allow[- ]?(games|polls|fun)|cash reward)\b/.test(
@@ -245,7 +253,9 @@ export class EmployerAgentService {
     if (intent === "work") return `Past work report\n\n${brief}`;
     if (intent === "report") return `Full Sentry report\n\n${brief}`;
     if (intent === "employment") return `Employment & billing\n\n${brief}`;
-    if (intent === "rewards") return this.buildRewardsBrief(userId);
+    if (intent === "rewards" || intent === "engagement") {
+      return this.buildRewardsBrief(userId);
+    }
     return brief;
   }
 
@@ -258,7 +268,9 @@ export class EmployerAgentService {
       "",
       `RewardFactory configured: ${blockchainService.isRewardFactoryConfigured() ? "yes" : "NO — sync RewardFactory via smartContracts sync-data after deploy"}`,
       "",
-      "Say: create reward account for <group>, pause rewards, resume rewards.",
+      "Rewards: create reward account for <group>, pause rewards, resume rewards.",
+      "Polls: start poll in <group>, end poll in <group>, start quiz in <group>.",
+      "Humor: humor witty | humor wholesome | humor off (for a group).",
       "Dashboard: group → Capabilities → Engagement & Rewards.",
       "",
     ];
@@ -266,7 +278,7 @@ export class EmployerAgentService {
       const account = await rewardService.getAccount(g.id);
       const s = g.settings;
       lines.push(
-        `• ${g.name ?? g.telegramId}: fun=${s?.allowFun ? "on" : "off"} games=${s?.allowGames ? "on" : "off"} polls=${s?.allowPolls ? "on" : "off"} social=${s?.allowSocialCampaigns ? "on" : "off"} | rewards=${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"} | account=${account?.address ?? "(none)"}`,
+        `• ${g.name ?? g.telegramId}: fun=${s?.allowFun ? "on" : "off"} games=${s?.allowGames ? "on" : "off"} polls=${s?.allowPolls ? "on" : "off"} social=${s?.allowSocialCampaigns ? "on" : "off"} | humor=${s?.humorEnabled === false || s?.humorStyle === "off" ? "off" : s?.humorStyle ?? "friendly"} | rewards=${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"} | account=${account?.address ?? "(none)"}`,
       );
     }
     return lines.join("\n");
@@ -328,6 +340,123 @@ export class EmployerAgentService {
     }
 
     return null;
+  }
+
+  /**
+   * Employer DM: start/end polls & quizzes in a group, or configure humor.
+   */
+  async tryHandleEngagementCommand(userId: string, text: string): Promise<string | null> {
+    const t = text.toLowerCase();
+    const groups = await groupService.listForUser(userId);
+    const pickGroup = () => {
+      const byName = groups.find((g) => {
+        const name = (g.name ?? "").toLowerCase();
+        return name && t.includes(name);
+      });
+      return byName ?? groups[0] ?? null;
+    };
+
+    // Humor config: "humor witty", "set humor off for MyGroup"
+    const humorMatch = t.match(
+      /\b(?:set\s+)?humor(?:\s+style)?\s+(friendly|witty|wholesome|off)\b/,
+    ) || t.match(/\b(be\s+funny|jokes?\s+on)\b/) || t.match(/\b(no\s+jokes|humor\s+off)\b/);
+    if (humorMatch) {
+      const g = pickGroup();
+      if (!g) return "No groups linked yet.";
+      let style = "friendly";
+      if (/\boff\b|no\s+jokes/.test(t)) style = "off";
+      else if (/\bwitty\b/.test(t)) style = "witty";
+      else if (/\bwholesome\b/.test(t)) style = "wholesome";
+      else if (/\bfriendly\b|be\s+funny|jokes?\s+on/.test(t)) style = "friendly";
+      await groupService.updateSettings(userId, g.id, {
+        humorEnabled: style !== "off",
+        humorStyle: style,
+      });
+      return `Humor set to **${style}** for ${g.name ?? g.telegramId}.`;
+    }
+
+    const wantsEnd =
+      /\b(end|close|stop|finish)\b/.test(t) &&
+      /\b(poll|trivia|quiz|activity|activities)\b/.test(t);
+    if (wantsEnd) {
+      const g = pickGroup();
+      if (!g) return "No groups linked.";
+      const { engagementService } = await import("@/services/engagement.service");
+      const types = /\bquiz|trivia\b/.test(t)
+        ? (["learn", "game"] as const)
+        : /\bpoll\b/.test(t)
+          ? (["poll"] as const)
+          : undefined;
+      const result = await engagementService.closeActiveOfTypes(
+        g.id,
+        types ? [...types] : undefined,
+      );
+      if (!result.closed) {
+        return `No active ${types ? types.join("/") : "activities"} in ${g.name ?? g.telegramId}.`;
+      }
+      return `Closed ${result.closed} activit${result.closed === 1 ? "y" : "ies"} in ${g.name ?? g.telegramId}:\n${result.titles.map((x) => `• ${x}`).join("\n")}`;
+    }
+
+    const wantsStart =
+      /\b(start|launch|create|run|host)\b/.test(t) &&
+      /\b(poll|trivia|quiz|game|fun|activity)\b/.test(t);
+    if (!wantsStart) return null;
+
+    const g = pickGroup();
+    if (!g) return "No groups linked.";
+    if (!g.enabled) {
+      return `${g.name ?? g.telegramId} isn't in community mode yet.`;
+    }
+
+    const { engagementService } = await import("@/services/engagement.service");
+    const { contextService } = await import("@/services/context.service");
+    const { getBot } = await import("@/services/telegram.service");
+
+    const type =
+      /\b(trivia|quiz)\b/.test(t)
+        ? ("learn" as const)
+        : /\bgame\b/.test(t)
+          ? ("game" as const)
+          : /\bfun\b/.test(t)
+            ? ("fun" as const)
+            : ("poll" as const);
+
+    if (!engagementService.typeAllowed(type, g.settings)) {
+      return `${type} isn't enabled for ${g.name ?? g.telegramId}. Flip it on in the dashboard (Capabilities → Engagement).`;
+    }
+
+    try {
+      const context = await contextService.build(g.id);
+      const activity = await engagementService.inventActivity({
+        groupId: g.id,
+        type,
+        context,
+        guidelines: g.settings?.engagementGuidelines,
+        createdByUserId: userId,
+        hint: text,
+      });
+      const bot = getBot();
+      if (type === "poll" || type === "learn" || type === "game") {
+        await engagementService.postTelegramPoll(
+          { telegram: bot.telegram, chatId: g.telegramId },
+          activity,
+          g.settings,
+        );
+      } else {
+        await bot.telegram.sendMessage(
+          g.telegramId,
+          engagementService.formatActivityBrief(activity, g.settings),
+        );
+      }
+      return [
+        `Launched **${activity.title}** (${type}) in ${g.name ?? g.telegramId}.`,
+        `Ends: ${activity.closesAt?.toISOString().replace("T", " ").slice(0, 16) ?? "open"} UTC`,
+        `Points: ${activity.pointsReward}`,
+        "Say `end poll in <group>` when you want it closed.",
+      ].join("\n");
+    } catch (err) {
+      return err instanceof Error ? err.message : "Could not start activity in the group.";
+    }
   }
 
   async formatGroupCard(userId: string, groupId: string) {

@@ -52,6 +52,7 @@ async function main() {
       "my_chat_member",
       "chat_member",
       "callback_query",
+      "poll_answer",
       "business_connection",
       "business_message",
       "edited_business_message",

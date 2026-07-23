@@ -24,7 +24,10 @@ import {
 import {
   engagementService,
   detectEngagementIntent,
-  isEngagementStartCommand,
+  wantsCreateActivity,
+  isEngagementQuery,
+  isActivityMenuRequest,
+  type ActivityType,
 } from "@/services/engagement.service";
 import {
   rewardService,
@@ -104,24 +107,30 @@ async function replyTo(
   ctx: Context,
   text: string,
   replyToMessageId?: number,
+  extra?: { reply_markup?: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } },
 ) {
   const chunks = splitTelegramMessage(text);
   if (chunks.length === 0) return;
 
   for (let i = 0; i < chunks.length; i++) {
     const html = toTelegramHtml(chunks[i]);
+    const isLast = i === chunks.length - 1;
     const opts: {
       parse_mode: "HTML";
       reply_parameters?: { message_id: number };
+      reply_markup?: typeof extra extends undefined ? never : NonNullable<typeof extra>["reply_markup"];
     } = { parse_mode: "HTML" };
     try {
       if (i === 0 && replyToMessageId != null && ctx.chat) {
         opts.reply_parameters = { message_id: replyToMessageId };
       }
+      if (isLast && extra?.reply_markup) {
+        opts.reply_markup = extra.reply_markup;
+      }
       await ctx.reply(html, opts);
     } catch (err) {
       console.warn("[telegram:reply]", err);
-      await ctx.reply(chunks[i]).catch(() => undefined);
+      await ctx.reply(chunks[i], isLast && extra?.reply_markup ? { reply_markup: extra.reply_markup } : undefined).catch(() => undefined);
     }
   }
 }
@@ -303,6 +312,9 @@ async function agentAnswerForGroup(
   const engagementContext = rewardService.formatEngagementContext(
     runtime.group.settings,
   );
+  const activeSummary = await engagementService.summarizeActiveForGroup(
+    runtime.group.id,
+  );
   return aiService.generateReply({
     context,
     userQuestion: cleaned,
@@ -312,8 +324,10 @@ async function agentAnswerForGroup(
     playbookRules: playbookRules || undefined,
     personaRole: runtime.group.settings?.personaRole,
     personaTone: runtime.group.settings?.personaTone,
+    humorEnabled: runtime.group.settings?.humorEnabled,
+    humorStyle: runtime.group.settings?.humorStyle,
     memberNote,
-    engagementContext,
+    engagementContext: `${engagementContext}\n\nActive activities:\n${activeSummary}`,
   });
 }
 
@@ -390,24 +404,81 @@ async function handleEngagementAndRewards(
     }
   }
 
-  // Start activity (admin/employer or when fun flags allow member-initiated).
-  const wantStart =
+  // Activity status / "what's available" — answer, never auto-create.
+  if (addressed && (isEngagementQuery(cleaned) || isActivityMenuRequest(cleaned))) {
+    const enabled = engagementService.enabledActivityTypes(settings);
+    const active = await engagementService.summarizeActiveForGroup(runtime.group.id);
+    const lines = [
+      enabled.length
+        ? `Here's what's enabled here:\n${enabled.map((e) => `• **${e.label}** — ${e.blurb}`).join("\n")}`
+        : "No engagement activities are enabled yet — ask the employer to flip them on in the dashboard.",
+      "",
+      `Live right now:\n${active}`,
+      enabled.length ? "\nTap a button (or say e.g. `start quiz` / `create poll`) and I'll spin one up." : "",
+    ];
+    await replyTo(ctx, lines.filter(Boolean).join("\n"), message.message_id, {
+      reply_markup: enabled.length
+        ? engagementService.activityMenuKeyboard(enabled)
+        : undefined,
+    });
+    return true;
+  }
+
+  // Open-text quiz / fun answers — only short answer-shaped replies (don't steal Q&A).
+  const looksLikeOpenAnswer =
     addressed &&
-    (isEngagementStartCommand(cleaned) ||
-      (detectEngagementIntent(cleaned) &&
-        /\b(start|launch|begin|create|run|play|let'?s)\b/i.test(cleaned)));
-  if (wantStart) {
-    const type = detectEngagementIntent(cleaned) ?? "fun";
-    if (!engagementService.typeAllowed(type, settings)) {
-      if (addressed) {
+    cleaned.length > 0 &&
+    cleaned.length <= 120 &&
+    !/\?/.test(cleaned) &&
+    !wantsCreateActivity(cleaned) &&
+    !isEngagementQuery(cleaned) &&
+    !isActivityMenuRequest(cleaned) &&
+    !/\b(my\s+points|leaderboard|withdraw|reward|help|what|how|why|when)\b/i.test(
+      cleaned,
+    );
+  if (looksLikeOpenAnswer) {
+    const openResult = await engagementService.handleOpenTextAnswer({
+      groupId: runtime.group.id,
+      telegramUserId: fromUserId,
+      username: fromUsername,
+      text: cleaned,
+    });
+    if (openResult) {
+      if (openResult.duplicate) {
+        await replyTo(ctx, "You already played this one — wait for the next round!", message.message_id);
+      } else if (openResult.verified && openResult.points > 0) {
         await replyTo(
           ctx,
-          `That activity type isn't enabled here. An employer can turn on allow-${type === "learn" ? "games" : type} in the dashboard.`,
+          `Nailed it — +${openResult.points} points. You're on a roll!`,
           message.message_id,
         );
-        return true;
+        if (runtime.billable) {
+          await recordBillable(runtime, "points_award", {
+            kind: "open",
+            points: openResult.points,
+          });
+        }
+      } else {
+        await replyTo(
+          ctx,
+          "Not quite — hang in there for the next round (or ask what's active).",
+          message.message_id,
+        );
       }
-      return false;
+      return true;
+    }
+  }
+
+  // Start activity ONLY on explicit create/start intent (never on "when does the poll end?").
+  if (addressed && wantsCreateActivity(cleaned)) {
+    const type: ActivityType = detectEngagementIntent(cleaned) ?? "fun";
+    if (!engagementService.typeAllowed(type, settings)) {
+      await replyTo(
+        ctx,
+        `That activity type isn't enabled here. An employer can turn it on under Capabilities → Engagement.`,
+        message.message_id,
+      );
+      return true;
     }
 
     // Social campaign: employer/admin posts URL + start command.
@@ -443,11 +514,7 @@ async function handleEngagementAndRewards(
         });
         await replyTo(
           ctx,
-          [
-            `Social campaign live: **${activity.title}**`,
-            `Do the ${action} on: ${target}`,
-            `Then reply tagging me with your proof link to earn **${activity.pointsReward}** points.`,
-          ].join("\n"),
+          engagementService.formatActivityBrief(activity, settings),
           message.message_id,
         );
         if (runtime.billable) {
@@ -474,23 +541,11 @@ async function handleEngagementAndRewards(
         hint: cleaned,
       });
       if (type === "poll" || type === "learn" || type === "game") {
-        await engagementService.postTelegramPoll(ctx, activity);
-        await replyTo(
-          ctx,
-          `Activity started — earn up to **${activity.pointsReward}** points. Good luck!`,
-          message.message_id,
-        ).catch(() => undefined);
+        await engagementService.postTelegramPoll(ctx, activity, settings);
       } else {
         await replyTo(
           ctx,
-          [
-            `**${activity.title}**`,
-            activity.description ?? "",
-            "",
-            "Reply with your answer tagging me to earn points.",
-          ]
-            .filter(Boolean)
-            .join("\n"),
+          engagementService.formatActivityBrief(activity, settings),
           message.message_id,
         );
       }
@@ -845,6 +900,17 @@ async function handlePrivateAgent(ctx: Context, text: string) {
 
   const intent = detectEmployerIntent(cleaned);
 
+  if (intent === "engagement" || intent === "rewards") {
+    const engagementHandled =
+      await employerAgentService.tryHandleEngagementCommand(user.id, cleaned);
+    if (engagementHandled) {
+      await replyPlain(ctx, engagementHandled, {
+        reply_markup: employerDmService.mainMenuKeyboard(),
+      });
+      return;
+    }
+  }
+
   if (intent === "rewards") {
     const handled = await employerAgentService.tryHandleRewardCommand(
       user.id,
@@ -1055,6 +1121,62 @@ export function registerHandlers(bot: Telegraf) {
         },
       });
       if (handled) return;
+    }
+
+    // Group activity picker: act:poll | act:learn | act:game | act:fun | act:comic
+    if (data.startsWith("act:")) {
+      const type = data.slice(4) as ActivityType;
+      const chatId = chatIdOf(ctx);
+      if (!chatId || !fromUserId) {
+        await ctx.answerCbQuery("Can't start here").catch(() => undefined);
+        return;
+      }
+      const runtime = await resolveGroupRuntime(chatId);
+      if (!runtime?.communityMode) {
+        await ctx.answerCbQuery("Community mode off").catch(() => undefined);
+        return;
+      }
+      if (!engagementService.typeAllowed(type, runtime.group.settings)) {
+        await ctx.answerCbQuery("Not enabled").catch(() => undefined);
+        return;
+      }
+      if (type === "social") {
+        await ctx.answerCbQuery("Paste a post URL + start social").catch(() => undefined);
+        await ctx.reply("For social campaigns, paste the Twitter/X link and say `start social` tagging me.").catch(() => undefined);
+        return;
+      }
+      try {
+        await ctx.answerCbQuery(`Starting ${type}…`).catch(() => undefined);
+        const context = await contextService.build(runtime.group.id);
+        const activity = await engagementService.inventActivity({
+          groupId: runtime.group.id,
+          type,
+          context,
+          guidelines: runtime.group.settings?.engagementGuidelines,
+          createdByUserId: runtime.employerUserId,
+          hint: `member picked ${type} from menu`,
+        });
+        if (type === "poll" || type === "learn" || type === "game") {
+          await engagementService.postTelegramPoll(ctx, activity, runtime.group.settings);
+        } else {
+          await ctx.reply(
+            engagementService.formatActivityBrief(activity, runtime.group.settings),
+          );
+        }
+        await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => undefined);
+        if (runtime.billable) {
+          await recordBillable(runtime, "engagement_activity", {
+            type,
+            activityId: activity.id,
+            via: "inline",
+          });
+        }
+      } catch (err) {
+        await ctx
+          .reply(err instanceof Error ? err.message : "Could not start activity.")
+          .catch(() => undefined);
+      }
+      return;
     }
 
     if (!data.startsWith("esc:")) return;
