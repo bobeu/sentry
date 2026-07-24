@@ -158,6 +158,9 @@ ${implExports}
   fs.writeFileSync(path.join(FRONTEND_DIR, "index.ts"), tsContent);
   console.log("\n--- Sync complete ---");
   console.log("Wrote lib/contracts/{addresses,abis,index}.{json,ts}");
+  console.log(
+    "Note: RewardAccount DB rows auto-heal on next Wallets/overview load (reconcile via factory.accountOfKey).",
+  );
 }
 
 sync();

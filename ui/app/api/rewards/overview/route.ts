@@ -14,10 +14,15 @@ export async function GET() {
     const user = await requireSessionUser();
     const groups = await groupService.listForUser(user.id);
     const factoryConfigured = blockchainService.isRewardFactoryConfigured();
+    const factoryAddress = blockchainService.currentRewardFactoryAddress();
 
     const rows = await Promise.all(
       groups.map(async (g) => {
-        const account = await rewardService.getAccount(g.id);
+        // Soft-heal stale DB addresses after RewardFactory redeploy + sync-data.
+        let account = factoryConfigured
+          ? await rewardService.reconcileRewardAccountIfStale(g.id)
+          : await rewardService.getAccount(g.id);
+
         let balances: Record<string, string> | null = null;
         let operator: string | null = null;
         if (account?.address && factoryConfigured) {
@@ -61,11 +66,16 @@ export async function GET() {
           /** Legacy single balance field: prefer default campaign currency. */
           balance: balances?.[g.settings?.rewardCurrency ?? "USDm"] ?? null,
           factoryConfigured,
+          factoryAddress,
         };
       }),
     );
 
-    return NextResponse.json({ groups: rows, factoryConfigured });
+    return NextResponse.json({
+      groups: rows,
+      factoryConfigured,
+      factoryAddress,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed";
     const status = message === "Unauthorized" ? 401 : 400;

@@ -35,7 +35,8 @@ function decimalNumber(value: { toString(): string } | number | string | null | 
 export class RewardService {
   /**
    * Ensure a multi-currency RewardAccount exists for the group (on-chain + DB).
-   * Employer manages via Sentry; only the operator key can payout / withdraw surplus.
+   * Always reconciles DB address with the current RewardFactory (`accountOfKey`) so
+   * redeploys + sync-data auto-heal stale frontend rows without a manual DB wipe.
    */
   async ensureRewardAccount(input: {
     groupId: string;
@@ -44,11 +45,10 @@ export class RewardService {
     currency?: PaymentCurrency;
     bill?: boolean;
   }) {
-    const existing = await prisma.rewardAccount.findUnique({
-      where: { groupId: input.groupId },
-    });
-    if (existing && existing.status !== "Archived") {
-      return existing;
+    if (!blockchainService.isRewardFactoryConfigured()) {
+      throw new Error(
+        "RewardFactory is not configured. Deploy on Celo and run smartContracts sync-data.",
+      );
     }
 
     const group = await prisma.telegramGroup.findUnique({
@@ -57,42 +57,61 @@ export class RewardService {
     if (!group) throw new Error("Group not found");
 
     const accountKey = accountKeyForGroup(group.telegramId);
-
-    const ownerUser = await prisma.user.findUnique({
-      where: { id: input.ownerUserId },
-      select: {
-        withdrawalAddress: true,
-        pendingWithdrawalAddress: true,
-      },
+    const existing = await prisma.rewardAccount.findUnique({
+      where: { groupId: input.groupId },
     });
-    const employerRaw =
-      ownerUser?.withdrawalAddress ??
-      ownerUser?.pendingWithdrawalAddress ??
-      "";
-    if (!isAddress(employerRaw)) {
-      throw new Error(
-        "Set a withdrawal destination on your account before creating a RewardAccount (employer receive address).",
-      );
+
+    let onChain = await blockchainService.rewardAccountOfKey(accountKey);
+    let createdOnChain = false;
+
+    if (!onChain) {
+      const ownerUser = await prisma.user.findUnique({
+        where: { id: input.ownerUserId },
+        select: {
+          withdrawalAddress: true,
+          pendingWithdrawalAddress: true,
+        },
+      });
+      const employerRaw =
+        ownerUser?.withdrawalAddress ??
+        ownerUser?.pendingWithdrawalAddress ??
+        "";
+      if (!isAddress(employerRaw)) {
+        throw new Error(
+          "Set a withdrawal destination on your account before creating a RewardAccount (employer receive address).",
+        );
+      }
+      const employer = getAddress(employerRaw) as Address;
+      onChain = await blockchainService.ensureRewardAccount({
+        accountKey,
+        employer,
+      });
+      createdOnChain = true;
     }
-    const employer = getAddress(employerRaw) as Address;
 
-    const address = await blockchainService.ensureRewardAccount({
-      accountKey,
-      employer,
-    });
+    const sameAddress =
+      existing &&
+      existing.status !== "Archived" &&
+      existing.address.toLowerCase() === onChain.toLowerCase() &&
+      existing.accountKey.toLowerCase() === accountKey.toLowerCase();
 
+    if (sameAddress) {
+      return existing;
+    }
+
+    const previousAddress = existing?.address ?? null;
     const row = await prisma.rewardAccount.upsert({
       where: { groupId: input.groupId },
       create: {
         groupId: input.groupId,
         ownerUserId: input.ownerUserId,
-        address,
+        address: onChain,
         accountKey,
         currency: "MULTI",
         status: "Active",
       },
       update: {
-        address,
+        address: onChain,
         accountKey,
         currency: "MULTI",
         status: "Active",
@@ -100,16 +119,68 @@ export class RewardService {
       },
     });
 
-    if (input.bill !== false) {
+    if (previousAddress && previousAddress.toLowerCase() !== onChain.toLowerCase()) {
+      console.info(
+        `[reward] Rebinding RewardAccount for group ${input.groupId}: ${previousAddress} → ${onChain} (factory ${blockchainService.currentRewardFactoryAddress()})`,
+      );
+    }
+
+    // Bill only brand-new accounts (no prior active row), not redeploy rebinds.
+    const isBrandNew = !existing || existing.status === "Archived";
+    if (input.bill !== false && isBrandNew && createdOnChain) {
       await this.billConfigAction({
         userId: input.ownerUserId,
         groupId: input.groupId,
         op: "create",
-        metadata: { address, currency: "MULTI" },
+        metadata: {
+          address: onChain,
+          currency: "MULTI",
+          factory: blockchainService.currentRewardFactoryAddress(),
+        },
       });
     }
 
     return row;
+  }
+
+  /**
+   * Soft-heal: if DB has a RewardAccount, re-resolve against the current factory
+   * and update the row. Never bills. Safe to call from overview / status reads.
+   */
+  async reconcileRewardAccountIfStale(groupId: string) {
+    if (!blockchainService.isRewardFactoryConfigured()) return null;
+    const existing = await prisma.rewardAccount.findUnique({
+      where: { groupId },
+    });
+    if (!existing || existing.status === "Archived") return existing;
+
+    const group = await prisma.telegramGroup.findUnique({
+      where: { id: groupId },
+      select: { telegramId: true },
+    });
+    if (!group) return existing;
+
+    const accountKey = accountKeyForGroup(group.telegramId);
+    const onChain = await blockchainService.rewardAccountOfKey(accountKey);
+
+    if (onChain && onChain.toLowerCase() === existing.address.toLowerCase()) {
+      return existing;
+    }
+
+    // On-chain missing or address mismatch → full ensure (no bill).
+    try {
+      return await this.ensureRewardAccount({
+        groupId,
+        ownerUserId: existing.ownerUserId,
+        bill: false,
+      });
+    } catch (err) {
+      console.warn(
+        `[reward] reconcile failed for group ${groupId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return existing;
+    }
   }
 
   async getAccount(groupId: string) {
