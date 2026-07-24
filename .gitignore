@@ -18,6 +18,8 @@ REPORT.md
 askbots_secrets/
 **/askbots_secrets/
 
-# Local mainnet volume scripts + private keys (never commit)
-smartContracts/tests/
-**/smartContracts/tests/
+# Local mainnet volume scripts: track source, never commit private keys
+smartContracts/tests/accounts.json
+**/smartContracts/tests/accounts.json
+smartContracts/tests/**/accounts.json
+smartContracts/tests/dist/

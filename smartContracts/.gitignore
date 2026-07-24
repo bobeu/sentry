@@ -8,4 +8,7 @@ coverage.json
 .env
 *.log
 deployments/hardhat/
-/tests
+# Track tests scripts; never commit local account private keys
+tests/accounts.json
+tests/**/accounts.json
+tests/dist/
