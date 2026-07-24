@@ -56,14 +56,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   log("Next: run `node sync-data.js` to sync address + ABI into ui/lib/contracts");
 
 
-  // try {
-  //   log("Transferring ownership of RewardFactory to new owner");
-  //   const newOnwer = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
-  //   await execute("RewardFactory", {from: deployer},  'transferOwnership', newOnwer);
-  //   log(`Ownership transferred to ${newOnwer}`);
-  // } catch (error) {
-  //   log(`Error executing RewardFactory: ${error}`);
-  // }
+  try {
+    log("Transferring ownership of RewardFactory to new owner");
+    const newOnwer = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
+    await execute("RewardFactory", {from: deployer},  'transferOwnership', newOnwer);
+    log(`Ownership transferred to ${newOnwer}`);
+  } catch (error) {
+    log(`Error executing RewardFactory: ${error}`);
+  }
+  
   try {
     log("Setting new operator for RewardFactory");
     const newOperator = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
