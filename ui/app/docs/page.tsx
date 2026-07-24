@@ -12,7 +12,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className="mt-1.5 text-xs text-muted font-semibold leading-relaxed">
-          Integrate Sentry as an autonomous AI community employee. Prepaid billing, group policies, and agent telemetry.
+          Integrate Sentry as an intelligent AI Telegram employee. Prepaid billing, engagement rewards, group policies, and agent telemetry.
         </p>
       </div>
 
@@ -51,13 +51,15 @@ export default function DocsPage() {
               What is Sentry?
             </h2>
             <p>
-              Sentry is a hireable agent that lives in Telegram (as <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">{botHandle}</code>). It is
-              not a shallow command bot: it reads context, answers FAQs, moderates, welcomes
-              members, escalates risky replies for your approval, and reports what it did.
-              Work is billed from a prepaid on-chain employment wallet on{" "}
-              <strong className="text-text-dark font-bold">Celo</strong>. When available balance hits
-              zero, billable agent work pauses until you deposit again (strong FAQ matches
-              can still answer when configured).
+              Sentry is a hireable AI Telegram employee (as{" "}
+              <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">{botHandle}</code>
+              ). It is not a shallow command bot: it reads context, answers FAQs, moderates,
+              welcomes members, hosts polls/trivia/games with points (and optional cash rewards),
+              escalates risky replies for your approval, and reports what it did. Replies are
+              formatted to stand out in chat. Work is billed from a prepaid on-chain employment
+              wallet on <strong className="text-text-dark font-bold">Celo</strong>. When available
+              balance hits zero, billable agent work pauses until you deposit again (strong FAQ
+              matches can still answer when configured).
             </p>
           </section>
 
@@ -212,6 +214,10 @@ export default function DocsPage() {
                 sensing, proof-of-work, incident mode, member memory, hire-in-Telegram
               </li>
               <li>
+                Engagement (Capabilities tab): polls, games/trivia, fun, comics, social
+                campaigns, humor style, points &amp; optional cash rewards via RewardAccount
+              </li>
+              <li>
                 Persona role (<code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">support</code> /{" "}
                 <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">announcer</code> /{" "}
                 <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">vip</code>) and optional tone — applied
@@ -265,6 +271,26 @@ export default function DocsPage() {
                   Linked employers can chat with Sentry in private: draft replies, explain
                   threads, ask for status/work reports. FAQs short-circuit only on strong
                   matches; everything else uses the agent with operational context.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-base font-black text-text-dark">Engagement &amp; games</dt>
+                <dd className="mt-1">
+                  When enabled, Sentry can start polls, quizzes, learn-and-earn, fun/comics, and
+                  Twitter/X campaigns. Quizzes use inline buttons with instant judging (or
+                  members can reply/tag with an answer). Members earn points; employers can
+                  fund a separate RewardAccount for cash payouts.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-base font-black text-text-dark">Member status hub</dt>
+                <dd className="mt-1">
+                  In any group where Sentry works, members run{" "}
+                  <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/mystatus</code>{" "}
+                  or{" "}
+                  <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/points</code>{" "}
+                  for interactive buttons: points, pending cash, recent games, leaderboard,
+                  active rounds, and withdraw help.
                 </dd>
               </div>
             </dl>
@@ -426,7 +452,18 @@ export default function DocsPage() {
               <li>
                 <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/start</code> <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/help</code>{" "}
                 <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/status</code> &mdash; identity and employment
-                snapshot
+                snapshot (DM)
+              </li>
+              <li>
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/mystatus</code>{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/points</code> &mdash; interactive points,
+                games &amp; rewards menu (group)
+              </li>
+              <li>
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/poll</code>{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/trivia</code>{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/campaign</code> &mdash; start engagement
+                activities when enabled
               </li>
               <li>
                 <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">/mywallet</code>{" "}

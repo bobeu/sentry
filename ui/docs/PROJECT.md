@@ -1,8 +1,8 @@
 ## Vision
 
-Sentry is an AI Community Employee that businesses and individuals hire to work inside Telegram communities.
+Sentry is an intelligent AI Telegram employee that businesses and individuals hire to work inside Telegram communities.
 
-Unlike traditional Telegram bots that only respond to commands, Sentry behaves like a digital employee.
+Unlike traditional Telegram bots that only respond to commands, Sentry behaves like a digital teammate: it understands context, formats replies clearly, keeps groups lively with optional games and rewards, and only claims work it is configured and funded to perform.
 
 Users employ Sentry by funding a prepaid on-chain wallet.
 
@@ -14,7 +14,7 @@ When funds are exhausted, Sentry automatically stops working until the wallet is
 
 ## Mission
 
-> Give every Telegram community an AI employee that works autonomously while users only pay for completed work.
+> Give every Telegram community an AI employee that works autonomously — answering, moderating, engaging, and rewarding — while users only pay for completed work.
 
 ---
 
@@ -33,13 +33,23 @@ When funds are exhausted, Sentry automatically stops working until the wallet is
 
 ✅ Monitor conversations (admin / privacy-off required for full visibility)
 
-✅ Reply to mentions & proactive Q&A
+✅ Reply to mentions & proactive Q&A (no FAQ dumps on hi/thanks)
 
 ✅ Answer FAQs (strong match + AI with context)
 
 ✅ Welcome members
 
-✅ Moderate spam
+✅ Moderate spam + admin ban/mute tools
+
+✅ Engagement: polls, trivia/games, fun/comics, Twitter/X campaigns
+
+✅ Inline-button quizzes with instant judging + point balances
+
+✅ Member hub: `/mystatus` / `/points` (leaderboard, pending cash, withdraw help)
+
+✅ Optional cash rewards via RewardFactory / RewardAccount (separate from employment wallet)
+
+✅ Distinctive, well-formatted Telegram replies
 
 ✅ Summarize discussions & shift handovers
 

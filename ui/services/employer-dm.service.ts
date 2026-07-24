@@ -95,8 +95,8 @@ export class EmployerDmService {
       });
     } catch {
       welcome = [
-        `Hi${displayName ? ` ${displayName}` : ""} — I'm Sentry, your Telegram community employee.`,
-        "I moderate spam, answer FAQs, and send work reports for your funded groups.",
+        `Hi${displayName ? ` ${displayName}` : ""} — I'm Sentry, your AI Telegram employee.`,
+        "I answer FAQs, moderate spam, host polls/trivia with points (and optional cash rewards), and send work reports for your funded groups.",
         "Use the buttons below anytime, or just ask me in plain language.",
       ].join("\n");
     }

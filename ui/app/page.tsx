@@ -27,17 +27,24 @@ const SIMULATED_CONVERSATIONS: Record<string, { trigger: string; messages: ChatM
       { sender: "Sentry", text: "🛡️ Message deleted. Reason: High-confidence spam heuristic (unverified airdrop link). User @Web3Air_Bot warned.", type: "sentry", badge: "SPAM REMOVED" }
     ]
   },
+  quiz: {
+    trigger: "Host learn-and-earn quiz",
+    messages: [
+      { sender: "Manager_Bob", text: "@tgemployee_bot start quiz", type: "user" },
+      { sender: "Sentry", text: "🎮 Trivia time — What chain is Sentry's prepaid wallet on?\n[A] Ethereum  [B] Celo  [C] Solana\nTap an answer · 10 pts. Check /mystatus anytime.", type: "sentry", badge: "QUIZ LIVE" }
+    ]
+  },
   handover: {
     trigger: "Trigger daily shift handover",
     messages: [
       { sender: "Manager_Bob", text: "@tgemployee_bot report status", type: "user" },
-      { sender: "Sentry", text: "📊 Shift Handover (UTC 12:00 - 20:00):\n- Moderated: 14 spam attempts blocked.\n- Answered: 8 FAQ queries.\n- Live Alerts: Outage warning detected and auto-forwarded.\n- Balance: 4.85 USDm remaining (Sufficient).", type: "sentry", badge: "SHIFT HANDOVER" }
+      { sender: "Sentry", text: "📊 Shift Handover (UTC 12:00 - 20:00):\n- Moderated: 14 spam attempts blocked.\n- Answered: 8 FAQ queries.\n- Quizzes: 3 rounds · 42 pts awarded.\n- Balance: 4.85 USDm remaining (Sufficient).", type: "sentry", badge: "SHIFT HANDOVER" }
     ]
   }
 };
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"faq" | "spam" | "handover">("faq");
+  const [activeTab, setActiveTab] = useState<"faq" | "spam" | "quiz" | "handover">("faq");
   const [visibleMessages, setVisibleMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
@@ -101,7 +108,7 @@ export default function HomePage() {
             </h1>
 
             <p className="max-w-xl text-base sm:text-lg text-muted font-medium leading-relaxed animate-rise-delay-1">
-              Sentry is an autonomous moderator, FAQ responder, and support specialist built specifically for Telegram. Paid via an on-chain prepaid wallet and billed only for completed actions.
+              Sentry is an intelligent AI Telegram employee — FAQ responder, moderator, and engagement host (polls, trivia, points & optional cash rewards). Paid from an on-chain prepaid wallet; billed only for completed work.
             </p>
 
             <div className="flex flex-wrap gap-4 pt-2 animate-rise-delay-2">
@@ -247,7 +254,7 @@ export default function HomePage() {
             Watch Sentry Work in Real-Time
           </h2>
           <p className="text-muted max-w-xl mx-auto font-medium">
-            Click the tasks below to see Sentry intercept issues, resolve questions, or provide shift handover summaries inside mock Telegram threads.
+            Click the tasks below to see Sentry intercept issues, host quizzes, resolve questions, or provide shift handover summaries inside mock Telegram threads.
           </p>
         </div>
 
@@ -257,7 +264,7 @@ export default function HomePage() {
             {Object.entries(SIMULATED_CONVERSATIONS).map(([key, data]) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key as "faq" | "spam" | "handover")}
+                onClick={() => setActiveTab(key as "faq" | "spam" | "quiz" | "handover")}
                 className={`w-full text-left p-4 rounded-2xl border transition-all duration-300 cursor-pointer ${
                   activeTab === key
                     ? "bg-primary border-primary text-white shadow-md"
@@ -265,7 +272,13 @@ export default function HomePage() {
                 }`}
               >
                 <div className={`text-[10px] uppercase font-bold mb-1 ${activeTab === key ? "text-accent" : "text-primary"}`}>
-                  {key === "faq" ? "FAQ Lookup" : key === "spam" ? "Trust & Safety" : "Operations"}
+                  {key === "faq"
+                    ? "FAQ Lookup"
+                    : key === "spam"
+                      ? "Trust & Safety"
+                      : key === "quiz"
+                        ? "Engagement"
+                        : "Operations"}
                 </div>
                 <div className="font-extrabold text-sm">{data.trigger}</div>
               </button>
@@ -437,9 +450,9 @@ export default function HomePage() {
                   exit={{ opacity: 0, y: -10 }}
                   className="space-y-1 text-center sm:text-left"
                 >
-                  <h3 className="font-extrabold text-lg text-text-dark">Audited Work Reports</h3>
+                  <h3 className="font-extrabold text-lg text-text-dark">Engagement & Rewards</h3>
                   <p className="text-xs text-muted font-semibold leading-relaxed">
-                    Complete traceability of logs, action triggers, and spent metrics.
+                    Polls, trivia, and learn-and-earn with points — optional cash payouts from a separate RewardAccount.
                   </p>
                 </motion.div>
               )}
@@ -518,7 +531,7 @@ export default function HomePage() {
                   transition={{ type: "spring", stiffness: 100, damping: 15 }}
                   className="absolute inset-0"
                 >
-                  <Image src="/sentry_real_work.png" alt="Audited Work Reports" fill className="object-cover object-top" priority />
+                  <Image src="/sentry_real_work.png" alt="Engagement and Rewards" fill className="object-cover object-top" priority />
                 </motion.div>
               )}
             </AnimatePresence>
