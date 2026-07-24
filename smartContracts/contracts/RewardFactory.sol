@@ -6,9 +6,9 @@ import { RewardAccount } from "./RewardAccount.sol";
 
 /**
  * @title RewardFactory
- * @notice Deploys one RewardAccount per account key and is the sole gateway for operator actions.
- * @dev Standalone from SentryWalletFactory / EmploymentManager — no changes to those contracts.
- *      Owner: create/archive/currency/setAccountOperator. Operator: payout/notify/pause/resume/withdrawToEmployer.
+ * @notice Deploys multi-currency RewardAccounts and is the sole gateway for operator actions.
+ * @dev Owner: create/archive/currency/setAccountOperator.
+ *      Operator: payout/notify/pause/resume/withdrawToEmployer.
  */
 contract RewardFactory is Ownable {
     enum Token {
@@ -25,7 +25,6 @@ contract RewardFactory is Ownable {
 
     event AccountCreated(
         bytes32 indexed accountKey,
-        Token currency,
         address indexed account,
         address operator,
         address employer
@@ -50,7 +49,7 @@ contract RewardFactory is Ownable {
     address public operator;
 
     /// @notice Version of RewardAccount deployed by this factory.
-    uint256 public accountVersion = 1;
+    uint256 public accountVersion = 2;
 
     mapping(Token currency => CurrencyConfig config) public currencies;
     mapping(bytes32 accountKey => address account) public accountOfKey;
@@ -81,32 +80,34 @@ contract RewardFactory is Ownable {
 
     function createAccount(
         bytes32 accountKey,
-        Token currency,
         address employer
     ) external onlyOwner returns (address account) {
         if (accountKey == bytes32(0)) revert InvalidAccountKey();
         if (employer == address(0)) revert ZeroAddress();
         if (accountOfKey[accountKey] != address(0)) revert AccountAlreadyExists();
 
-        CurrencyConfig memory config = currencies[currency];
-        if (!config.enabled) revert CurrencyDisabled();
-        if (currency == Token.CELO && config.tokenAddress != address(0)) revert InvalidTokenConfig();
-        if (currency != Token.CELO && config.tokenAddress == address(0)) revert InvalidTokenConfig();
+        address usdm_ = currencies[Token.USDm].tokenAddress;
+        address usdc_ = currencies[Token.USDC].tokenAddress;
+        address usdt_ = currencies[Token.USDT].tokenAddress;
+        if (usdm_ == address(0) || usdc_ == address(0) || usdt_ == address(0)) {
+            revert InvalidTokenConfig();
+        }
 
         RewardAccount deployed = new RewardAccount(
             address(this),
             operator,
             employer,
             accountKey,
-            RewardAccount.Token(uint8(currency)),
-            config.tokenAddress
+            usdm_,
+            usdc_,
+            usdt_
         );
         account = address(deployed);
         accountOfKey[accountKey] = account;
         keyOfAccount[account] = accountKey;
 
         deployed.activate();
-        emit AccountCreated(accountKey, currency, account, operator, employer);
+        emit AccountCreated(accountKey, account, operator, employer);
     }
 
     function setOperator(address newOperator) external onlyOwner {
@@ -137,13 +138,11 @@ contract RewardFactory is Ownable {
         RewardAccount(payable(account)).archive();
     }
 
-    /// @notice Operator pause (routine Sentry ops).
     function pauseAccountByOperator(bytes32 accountKey) external onlyOperator {
         address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).pause();
     }
 
-    /// @notice Operator resume (routine Sentry ops).
     function resumeAccountByOperator(bytes32 accountKey) external onlyOperator {
         address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).resume();
@@ -153,25 +152,52 @@ contract RewardFactory is Ownable {
         bytes32 accountKey,
         address to,
         uint256 amount,
-        bytes32 payoutId
+        bytes32 payoutId,
+        Token currency
     ) external onlyOperator {
+        if (!currencies[currency].enabled) revert CurrencyDisabled();
         address account = _requireAccount(accountKey);
-        RewardAccount(payable(account)).payout(to, amount, payoutId);
+        RewardAccount(payable(account)).payout(
+            to,
+            amount,
+            payoutId,
+            RewardAccount.Token(uint8(currency))
+        );
     }
 
     function notifyFunding(
         bytes32 accountKey,
         address from,
-        uint256 amount
+        uint256 amount,
+        Token currency
     ) external onlyOperator {
         address account = _requireAccount(accountKey);
-        RewardAccount(payable(account)).notifyFunding(from, amount);
+        RewardAccount(payable(account)).notifyFunding(
+            from,
+            amount,
+            RewardAccount.Token(uint8(currency))
+        );
     }
 
-    /// @notice Operator withdraws full RewardAccount balance to the immutable employer.
-    function withdrawToEmployer(bytes32 accountKey) external onlyOperator returns (uint256) {
+    /**
+     * @notice Withdraws surplus above pending member reserves to the employer.
+     * @param pendingCELO / pendingUSDm / pendingUSDC / pendingUSDT amounts that must remain.
+     */
+    function withdrawToEmployer(
+        bytes32 accountKey,
+        uint256 pendingCELO,
+        uint256 pendingUSDm,
+        uint256 pendingUSDC,
+        uint256 pendingUSDT
+    ) external onlyOperator returns (uint256) {
         address account = _requireAccount(accountKey);
-        return RewardAccount(payable(account)).withdrawAllToEmployer();
+        return
+            RewardAccount(payable(account)).withdrawAllToEmployer(
+                pendingCELO,
+                pendingUSDm,
+                pendingUSDC,
+                pendingUSDT
+            );
     }
 
     function setCurrencyEnabled(Token currency, bool enabled) external onlyOwner {

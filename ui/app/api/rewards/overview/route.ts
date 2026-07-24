@@ -4,6 +4,7 @@ import { groupService } from "@/services/group.service";
 import { rewardService } from "@/services/reward.service";
 import { blockchainService } from "@/services/blockchain.service";
 import { formatUnits, type Address } from "viem";
+import { PAYMENT_CURRENCIES, tokenDecimals } from "@/lib/payment-currency";
 
 export const dynamic = "force-dynamic";
 
@@ -17,16 +18,19 @@ export async function GET() {
     const rows = await Promise.all(
       groups.map(async (g) => {
         const account = await rewardService.getAccount(g.id);
-        let balance: string | null = null;
+        let balances: Record<string, string> | null = null;
         let operator: string | null = null;
         if (account?.address && factoryConfigured) {
           try {
-            const raw = await blockchainService.rewardAccountBalance(
+            const raw = await blockchainService.rewardAccountBalances(
               account.address as Address,
             );
-            balance = formatUnits(raw, 18);
+            balances = {};
+            for (const c of PAYMENT_CURRENCIES) {
+              balances[c] = formatUnits(raw[c], tokenDecimals(c));
+            }
           } catch {
-            balance = null;
+            balances = null;
           }
           try {
             operator = await blockchainService.rewardAccountOperator(
@@ -53,7 +57,9 @@ export async function GET() {
           rewardPaused: g.settings?.rewardPaused ?? false,
           rewardAmountPerPoint: g.settings?.rewardAmountPerPoint?.toString() ?? "0",
           rewardCurrency: g.settings?.rewardCurrency ?? "USDm",
-          balance,
+          balances,
+          /** Legacy single balance field: prefer default campaign currency. */
+          balance: balances?.[g.settings?.rewardCurrency ?? "USDm"] ?? null,
           factoryConfigured,
         };
       }),

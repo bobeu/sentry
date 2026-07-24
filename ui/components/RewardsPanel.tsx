@@ -34,6 +34,7 @@ type RewardRow = {
   rewardAmountPerPoint: string;
   rewardCurrency: string;
   balance?: string | null;
+  balances?: Record<string, string> | null;
   factoryConfigured: boolean;
 };
 
@@ -74,6 +75,7 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<"fund" | "controls">("fund");
   const [fundAmount, setFundAmount] = useState("1");
+  const [fundCurrency, setFundCurrency] = useState<PaymentCurrency>("USDm");
   const [operatorInput, setOperatorInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -112,9 +114,24 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   );
 
   const address = row?.account?.address ?? null;
-  const currency = row?.account?.currency || row?.rewardCurrency || "USDm";
-  const balance = row?.balance != null ? Number(row.balance) : 0;
+  const currency = fundCurrency;
+  const balances = row?.balances ?? null;
+  const balance =
+    balances?.[fundCurrency] != null
+      ? Number(balances[fundCurrency])
+      : row?.balance != null
+        ? Number(row.balance)
+        : 0;
   const hasAccount = Boolean(address);
+
+  useEffect(() => {
+    if (
+      row?.rewardCurrency &&
+      ["CELO", "USDm", "USDC", "USDT"].includes(row.rewardCurrency)
+    ) {
+      setFundCurrency(row.rewardCurrency as PaymentCurrency);
+    }
+  }, [row?.rewardCurrency, row?.groupId]);
 
   async function refresh(notify = false) {
     setBusy(true);
@@ -124,11 +141,12 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
       const selected =
         groups.find((g) => g.groupId === selectedGroupId) ?? groups[0] ?? null;
       if (notify && selected?.account) {
-        const bal =
-          selected.balance != null ? Number(selected.balance).toFixed(4) : "—";
-        setMessage(
-          `Balance updated: ${bal} ${selected.account.currency || selected.rewardCurrency}`,
-        );
+        const parts = selected.balances
+          ? Object.entries(selected.balances)
+              .map(([c, v]) => `${Number(v).toFixed(4)} ${c}`)
+              .join(" · ")
+          : `${selected.balance ?? "—"}`;
+        setMessage(`Balances updated: ${parts}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
@@ -268,7 +286,7 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
     setError(null);
     setMessage("Submitting fund…");
     try {
-      const payCurrency = (row.account.currency || row.rewardCurrency || "USDm") as PaymentCurrency;
+      const payCurrency = fundCurrency;
       const transport = custom(eth as Parameters<typeof custom>[0]);
       const client = createWalletClient({ chain: celo, transport });
       const publicClient = createPublicClient({ chain: celo, transport });
@@ -462,10 +480,31 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                 <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted border-b border-primary/10 pb-2">
                   Balance & Reward Metrics
                 </h3>
-                <p className="text-3xl font-black text-text-dark">
-                  {Number.isFinite(balance) ? balance.toFixed(4) : "—"}{" "}
-                  <span className="text-lg text-muted font-bold font-sans">{currency}</span>
-                </p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {(["CELO", "USDm", "USDC", "USDT"] as const).map((c) => {
+                    const v =
+                      balances?.[c] != null ? Number(balances[c]) : c === fundCurrency ? balance : 0;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setFundCurrency(c)}
+                        className={`rounded-lg border px-3 py-2 text-left transition cursor-pointer ${
+                          fundCurrency === c
+                            ? "border-primary bg-primary/5"
+                            : "border-primary/10 hover:border-primary/30"
+                        }`}
+                      >
+                        <span className="text-[10px] uppercase tracking-wider text-muted font-bold">
+                          {c}
+                        </span>
+                        <p className="font-black text-text-dark tabular-nums">
+                          {Number.isFinite(v) ? v.toFixed(c === "CELO" ? 4 : 3) : "—"}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="grid grid-cols-2 gap-4 text-xs pt-1 border-t border-primary/10">
                   <div className="space-y-0.5">
                     <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
@@ -547,9 +586,24 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                         Option A: Injected Wallet Fund
                       </p>
                       <p className="text-xs text-muted font-medium">
-                        Connect in the header, then submit a fund amount in {currency}.
+                        Connect in the header, pick a token, then fund. Account holds CELO / USDm / USDC / USDT.
                       </p>
                       <form onSubmit={(e) => void fundAccount(e)} className="flex flex-wrap items-end gap-3 pt-1">
+                        <label className="text-xs text-muted">
+                          Token
+                          <select
+                            value={fundCurrency}
+                            onChange={(e) =>
+                              setFundCurrency(e.target.value as PaymentCurrency)
+                            }
+                            className="mt-2 block w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-bold"
+                          >
+                            <option value="CELO">CELO</option>
+                            <option value="USDm">USDm</option>
+                            <option value="USDC">USDC</option>
+                            <option value="USDT">USDT</option>
+                          </select>
+                        </label>
                         <label className="flex-1 text-xs text-muted">
                           Fund Amount ({currency})
                           <input

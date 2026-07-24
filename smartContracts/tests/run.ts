@@ -151,7 +151,7 @@ async function ensureEmploymentReady(
 }
 
 /**
- * Ensure reward account exists (employer immutable), optionally fund it.
+ * Ensure multi-currency reward account exists, optionally fund one currency.
  */
 async function ensureRewardReady(
   svc: BlockchainService,
@@ -164,7 +164,6 @@ async function ensureRewardReady(
   const employer = svc.resolveEmployerAddress();
   const accountAddress = await svc.ensureRewardAccount({
     accountKey,
-    currency,
     employer,
   });
   console.log(`  reward account ${accountAddress} employer=${employer}`);
@@ -529,7 +528,10 @@ async function main() {
                 args,
               );
               const target = (args.destination as Address | undefined) ?? accountAddress;
-              console.log("  rewardBalance", await svc.rewardAccountBalance(target));
+              console.log(
+                "  rewardBalances",
+                await svc.rewardAccountBalances(target),
+              );
             }),
           );
           break;
@@ -568,6 +570,7 @@ async function main() {
                     to,
                     amount: parseUnits(String(amount), decimals),
                     payoutId,
+                    currency,
                   }),
                 );
               },
@@ -614,7 +617,7 @@ async function main() {
               );
               console.log(
                 "  withdrawToEmployer",
-                await svc.withdrawRewardToEmployer(accountKey),
+                await svc.withdrawRewardToEmployer({ accountKey }),
               );
             }),
           );

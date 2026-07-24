@@ -167,6 +167,7 @@ model TelegramGroup {
   birthdays    MemberBirthday[]
   rewardAccount RewardAccount?
   memberPoints MemberPoints[]
+  memberRewardBalances MemberRewardBalance[]
   engagementActivities EngagementActivity[]
   rewardLedgers RewardLedger[]
 }
@@ -671,7 +672,7 @@ enum RewardLedgerStatus {
   cancelled
 }
 
-/// On-chain RewardAccount (RewardFactory) linked to a Telegram group.
+/// On-chain RewardAccount (RewardFactory) linked to a Telegram group — multi-currency custody.
 model RewardAccount {
   id              String              @id @default(cuid())
   groupId         String              @unique
@@ -681,7 +682,8 @@ model RewardAccount {
   owner           User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   address         String
   accountKey      String              @unique
-  currency        String              @default("USDm")
+  /// Legacy single-currency label; on-chain accounts are multi-token (`MULTI`).
+  currency        String              @default("MULTI")
   status          RewardAccountStatus @default(Provisioning)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
@@ -699,8 +701,9 @@ model MemberPoints {
   username         String?
   points           Int           @default(0)
   lifetimePoints   Int           @default(0)
-  /// Cash reward accrued but not yet paid on-chain (wallet currency units).
+  /// Deprecated scalar pending — use MemberRewardBalance. Kept for migration compatibility.
   pendingReward    Decimal       @default(0) @db.Decimal(18, 8)
+  /// Deprecated scalar lifetime — use MemberRewardBalance.
   lifetimeRewarded Decimal       @default(0) @db.Decimal(18, 8)
   payoutAddress    String?
   createdAt        DateTime      @default(now())
@@ -708,6 +711,23 @@ model MemberPoints {
 
   @@unique([groupId, telegramUserId])
   @@index([groupId, points])
+}
+
+/// Per-currency cash pending / lifetime for a group member.
+model MemberRewardBalance {
+  id               String        @id @default(cuid())
+  groupId          String
+  group            TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  telegramUserId   String
+  currency         String
+  pendingReward    Decimal       @default(0) @db.Decimal(18, 8)
+  lifetimeRewarded Decimal       @default(0) @db.Decimal(18, 8)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([groupId, telegramUserId, currency])
+  @@index([groupId, currency])
+  @@index([groupId, telegramUserId])
 }
 
 model EngagementActivity {
@@ -721,6 +741,10 @@ model EngagementActivity {
   /// JSON config: poll options, quiz answer, social URL, etc.
   configJson      String                   @default("{}")
   pointsReward    Int                      @default(10)
+  /// Payout currency for new participants (stamped onto awards at participation).
+  rewardCurrency  String                   @default("USDm")
+  /// Snapshot of cash-per-point at activity create (optional override of group settings).
+  rewardAmountPerPoint Decimal?            @db.Decimal(18, 8)
   telegramPollId  String?
   telegramMsgId   String?
   createdByUserId String?
@@ -742,6 +766,9 @@ model ActivitySubmission {
   payload        String
   verified       Boolean            @default(false)
   pointsAwarded  Int                @default(0)
+  /// Currency stamped when points were awarded (immutable for this participation).
+  currency       String?
+  cashAmount     Decimal?           @db.Decimal(18, 8)
   notes          String?
   createdAt      DateTime           @default(now())
 

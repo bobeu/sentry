@@ -315,6 +315,12 @@ export class EngagementService {
         .map((o) => String(o ?? "").trim())
         .filter(Boolean);
     }
+    const rewardCurrency =
+      (settings?.rewardCurrency &&
+      ["CELO", "USDm", "USDC", "USDT"].includes(settings.rewardCurrency)
+        ? settings.rewardCurrency
+        : "USDm") as string;
+    const rewardAmountPerPoint = settings?.rewardAmountPerPoint ?? null;
     return prisma.engagementActivity.create({
       data: {
         groupId: input.groupId,
@@ -324,6 +330,8 @@ export class EngagementService {
         description: draft.description,
         configJson: JSON.stringify(config),
         pointsReward: points,
+        rewardCurrency,
+        rewardAmountPerPoint: rewardAmountPerPoint ?? undefined,
         createdByUserId: input.createdByUserId ?? null,
         closesAt,
       },
@@ -339,6 +347,8 @@ export class EngagementService {
       pointsReward: number;
       closesAt: Date | null;
       configJson: string;
+      rewardCurrency?: string | null;
+      rewardAmountPerPoint?: { toString(): string } | number | null;
     },
     settings: {
       rewardEnabled?: boolean | null;
@@ -349,12 +359,19 @@ export class EngagementService {
   ) {
     const config = parseConfig<QuizConfig>(activity.configJson);
     const format = config.format ?? (activity.type === "poll" ? "single" : "quiz");
-    const perPoint = Number(settings?.rewardAmountPerPoint?.toString?.() ?? settings?.rewardAmountPerPoint ?? 0);
-    const currency = settings?.rewardCurrency ?? "USDm";
+    const perPoint = Number(
+      activity.rewardAmountPerPoint?.toString?.() ??
+        activity.rewardAmountPerPoint ??
+        settings?.rewardAmountPerPoint?.toString?.() ??
+        settings?.rewardAmountPerPoint ??
+        0,
+    );
+    const currency =
+      activity.rewardCurrency ?? settings?.rewardCurrency ?? "USDm";
     const cashOn =
       Boolean(settings?.rewardEnabled) && !settings?.rewardPaused && perPoint > 0;
     const cashLine = cashOn
-      ? `Cash: ~${(activity.pointsReward * perPoint).toFixed(4)} ${currency} (at ${perPoint} ${currency}/pt) — withdraw by tagging me with your 0x wallet`
+      ? `Cash: ~${(activity.pointsReward * perPoint).toFixed(4)} ${currency} (at ${perPoint} ${currency}/pt) — paid in ${currency}`
       : "Cash: points only right now (employer can enable cash rewards later)";
 
     const lines = [
@@ -365,6 +382,7 @@ export class EngagementService {
       `Type: ${activity.type} · format: ${format}`,
       `Ends: ${formatClosesAt(activity.closesAt)}`,
       `Points to earn: **${activity.pointsReward}** (one verified entry)`,
+      `Payout currency: **${currency}**`,
       "",
       cashLine,
       "",
@@ -383,7 +401,6 @@ export class EngagementService {
     return lines
       .filter((line, i, arr) => {
         if (line === null) return false;
-        // Drop consecutive blank separators
         if (line === "" && (i === 0 || arr[i - 1] === "" || arr[i - 1] === null)) {
           return false;
         }
@@ -503,6 +520,12 @@ export class EngagementService {
         description: `Interact (${action}) then reply tagging Sentry with your proof link.`,
         configJson: JSON.stringify(config),
         pointsReward: this.defaultPoints("social", settings),
+        rewardCurrency:
+          settings?.rewardCurrency &&
+          ["CELO", "USDm", "USDC", "USDT"].includes(settings.rewardCurrency)
+            ? settings.rewardCurrency
+            : "USDm",
+        rewardAmountPerPoint: settings?.rewardAmountPerPoint ?? undefined,
         createdByUserId: input.createdByUserId ?? null,
         closesAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },

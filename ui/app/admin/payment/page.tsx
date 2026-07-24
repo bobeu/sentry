@@ -62,7 +62,7 @@ export default function AdminPaymentPage() {
       </h1>
       <p className="mt-3 text-sm text-[#9aa89a]">
         Enable currencies for future wallets and update ERC20 addresses. Existing wallets
-        retain their immutable currency configuration.
+        hold CELO, USDm, USDC, and USDT at once (campaign currency is configured in group settings).
       </p>
 
       <div className="mt-8 space-y-3">

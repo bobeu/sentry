@@ -1350,12 +1350,6 @@
           "type": "bytes32"
         },
         {
-          "indexed": false,
-          "internalType": "enum RewardFactory.Token",
-          "name": "currency",
-          "type": "uint8"
-        },
-        {
           "indexed": true,
           "internalType": "address",
           "name": "account",
@@ -1512,11 +1506,6 @@
           "type": "bytes32"
         },
         {
-          "internalType": "enum RewardFactory.Token",
-          "name": "currency",
-          "type": "uint8"
-        },
-        {
           "internalType": "address",
           "name": "employer",
           "type": "address"
@@ -1592,6 +1581,11 @@
           "internalType": "uint256",
           "name": "amount",
           "type": "uint256"
+        },
+        {
+          "internalType": "enum RewardFactory.Token",
+          "name": "currency",
+          "type": "uint8"
         }
       ],
       "name": "notifyFunding",
@@ -1672,6 +1666,11 @@
           "internalType": "bytes32",
           "name": "payoutId",
           "type": "bytes32"
+        },
+        {
+          "internalType": "enum RewardFactory.Token",
+          "name": "currency",
+          "type": "uint8"
         }
       ],
       "name": "payout",
@@ -1798,6 +1797,26 @@
           "internalType": "bytes32",
           "name": "accountKey",
           "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingCELO",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDm",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDC",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDT",
+          "type": "uint256"
         }
       ],
       "name": "withdrawToEmployer",
@@ -1836,18 +1855,28 @@
           "type": "bytes32"
         },
         {
-          "internalType": "enum RewardAccount.Token",
-          "name": "currency_",
-          "type": "uint8"
+          "internalType": "address",
+          "name": "usdm_",
+          "type": "address"
         },
         {
           "internalType": "address",
-          "name": "tokenAddress_",
+          "name": "usdc_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "usdt_",
           "type": "address"
         }
       ],
       "stateMutability": "nonpayable",
       "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "InsufficientReserve",
+      "type": "error"
     },
     {
       "inputs": [],
@@ -1872,6 +1901,11 @@
     {
       "inputs": [],
       "name": "NativeTransferFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NothingToWithdraw",
       "type": "error"
     },
     {
@@ -2090,12 +2124,46 @@
       "type": "function"
     },
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "enum RewardAccount.Token",
+          "name": "currency",
+          "type": "uint8"
+        }
+      ],
       "name": "balance",
       "outputs": [
         {
           "internalType": "uint256",
           "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "balances",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "celoBal",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "usdmBal",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "usdcBal",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "usdtBal",
           "type": "uint256"
         }
       ],
@@ -2139,6 +2207,11 @@
           "internalType": "uint256",
           "name": "amount",
           "type": "uint256"
+        },
+        {
+          "internalType": "enum RewardAccount.Token",
+          "name": "currency",
+          "type": "uint8"
         }
       ],
       "name": "notifyFunding",
@@ -2182,6 +2255,11 @@
           "internalType": "bytes32",
           "name": "payoutId",
           "type": "bytes32"
+        },
+        {
+          "internalType": "enum RewardAccount.Token",
+          "name": "currency",
+          "type": "uint8"
         }
       ],
       "name": "payout",
@@ -2216,19 +2294,6 @@
       "type": "function"
     },
     {
-      "inputs": [],
-      "name": "rewardCurrency",
-      "outputs": [
-        {
-          "internalType": "enum RewardAccount.Token",
-          "name": "",
-          "type": "uint8"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
       "inputs": [
         {
           "internalType": "address",
@@ -2255,7 +2320,13 @@
       "type": "function"
     },
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "enum RewardAccount.Token",
+          "name": "currency",
+          "type": "uint8"
+        }
+      ],
       "name": "tokenAddress",
       "outputs": [
         {
@@ -2269,11 +2340,71 @@
     },
     {
       "inputs": [],
+      "name": "usdcToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "usdmToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "usdtToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "pendingCELO",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDm",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDC",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "pendingUSDT",
+          "type": "uint256"
+        }
+      ],
       "name": "withdrawAllToEmployer",
       "outputs": [
         {
           "internalType": "uint256",
-          "name": "amount",
+          "name": "totalSent",
           "type": "uint256"
         }
       ],

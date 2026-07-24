@@ -859,11 +859,10 @@ export class BlockchainService {
   }
 
   /**
-   * Create or return existing RewardAccount for accountKey (independent of employment wallets).
+   * Create or return existing multi-currency RewardAccount for accountKey.
    */
   async ensureRewardAccount(input: {
     accountKey: Hex;
-    currency: PaymentCurrency;
     employer: Address;
   }): Promise<Address> {
     const factory = this.rewardFactoryAddress();
@@ -884,7 +883,7 @@ export class BlockchainService {
       address: factory,
       abi: CONTRACTS.RewardFactory.abi,
       functionName: "createAccount",
-      args: [input.accountKey, TOKEN_INDEX[input.currency], input.employer],
+      args: [input.accountKey, input.employer],
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
@@ -899,12 +898,36 @@ export class BlockchainService {
     })) as Address;
   }
 
-  async rewardAccountBalance(accountAddress: Address): Promise<bigint> {
+  /** @deprecated Prefer rewardAccountBalances — single-token balance(Token). */
+  async rewardAccountBalance(
+    accountAddress: Address,
+    currency: PaymentCurrency = "USDm",
+  ): Promise<bigint> {
     return (await this.client().readContract({
       address: accountAddress,
       abi: REWARD_ACCOUNT_ABI,
       functionName: "balance",
+      args: [TOKEN_INDEX[currency]],
     })) as bigint;
+  }
+
+  async rewardAccountBalances(accountAddress: Address): Promise<{
+    CELO: bigint;
+    USDm: bigint;
+    USDC: bigint;
+    USDT: bigint;
+  }> {
+    const result = (await this.client().readContract({
+      address: accountAddress,
+      abi: REWARD_ACCOUNT_ABI,
+      functionName: "balances",
+    })) as readonly [bigint, bigint, bigint, bigint];
+    return {
+      CELO: result[0],
+      USDm: result[1],
+      USDC: result[2],
+      USDT: result[3],
+    };
   }
 
   /** Member payout via RewardFactory (operator only). */
@@ -913,6 +936,7 @@ export class BlockchainService {
     to: Address;
     amount: bigint;
     payoutId: Hex;
+    currency: PaymentCurrency;
   }): Promise<Hash> {
     const factory = this.rewardFactoryAddress();
     const operator = this.walletClient("operator", factory);
@@ -922,7 +946,13 @@ export class BlockchainService {
       address: factory,
       abi: CONTRACTS.RewardFactory.abi,
       functionName: "payout",
-      args: [input.accountKey, input.to, input.amount, input.payoutId],
+      args: [
+        input.accountKey,
+        input.to,
+        input.amount,
+        input.payoutId,
+        TOKEN_INDEX[input.currency],
+      ],
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
@@ -932,8 +962,14 @@ export class BlockchainService {
     return hash;
   }
 
-  /** Operator withdraws full RewardAccount balance to the immutable employer. */
-  async withdrawRewardToEmployer(accountKey: Hex): Promise<Hash> {
+  /** Operator withdraws surplus above pending reserves to the employer. */
+  async withdrawRewardToEmployer(input: {
+    accountKey: Hex;
+    pendingCELO: bigint;
+    pendingUSDm: bigint;
+    pendingUSDC: bigint;
+    pendingUSDT: bigint;
+  }): Promise<Hash> {
     const factory = this.rewardFactoryAddress();
     const operator = this.walletClient("operator", factory);
     if (!factory || !operator) throw Errors.blockchainUnavailable();
@@ -941,7 +977,13 @@ export class BlockchainService {
       address: factory,
       abi: CONTRACTS.RewardFactory.abi,
       functionName: "withdrawToEmployer",
-      args: [accountKey],
+      args: [
+        input.accountKey,
+        input.pendingCELO,
+        input.pendingUSDm,
+        input.pendingUSDC,
+        input.pendingUSDT,
+      ],
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
