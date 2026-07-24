@@ -220,14 +220,24 @@ export function SiteNav() {
             </Link>
           ))}
           {authChecked && user ? (
-            <button
-              type="button"
-              onClick={() => void signOut()}
-              disabled={signingOut}
-              className="flex min-h-11 w-full items-center rounded-xl px-4 py-3 text-left text-sm font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary disabled:opacity-60"
-            >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </button>
+            <>
+              <div className="border-t border-primary/10 px-1 pt-3 pb-1">
+                <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Wallet
+                </p>
+                <div className="px-1">
+                  <WalletConnectButton compact={false} />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                disabled={signingOut}
+                className="flex min-h-11 w-full items-center rounded-xl px-4 py-3 text-left text-sm font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary disabled:opacity-60"
+              >
+                {signingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </>
           ) : (
             <Link
               href="/login"
