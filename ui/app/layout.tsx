@@ -17,9 +17,9 @@ const body = Space_Grotesk({
 const talentHash = process.env.NEXT_PUBLIC_TALENT_PROJECT_VERIFICATION?.trim();
 
 export const metadata: Metadata = {
-  title: "Sentry — AI Employee for Telegram",
+  title: "Sentry — AI Telegram Employee",
   description:
-    "Hire an AI community employee that monitors, moderates, and reports inside Telegram, paid from a prepaid on-chain wallet.",
+    "Hire an intelligent AI Telegram employee: FAQs, moderation, polls & learn-and-earn games with points/cash rewards, and work reports — paid from a prepaid Celo wallet.",
   ...(talentHash
     ? {
         other: {
