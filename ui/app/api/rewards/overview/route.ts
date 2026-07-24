@@ -19,7 +19,7 @@ export async function GET() {
     const rows = await Promise.all(
       groups.map(async (g) => {
         // Soft-heal stale DB addresses after RewardFactory redeploy + sync-data.
-        let account = factoryConfigured
+        const account = factoryConfigured
           ? await rewardService.reconcileRewardAccountIfStale(g.id)
           : await rewardService.getAccount(g.id);
 
