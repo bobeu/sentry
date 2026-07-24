@@ -18,6 +18,7 @@ export async function GET() {
       groups.map(async (g) => {
         const account = await rewardService.getAccount(g.id);
         let balance: string | null = null;
+        let operator: string | null = null;
         if (account?.address && factoryConfigured) {
           try {
             const raw = await blockchainService.rewardAccountBalance(
@@ -26,6 +27,13 @@ export async function GET() {
             balance = formatUnits(raw, 18);
           } catch {
             balance = null;
+          }
+          try {
+            operator = await blockchainService.rewardAccountOperator(
+              account.address as Address,
+            );
+          } catch {
+            operator = null;
           }
         }
         return {
@@ -40,6 +48,7 @@ export async function GET() {
                 status: account.status,
               }
             : null,
+          operator,
           rewardEnabled: g.settings?.rewardEnabled ?? false,
           rewardPaused: g.settings?.rewardPaused ?? false,
           rewardAmountPerPoint: g.settings?.rewardAmountPerPoint?.toString() ?? "0",

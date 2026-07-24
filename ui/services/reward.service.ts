@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import {
+  getAddress,
   isAddress,
   keccak256,
   parseUnits,
@@ -15,6 +16,7 @@ import {
   type PaymentCurrency,
 } from "@/lib/payment-currency";
 import { blockchainService } from "@/services/blockchain.service";
+import { actionService } from "@/services/action.service";
 
 function accountKeyForGroup(telegramGroupId: string): Hex {
   return keccak256(toBytes(`telegram-group:${telegramGroupId}`));
@@ -38,6 +40,7 @@ export class RewardService {
     groupId: string;
     ownerUserId: string;
     currency?: PaymentCurrency;
+    bill?: boolean;
   }) {
     const existing = await prisma.rewardAccount.findUnique({
       where: { groupId: input.groupId },
@@ -86,6 +89,15 @@ export class RewardService {
       },
     });
 
+    if (input.bill !== false) {
+      await this.billConfigAction({
+        userId: input.ownerUserId,
+        groupId: input.groupId,
+        op: "create",
+        metadata: { address, currency },
+      });
+    }
+
     return row;
   }
 
@@ -93,7 +105,29 @@ export class RewardService {
     return prisma.rewardAccount.findUnique({ where: { groupId } });
   }
 
-  async pauseRewards(groupId: string, viaOnChain = true) {
+  /** Bill employment wallet for a RewardAccount config action (usual fee). */
+  async billConfigAction(input: {
+    userId: string;
+    groupId: string;
+    op:
+      | "create"
+      | "pause"
+      | "resume"
+      | "setAccountOperator"
+      | "archive"
+      | "status";
+    metadata?: Record<string, unknown>;
+  }) {
+    return actionService.record({
+      type: "reward_account_config",
+      userId: input.userId,
+      groupId: input.groupId,
+      billable: true,
+      metadata: { op: input.op, ...(input.metadata ?? {}) },
+    });
+  }
+
+  async pauseRewards(groupId: string, viaOnChain = true, billUserId?: string) {
     await prisma.groupSettings.update({
       where: { groupId },
       data: { rewardPaused: true },
@@ -110,9 +144,17 @@ export class RewardService {
         console.warn("[reward] on-chain pause failed; DB paused anyway", err);
       }
     }
+    if (billUserId) {
+      await this.billConfigAction({
+        userId: billUserId,
+        groupId,
+        op: "pause",
+        metadata: { viaOnChain, address: account?.address },
+      });
+    }
   }
 
-  async resumeRewards(groupId: string, viaOnChain = true) {
+  async resumeRewards(groupId: string, viaOnChain = true, billUserId?: string) {
     await prisma.groupSettings.update({
       where: { groupId },
       data: { rewardPaused: false, rewardEnabled: true },
@@ -128,6 +170,110 @@ export class RewardService {
       } catch (err) {
         console.warn("[reward] on-chain resume failed; DB resumed anyway", err);
       }
+    }
+    if (billUserId) {
+      await this.billConfigAction({
+        userId: billUserId,
+        groupId,
+        op: "resume",
+        metadata: { viaOnChain, address: account?.address },
+      });
+    }
+  }
+
+  /**
+   * Rotate on-chain payout operator for a group's RewardAccount (factory.setAccountOperator).
+   */
+  async setAccountOperator(input: {
+    groupId: string;
+    userId: string;
+    newOperator: string;
+    bill?: boolean;
+  }) {
+    if (!isAddress(input.newOperator)) {
+      throw new Error("Invalid operator address — provide a valid 0x wallet.");
+    }
+    const operator = getAddress(input.newOperator) as Address;
+    const account = await prisma.rewardAccount.findUnique({
+      where: { groupId: input.groupId },
+    });
+    if (!account) {
+      throw new Error(
+        "No RewardAccount for this group yet. Create one first (Wallets → Reward Account).",
+      );
+    }
+    if (account.status === "Archived") {
+      throw new Error("This RewardAccount is archived and cannot change operator.");
+    }
+    if (!blockchainService.isRewardFactoryConfigured()) {
+      throw new Error("RewardFactory is not configured on this deployment.");
+    }
+
+    const txHash = await blockchainService.setRewardAccountOperator(
+      account.accountKey as Hex,
+      operator,
+    );
+
+    if (input.bill !== false) {
+      await this.billConfigAction({
+        userId: input.userId,
+        groupId: input.groupId,
+        op: "setAccountOperator",
+        metadata: {
+          operator,
+          address: account.address,
+          txHash,
+        },
+      });
+    }
+
+    return { account, operator, txHash };
+  }
+
+  async archiveAccount(input: {
+    groupId: string;
+    userId: string;
+    bill?: boolean;
+  }) {
+    const account = await prisma.rewardAccount.findUnique({
+      where: { groupId: input.groupId },
+    });
+    if (!account) throw new Error("No RewardAccount for this group.");
+    if (account.status === "Archived") {
+      return { account, already: true as const };
+    }
+
+    await blockchainService.archiveRewardAccount(account.accountKey as Hex);
+    const updated = await prisma.rewardAccount.update({
+      where: { id: account.id },
+      data: { status: "Archived" },
+    });
+    await prisma.groupSettings.update({
+      where: { groupId: input.groupId },
+      data: { rewardEnabled: false, rewardPaused: true },
+    });
+
+    if (input.bill !== false) {
+      await this.billConfigAction({
+        userId: input.userId,
+        groupId: input.groupId,
+        op: "archive",
+        metadata: { address: account.address },
+      });
+    }
+
+    return { account: updated, already: false as const };
+  }
+
+  async readOnChainOperator(groupId: string): Promise<string | null> {
+    const account = await prisma.rewardAccount.findUnique({ where: { groupId } });
+    if (!account?.address) return null;
+    try {
+      return await blockchainService.rewardAccountOperator(
+        account.address as Address,
+      );
+    } catch {
+      return null;
     }
   }
 

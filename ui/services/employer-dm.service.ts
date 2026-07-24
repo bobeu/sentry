@@ -102,7 +102,10 @@ function rewardGroupKeyboard(groupId: string): InlineKeyboard {
         { text: "Resume rewards", callback_data: `emp:rewresume:${groupId}` },
       ],
       [
+        { text: "Set operator (ask in chat)", callback_data: `emp:rewop:${groupId}` },
         { text: "Leaderboard", callback_data: `emp:rewboard:${groupId}` },
+      ],
+      [
         { text: "Member withdraw help", callback_data: `emp:rewwithdraw:${groupId}` },
       ],
       [{ text: "← Rewards", callback_data: "emp:rewards" }],
@@ -505,9 +508,9 @@ export class EmployerDmService {
     if (rewPause) {
       await input.answerCb("Paused");
       const { rewardService } = await import("@/services/reward.service");
-      await rewardService.pauseRewards(rewPause[1]!);
+      await rewardService.pauseRewards(rewPause[1]!, true, userId);
       await input.editOrReply(
-        "Rewards paused for this group.",
+        "Rewards paused for this group (billed to employment wallet).",
         rewardGroupKeyboard(rewPause[1]!),
       );
       return true;
@@ -517,10 +520,32 @@ export class EmployerDmService {
     if (rewResume) {
       await input.answerCb("Resumed");
       const { rewardService } = await import("@/services/reward.service");
-      await rewardService.resumeRewards(rewResume[1]!);
+      await rewardService.resumeRewards(rewResume[1]!, true, userId);
       await input.editOrReply(
-        "Rewards resumed for this group.",
+        "Rewards resumed for this group (billed to employment wallet).",
         rewardGroupKeyboard(rewResume[1]!),
+      );
+      return true;
+    }
+
+    const rewOp = data.match(/^emp:rewop:(.+)$/);
+    if (rewOp) {
+      const groupId = rewOp[1]!;
+      await input.answerCb();
+      const { rewardService } = await import("@/services/reward.service");
+      const operator = await rewardService.readOnChainOperator(groupId);
+      await input.editOrReply(
+        [
+          "**Set Account Operator**",
+          "",
+          `Current operator: ${operator ?? "(unknown — create account first)"}`,
+          "",
+          "Reply in this chat with something like:",
+          "`Please update the Account Operator to 0xYourAddressHere`",
+          "",
+          "Name the group if you manage more than one. This runs setAccountOperator on-chain and bills your employment wallet.",
+        ].join("\n"),
+        rewardGroupKeyboard(groupId),
       );
       return true;
     }
@@ -612,6 +637,7 @@ export class EmployerDmService {
       `Cash rewards: ${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"}`,
       `Per point: ${s?.rewardAmountPerPoint?.toString?.() ?? "0"} ${s?.rewardCurrency ?? ""}`,
       "",
+      "I can setAccountOperator, pause, resume, or archive when you ask in plain language (billed to employment wallet).",
       "Members withdraw pending cash by tagging Sentry with their 0x wallet in the group.",
     ].join("\n");
   }

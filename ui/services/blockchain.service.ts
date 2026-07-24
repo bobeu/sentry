@@ -965,6 +965,61 @@ export class BlockchainService {
     await this.requireSuccess(hash);
     return hash;
   }
+
+  /** Rotate the payout operator on an existing RewardAccount (factory owner). */
+  async setRewardAccountOperator(accountKey: Hex, newOperator: Address): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "setAccountOperator",
+      args: [accountKey, newOperator],
+      account: owner.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async archiveRewardAccount(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const owner = this.walletClient("owner", factory);
+    if (!factory || !owner) throw Errors.blockchainUnavailable();
+    const hash = await owner.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "archiveAccount",
+      args: [accountKey],
+      account: owner.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  async rewardAccountOperator(accountAddress: Address): Promise<Address> {
+    return (await this.client().readContract({
+      address: accountAddress,
+      abi: REWARD_ACCOUNT_ABI,
+      functionName: "operator",
+    })) as Address;
+  }
+
+  async rewardAccountStatus(accountAddress: Address): Promise<number> {
+    return Number(
+      await this.client().readContract({
+        address: accountAddress,
+        abi: REWARD_ACCOUNT_ABI,
+        functionName: "status",
+      }),
+    );
+  }
 }
 
 export const blockchainService = new BlockchainService();

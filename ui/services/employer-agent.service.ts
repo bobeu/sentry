@@ -34,9 +34,14 @@ export function detectEmployerIntent(text: string): EmployerIntent {
     return "engagement";
   }
   if (
-    /\b(reward account|create reward|pause reward|resume reward|points|leaderboard|engagement|allow[- ]?(games|polls|fun)|cash reward)\b/.test(
+    /\b(reward account|create reward|pause reward|resume reward|points|leaderboard|engagement|allow[- ]?(games|polls|fun)|cash reward|account operator|setAccountOperator|pauseAccount|resumeAccount|archive (reward|account)|reward factory)\b/.test(
       t,
-    )
+    ) ||
+    (/\b(operator|pause|resume|archive)\b/.test(t) &&
+      /\b(reward|account)\b/.test(t)) ||
+    (/\b(update|set|change|rotate)\b/.test(t) &&
+      /\boperator\b/.test(t) &&
+      /0x[a-f0-9]{40}/i.test(t))
   ) {
     return "rewards";
   }
@@ -230,6 +235,13 @@ export class EmployerAgentService {
       );
     }
 
+    if (intent === "rewards" || intent === "general" || intent === "status") {
+      const rewardsBrief = await this.buildRewardsBrief(userId).catch(() => "");
+      if (rewardsBrief) {
+        sections.push("", rewardsBrief.slice(0, 2200));
+      }
+    }
+
     return sections.join("\n");
   }
 
@@ -268,17 +280,33 @@ export class EmployerAgentService {
       "",
       `RewardFactory configured: ${blockchainService.isRewardFactoryConfigured() ? "yes" : "NO — sync RewardFactory via smartContracts sync-data after deploy"}`,
       "",
-      "Rewards: create reward account for <group>, pause rewards, resume rewards.",
-      "Polls: start poll in <group>, end poll in <group>, start quiz in <group>.",
-      "Humor: humor witty | humor wholesome | humor off (for a group).",
-      "Dashboard: group → Capabilities → Engagement & Rewards.",
+      "Sentry can (billable to employment wallet):",
+      "• create / ensure RewardAccount for a group",
+      "• pauseAccount / resumeAccount (pause or resume cash payouts on-chain)",
+      "• setAccountOperator — rotate the payout operator address for a group's account",
+      "• archiveAccount — retire a group's RewardAccount",
+      "• report status, balance, leaderboard; fund instructions",
+      "",
+      "Sentry cannot (politely decline):",
+      "• change RewardFactory owner or global factory setOperator (platform-only)",
+      "• enable/disable factory currencies or update token addresses",
+      "• change an account's immutable reward currency after creation",
+      "• withdraw leftover RewardAccount funds to an arbitrary wallet (only member payouts via operator)",
+      "",
+      "Ask in plain language, e.g. “update the Account Operator to 0x…” or “pause rewards for MyGroup”.",
+      "Dashboard: Wallets → Reward Account.",
       "",
     ];
     for (const g of groups.slice(0, 8)) {
       const account = await rewardService.getAccount(g.id);
       const s = g.settings;
+      let operator = "";
+      if (account?.address) {
+        const op = await rewardService.readOnChainOperator(g.id);
+        if (op) operator = ` | operator=${op}`;
+      }
       lines.push(
-        `• ${g.name ?? g.telegramId}: fun=${s?.allowFun ? "on" : "off"} games=${s?.allowGames ? "on" : "off"} polls=${s?.allowPolls ? "on" : "off"} social=${s?.allowSocialCampaigns ? "on" : "off"} | humor=${s?.humorEnabled === false || s?.humorStyle === "off" ? "off" : s?.humorStyle ?? "friendly"} | rewards=${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"} | account=${account?.address ?? "(none)"}`,
+        `• ${g.name ?? g.telegramId}: fun=${s?.allowFun ? "on" : "off"} games=${s?.allowGames ? "on" : "off"} polls=${s?.allowPolls ? "on" : "off"} social=${s?.allowSocialCampaigns ? "on" : "off"} | humor=${s?.humorEnabled === false || s?.humorStyle === "off" ? "off" : s?.humorStyle ?? "friendly"} | rewards=${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"} | account=${account?.address ?? "(none)"}${operator}`,
       );
     }
     return lines.join("\n");
@@ -286,30 +314,148 @@ export class EmployerAgentService {
 
   /**
    * Handle employer natural-language reward account ops. Returns reply text or null.
+   * Bills employment wallet for completed on-chain/config actions.
    */
   async tryHandleRewardCommand(userId: string, text: string): Promise<string | null> {
     const t = text.toLowerCase();
-    const { rewardService } = await import("@/services/reward.service");
+    const { rewardService, extractWalletAddress } = await import(
+      "@/services/reward.service"
+    );
     const { blockchainService } = await import("@/services/blockchain.service");
     const groups = await groupService.listForUser(userId);
 
     const pickGroup = () => {
-      const byName = groups.find((g) =>
-        (g.name ?? "").toLowerCase() && t.includes((g.name ?? "").toLowerCase()),
-      );
+      const byName = groups.find((g) => {
+        const name = (g.name ?? "").toLowerCase();
+        return Boolean(name) && t.includes(name);
+      });
       return byName ?? groups[0] ?? null;
     };
 
-    if (/\b(create|ensure|open)\b.*\breward\b/.test(t) || /\breward account\b/.test(t)) {
+    const requireActiveEmployment = async () => {
+      const emp = await prisma.employment.findFirst({
+        where: { userId, status: "Active" },
+        include: { user: { include: { wallet: true } } },
+      });
+      if (!emp?.user?.wallet) {
+        return "Hire Sentry and fund your employment wallet first — Reward Account config is billed there.";
+      }
+      try {
+        const ledger = await billingService.getBalanceLedger(userId);
+        if (ledger.availableBalance <= 0) {
+          return "Your employment wallet has no available balance. Deposit funds, then I can run Reward Account config (pause, operator, etc.).";
+        }
+      } catch {
+        /* proceed; billing layer will surface errors */
+      }
+      return null;
+    };
+
+    // Out of jurisdiction — factory / platform admin only.
+    if (
+      /\b(factory\s+owner|transfer\s+ownership|setCurrencyEnabled|updateTokenAddress|enable\s+currency|disable\s+currency|change\s+(the\s+)?(token|currency)\s+address)\b/i.test(
+        text,
+      ) ||
+      (/\b(set|change|update)\b/.test(t) &&
+        /\bfactory\b/.test(t) &&
+        /\boperator\b/.test(t) &&
+        !/\b(account|group|reward\s+account)\b/.test(t))
+    ) {
+      return [
+        "I have to decline that one politely — it's outside my hired duties.",
+        "",
+        "I can configure **your group's RewardAccount** (create, pause, resume, setAccountOperator, archive).",
+        "Factory-wide owner/operator, currency enablement, and token address updates are platform admin only.",
+        "If you meant rotate the operator on a group's RewardAccount, say e.g. “update the Account Operator to 0x…” and name the group if you have more than one.",
+      ].join("\n");
+    }
+
+    if (
+      /\b(withdraw|sweep|drain|empty)\b/.test(t) &&
+      /\b(reward\s+account|leftover|remaining|treasury)\b/.test(t) &&
+      !/\b(member|points|pending)\b/.test(t)
+    ) {
+      return [
+        "I can't withdraw leftover RewardAccount funds to an arbitrary wallet — that isn't in the contract.",
+        "Member cash is paid out when they tag me with their 0x. Pause or archive if you want to stop new payouts.",
+      ].join("\n");
+    }
+
+    // setAccountOperator / update account operator to 0x…
+    const wantsOperator =
+      (/\b(operator|setAccountOperator)\b/.test(t) &&
+        /\b(set|update|change|rotate|assign)\b/.test(t)) ||
+      /\baccount\s+operator\b/.test(t) ||
+      /\bsetAccountOperator\b/i.test(text);
+    if (wantsOperator) {
+      const blocked = await requireActiveEmployment();
+      if (blocked) return blocked;
+      const wallet = extractWalletAddress(text);
+      if (!wallet) {
+        return "Please include the new operator address as a valid 0x… wallet (40 hex chars).";
+      }
       const g = pickGroup();
       if (!g) return "No groups linked yet. Enable a group first.";
       if (!blockchainService.isRewardFactoryConfigured()) {
         return "RewardFactory is not synced yet. Deploy on Celo, run sync-data, then ask me again.";
       }
       try {
+        const result = await rewardService.setAccountOperator({
+          groupId: g.id,
+          userId,
+          newOperator: wallet,
+        });
+        return [
+          `Done — Account Operator updated for **${g.name ?? g.telegramId}**.`,
+          "",
+          `New operator: ${result.operator}`,
+          `RewardAccount: ${result.account.address}`,
+          `Tx: ${result.txHash}`,
+          "",
+          "This was billed to your employment wallet as a Reward Account Config action.",
+          "Note: only the operator can pay member rewards; rotate carefully.",
+        ].join("\n");
+      } catch (err) {
+        return err instanceof Error ? err.message : "Could not update Account Operator.";
+      }
+    }
+
+    if (/\barchive\b/.test(t) && /\b(reward|account)\b/.test(t)) {
+      const blocked = await requireActiveEmployment();
+      if (blocked) return blocked;
+      const g = pickGroup();
+      if (!g) return "No groups linked.";
+      try {
+        const result = await rewardService.archiveAccount({
+          groupId: g.id,
+          userId,
+        });
+        if (result.already) {
+          return `RewardAccount for ${g.name ?? g.telegramId} is already archived.`;
+        }
+        return [
+          `Archived RewardAccount for **${g.name ?? g.telegramId}**.`,
+          "Cash rewards are off. This was billed to your employment wallet.",
+        ].join("\n");
+      } catch (err) {
+        return err instanceof Error ? err.message : "Could not archive account.";
+      }
+    }
+
+    if (/\b(create|ensure|open|deploy)\b/.test(t) && /\breward\b/.test(t)) {
+      const blocked = await requireActiveEmployment();
+      if (blocked) return blocked;
+      const g = pickGroup();
+      if (!g) return "No groups linked yet. Enable a group first.";
+      if (!blockchainService.isRewardFactoryConfigured()) {
+        return "RewardFactory is not synced yet. Deploy on Celo, run sync-data, then ask me again.";
+      }
+      try {
+        const before = await rewardService.getAccount(g.id);
         const account = await rewardService.ensureRewardAccount({
           groupId: g.id,
           ownerUserId: userId,
+          bill: !before || before.status === "Archived",
         });
         await rewardService.setRewardConfig(g.id, {
           rewardEnabled: true,
@@ -320,23 +466,33 @@ export class EmployerAgentService {
           `Address: ${account.address}`,
           `Currency: ${account.currency}`,
           "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x wallet.",
+          !before || before.status === "Archived"
+            ? "Creation billed to your employment wallet."
+            : "Account already existed — no new create fee.",
         ].join("\n");
       } catch (err) {
         return err instanceof Error ? err.message : "Could not create reward account.";
       }
     }
 
-    if (/\bpause\b.*\breward/.test(t)) {
+    if (/\bpause\b/.test(t) && /\b(reward|account|payout)\b/.test(t)) {
+      const blocked = await requireActiveEmployment();
+      if (blocked) return blocked;
       const g = pickGroup();
       if (!g) return "No groups linked.";
-      await rewardService.pauseRewards(g.id);
-      return `Rewards paused for ${g.name ?? g.telegramId}.`;
+      await rewardService.pauseRewards(g.id, true, userId);
+      return `Rewards paused (on-chain + settings) for ${g.name ?? g.telegramId}. Billed to your employment wallet.`;
     }
-    if (/\bresume\b.*\breward/.test(t) || /\bunpause\b.*\breward/.test(t)) {
+    if (
+      (/\bresume\b/.test(t) || /\bunpause\b/.test(t)) &&
+      /\b(reward|account|payout)\b/.test(t)
+    ) {
+      const blocked = await requireActiveEmployment();
+      if (blocked) return blocked;
       const g = pickGroup();
       if (!g) return "No groups linked.";
-      await rewardService.resumeRewards(g.id);
-      return `Rewards resumed for ${g.name ?? g.telegramId}.`;
+      await rewardService.resumeRewards(g.id, true, userId);
+      return `Rewards resumed for ${g.name ?? g.telegramId}. Billed to your employment wallet.`;
     }
 
     return null;
