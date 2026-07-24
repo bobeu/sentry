@@ -38,6 +38,7 @@ enum ActionType {
   engagement_activity
   reward_payout
   points_award
+  reward_account_config
 }
 
 enum AnnouncementStatus {

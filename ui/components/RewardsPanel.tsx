@@ -28,6 +28,7 @@ type RewardRow = {
     currency: string;
     status: string;
   } | null;
+  operator?: string | null;
   rewardEnabled: boolean;
   rewardPaused: boolean;
   rewardAmountPerPoint: string;
@@ -73,6 +74,7 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<"fund" | "controls">("fund");
   const [fundAmount, setFundAmount] = useState("1");
+  const [operatorInput, setOperatorInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -183,10 +185,66 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Update failed");
       setMessage(action === "pause" ? "Rewards paused." : "Rewards resumed.");
-      toast.push(action === "pause" ? "Rewards paused" : "Rewards resumed");
+      toast.push(action === "pause" ? "Rewards paused" : "Rewards resumed", "success");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setOperator(event: FormEvent) {
+    event.preventDefault();
+    if (!row) return;
+    const operator = operatorInput.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(operator)) {
+      setError("Enter a valid 0x operator address");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage("Updating Account Operator…");
+    try {
+      const res = await fetch(`/api/groups/${row.groupId}/rewards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setOperator", operator }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Operator update failed");
+      setMessage(`Operator updated to ${json.operator}. Billed to employment wallet.`);
+      toast.push("Account Operator updated", "success");
+      setOperatorInput("");
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Operator update failed";
+      setError(msg);
+      toast.push(msg);
+      setMessage(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function archiveAccount() {
+    if (!row) return;
+    if (!window.confirm("Archive this RewardAccount? Cash rewards will turn off.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${row.groupId}/rewards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Archive failed");
+      setMessage("RewardAccount archived. Billed to employment wallet.");
+      toast.push("RewardAccount archived", "success");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Archive failed");
     } finally {
       setBusy(false);
     }
@@ -439,9 +497,11 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <div className="space-y-0.5 pt-2">
                     <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
-                      Member withdraw
+                      Operator
                     </p>
-                    <p className="text-text-dark text-sm font-bold">Tag Sentry + 0x</p>
+                    <p className="text-text-dark font-mono text-[11px] font-bold break-all">
+                      {row.operator ?? "—"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -526,8 +586,9 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                 ) : (
                   <div className="space-y-4">
                     <p className="text-xs text-muted leading-relaxed font-medium">
-                      Pause stops new cash accruals for member points. Resume turns cash rewards
-                      back on. Fine-tune rates in group settings.
+                      Pause/resume and setAccountOperator run on-chain via Sentry and bill your
+                      employment wallet. Factory-wide admin (global operator, currencies) is out of
+                      scope.
                     </p>
                     <div className="flex flex-wrap gap-2.5">
                       <button
@@ -546,7 +607,45 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                       >
                         Edit rates & points
                       </Link>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void archiveAccount()}
+                        className="rounded-full border border-alert/30 bg-white px-5 py-2.5 text-xs font-bold text-alert hover:bg-alert/5 transition cursor-pointer disabled:opacity-50"
+                      >
+                        Archive account
+                      </button>
                     </div>
+                    <form
+                      onSubmit={(e) => void setOperator(e)}
+                      className="border-t border-primary/10 pt-4 space-y-3"
+                    >
+                      <p className="text-xs text-text-dark font-bold">Set Account Operator</p>
+                      <p className="text-xs text-muted font-medium">
+                        Current:{" "}
+                        <span className="font-mono text-text-dark">
+                          {row.operator ?? "unknown"}
+                        </span>
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="flex-1 text-xs text-muted min-w-[200px]">
+                          New operator (0x…)
+                          <input
+                            value={operatorInput}
+                            onChange={(e) => setOperatorInput(e.target.value)}
+                            placeholder="0x…"
+                            className="mt-2 block w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary font-mono text-xs"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="rounded-full bg-primary px-5 py-2.5 text-xs font-bold text-white shadow hover:bg-primary/90 transition cursor-pointer disabled:opacity-50"
+                        >
+                          Update operator
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 )}
               </div>

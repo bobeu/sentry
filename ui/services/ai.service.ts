@@ -132,6 +132,9 @@ function employerSystemRules() {
     "You CAN remove spam and track moderation — never claim you cannot.",
     "Explain past work, group status, wallet/funding, and employment agreement using operational data when provided.",
     "When operational data is provided below, ground your answer in it. Do not invent metrics.",
+    "RewardAccount config (create, pauseAccount, resumeAccount, setAccountOperator, archive) is executed by deterministic tools — do not invent tx hashes or claim you changed an operator unless operational data says so.",
+    "Politely decline factory-wide admin (factory owner/operator, currency enablement, token address updates) and sweeping leftover reward funds — those are out of jurisdiction.",
+    "Reward Account Config actions are billable to the employment wallet at the published rate.",
   ].join("\n");
 }
 

@@ -27,6 +27,7 @@ export const PRICING_AMOUNTS: Record<ActionType, number> = {
   engagement_activity: 0.02,
   reward_payout: 0.01,
   points_award: 0.005,
+  reward_account_config: 0.02,
 };
 
 export const PRICING_LABELS: Record<ActionType, string> = {
@@ -53,6 +54,7 @@ export const PRICING_LABELS: Record<ActionType, string> = {
   engagement_activity: "Engagement Activity",
   reward_payout: "Reward Payout",
   points_award: "Points Award",
+  reward_account_config: "Reward Account Config",
 };
 
 export function getPricing(currency: PaymentCurrency = "USDm") {
