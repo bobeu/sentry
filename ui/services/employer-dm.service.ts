@@ -4,7 +4,7 @@ import { actionService } from "@/services/action.service";
 import { groupService } from "@/services/group.service";
 import { employerAgentService } from "@/services/employer-agent.service";
 import { generateEmployerWelcome } from "@/services/moderation-agent.service";
-import { splitTelegramMessage, toTelegramHtml } from "@/lib/telegram-message";
+import { splitTelegramMessage, formatSentryMessage } from "@/lib/telegram-message";
 
 type InlineKeyboard = {
   inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
@@ -103,7 +103,7 @@ export class EmployerDmService {
 
     for (const chunk of splitTelegramMessage(welcome)) {
       await bot.telegram
-        .sendMessage(Number(telegramUserId), toTelegramHtml(chunk), {
+        .sendMessage(Number(telegramUserId), formatSentryMessage(chunk), {
           parse_mode: "HTML",
           reply_markup: mainMenuKeyboard(),
         })
