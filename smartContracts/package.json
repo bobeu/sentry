@@ -35,6 +35,7 @@
     "vol:reward-payout": "tsx tests/run.ts reward-payout",
     "vol:pause-reward": "tsx tests/run.ts pause-reward",
     "vol:resume-reward": "tsx tests/run.ts resume-reward",
+    "vol:withdraw-reward": "tsx tests/run.ts withdraw-reward",
     "vol:transfer": "tsx tests/run.ts transfer",
     "vol:volume": "tsx tests/run.ts volume"
   },

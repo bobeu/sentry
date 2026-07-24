@@ -24,18 +24,17 @@ import {
   abi as swfAbi,
   address as swfAddress,
 } from "../../deployments/celo/SentryWalletFactory.json";
-import {
-  abi as rfAbi,
-  address as rfAddress,
-} from "../../deployments/celo/RewardFactory.json";
-import abis from "./contracts/abis.json";
+import { address as rfAddress } from "../../deployments/celo/RewardFactory.json";
+import rewardFactory from "../../artifacts/contracts/RewardFactory.sol/RewardFactory.json";
+import reward from "../../artifacts/contracts/RewardAccount.sol/RewardAccount.json";
 import fs from "fs";
 import path from "path";
 
 export const EMPLOYMENT_MANAGER_ABI = eAbi as Abi;
 export const SENTRY_WALLET_FACTORY_ABI = swfAbi as Abi;
-export const REWARD_FACTORY_ABI = rfAbi as Abi;
-export const REWARD_ACCOUNT_ABI = abis.RewardAccount as Abi;
+/** Prefer Hardhat artifact ABI so local contract changes apply before redeploy. */
+export const REWARD_FACTORY_ABI = rewardFactory.abi as Abi;
+export const REWARD_ACCOUNT_ABI = reward.abi as Abi;
 
 export const EMPLOYMENT_MANAGER_ADDRESS = eAddress as Address;
 export const SENTRY_WALLET_FACTORY_ADDRESS = swfAddress as Address;

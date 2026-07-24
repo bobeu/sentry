@@ -648,11 +648,34 @@ export class AiService {
       };
       const title = (parsed.title ?? `${input.type} time`).slice(0, 120);
       const description = (parsed.description ?? "Join in!").slice(0, 500);
-      const config = parsed.config ?? {
-        question: title,
-        options: ["A", "B", "C", "D"],
-        correctIndex: 0,
-      };
+      const config = { ...(parsed.config ?? {}) } as Record<string, unknown>;
+      const qRaw =
+        typeof config.question === "string" ? config.question.trim() : "";
+      const question =
+        qRaw ||
+        title.trim() ||
+        description.trim() ||
+        (input.type === "poll"
+          ? "How's the vibe in this group today?"
+          : "Which chain is Celo built for?");
+      config.question = question;
+      if (!Array.isArray(config.options) || config.options.length < 2) {
+        config.options =
+          input.type === "poll"
+            ? ["Great", "Okay", "Needs energy", "Surprise me"]
+            : ["Mobile-first payments", "Only NFTs", "Gaming only", "Private intranet"];
+      } else {
+        config.options = (config.options as unknown[])
+          .map((o) => String(o ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 10);
+      }
+      if (
+        (config.options as string[]).length < 2 &&
+        config.format !== "open"
+      ) {
+        config.options = ["Yes", "No", "Maybe"];
+      }
       return { title, description, config };
     } catch {
       return {

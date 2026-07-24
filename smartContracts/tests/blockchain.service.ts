@@ -433,12 +433,16 @@ const walletAbi = [
 ] as const;
 
 function key(name: "owner" | "operator"): Hex | null {
-  // Prefer explicit volume-script signer; fall back to env for privileged ops.
-  const fromEnv =
+  // Privileged roles always come from env — accounts.json entries are userKeys /
+  // transfer EOAs (via VolumeAccount constructor), not factory/manager signers.
+  const raw =
     name === "owner"
-      ? process.env.SENTRY_OWNER_KEY ?? process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY
-      : process.env.SENTRY_OPERATOR_KEY ?? process.env.PRIVATE_KEY;
-  const raw = process.env.VOLUME_SIGNER_KEY ?? fromEnv;
+      ? process.env.SENTRY_OWNER_KEY ??
+        process.env.EMPLOYMENT_OWNER_KEY ??
+        process.env.PRIVATE_KEY
+      : process.env.SENTRY_OPERATOR_KEY ??
+        process.env.EMPLOYMENT_OPERATOR_KEY ??
+        process.env.PRIVATE_KEY;
   if (!raw?.trim()) return null;
   return (raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`) as Hex;
 }
@@ -503,10 +507,11 @@ export class BlockchainService {
   }
 
   private walletClient(kind: "owner" | "operator", address: Address | null) {
-    // Volume scripts: prefer the bound accounts.json private key via VOLUME_SIGNER_KEY /
-    // constructor account, so we do not rely on a wallet provider.
-    const privateKey =
-      this.volumeAccount?.private_key ?? key(kind);
+    // Owner ops always use SENTRY_OWNER_KEY / EMPLOYMENT_OWNER_KEY.
+    // Operator ops: prefer env factory/manager operator; VOLUME_SIGNER_KEY only when
+    // env operator is unset (legacy). accounts.json identities are userKeys, not signers
+    // for create/register/charge/payout.
+    const privateKey = key(kind);
     if (!privateKey || !address) return null;
     const account = privateKeyToAccount(privateKey);
     return {
@@ -923,6 +928,7 @@ export class BlockchainService {
   async ensureRewardAccount(input: {
     accountKey: Hex;
     currency: PaymentCurrency;
+    employer: Address;
   }): Promise<Address> {
     const factory = this.rewardFactoryAddress();
     const owner = this.walletClient("owner", factory);
@@ -944,7 +950,7 @@ export class BlockchainService {
       address: factory,
       abi: CONTRACTS.RewardFactory.abi,
       functionName: "createAccount",
-      args: [input.accountKey, TOKEN_INDEX[input.currency]],
+      args: [input.accountKey, TOKEN_INDEX[input.currency], input.employer],
     });
     return (await this.client().readContract({
       address: factory,
@@ -962,8 +968,9 @@ export class BlockchainService {
     })) as bigint;
   }
 
+  /** Member payout via RewardFactory (operator only). */
   async payoutReward(input: {
-    accountAddress: Address;
+    accountKey: Hex;
     to: Address;
     amount: bigint;
     payoutId: Hex;
@@ -975,10 +982,25 @@ export class BlockchainService {
     return this.writeAttributed({
       wallet: operator.wallet,
       account: operator.account,
-      address: input.accountAddress,
-      abi: REWARD_ACCOUNT_ABI,
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
       functionName: "payout",
-      args: [input.to, input.amount, input.payoutId],
+      args: [input.accountKey, input.to, input.amount, input.payoutId],
+    });
+  }
+
+  /** Operator withdraws full RewardAccount balance to the immutable employer. */
+  async withdrawRewardToEmployer(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const operator = this.walletClient("operator", factory);
+    if (!factory || !operator) throw Errors.blockchainUnavailable();
+    return this.writeAttributed({
+      wallet: operator.wallet,
+      account: operator.account,
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "withdrawToEmployer",
+      args: [accountKey],
     });
   }
 
@@ -996,6 +1018,20 @@ export class BlockchainService {
     });
   }
 
+  async pauseRewardAccountByOperator(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const operator = this.walletClient("operator", factory);
+    if (!factory || !operator) throw Errors.blockchainUnavailable();
+    return this.writeAttributed({
+      wallet: operator.wallet,
+      account: operator.account,
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "pauseAccountByOperator",
+      args: [accountKey],
+    });
+  }
+
   async resumeRewardAccount(accountKey: Hex): Promise<Hash> {
     const factory = this.rewardFactoryAddress();
     const owner = this.walletClient("owner", factory);
@@ -1008,6 +1044,139 @@ export class BlockchainService {
       functionName: "resumeAccount",
       args: [accountKey],
     });
+  }
+
+  async resumeRewardAccountByOperator(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const operator = this.walletClient("operator", factory);
+    if (!factory || !operator) throw Errors.blockchainUnavailable();
+    return this.writeAttributed({
+      wallet: operator.wallet,
+      account: operator.account,
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "resumeAccountByOperator",
+      args: [accountKey],
+    });
+  }
+
+  private funderAccount(): PrivateKeyAccount {
+    const raw = (process.env.FUNDER_KEY || "").trim();
+    if (!raw) throw new Error("FUNDER_KEY not set");
+    const pk = (raw.startsWith("0x") ? raw : `0x${raw}`) as Hex;
+    return privateKeyToAccount(pk);
+  }
+
+  /** Resolve employer receive address for reward account creation. */
+  resolveEmployerAddress(): Address {
+    const fromEnv = (process.env.EMPLOYER_ADDRESS || "").trim();
+    if (fromEnv && isAddress(fromEnv)) return fromEnv as Address;
+    return this.funderAccount().address;
+  }
+
+  private async fundAddress(input: {
+    to: Address;
+    currency: PaymentCurrency;
+    amount: number;
+  }): Promise<Hash> {
+    const funder = this.funderAccount();
+    const wallet = createWalletClient({
+      account: funder,
+      chain: celo,
+      transport: http(RPC_URL),
+    });
+    const amountWei = parseUnits(
+      String(input.amount),
+      tokenDecimals(input.currency),
+    );
+
+    if (input.currency === "CELO") {
+      const hash = await wallet.sendTransaction({
+        to: input.to,
+        value: amountWei,
+        account: funder,
+        chain: celo,
+      });
+      await this.requireSuccess(hash);
+      return hash;
+    }
+
+    const factory = this.rewardFactoryAddress();
+    if (!factory) throw Errors.blockchainUnavailable();
+    const tokenCfg = (await this.client().readContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "currencies",
+      args: [TOKEN_INDEX[input.currency]],
+    })) as [Address, boolean];
+    const token = tokenCfg[0];
+    if (!token || token === zeroAddress) {
+      throw new Error(`No token address configured for ${input.currency}`);
+    }
+
+    const erc20Abi = [
+      {
+        type: "function",
+        name: "transfer",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "to", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+        outputs: [{ type: "bool" }],
+      },
+    ] as const;
+
+    const hash = await wallet.writeContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [input.to, amountWei],
+      account: funder,
+      chain: celo,
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  /** Fund a Sentry employment wallet from FUNDER_KEY. */
+  async fundEmploymentWallet(input: {
+    walletAddress: Address;
+    currency: PaymentCurrency;
+    amount: number;
+  }): Promise<Hash> {
+    return this.fundAddress({
+      to: input.walletAddress,
+      currency: input.currency,
+      amount: input.amount,
+    });
+  }
+
+  /** Fund a RewardAccount from FUNDER_KEY. */
+  async fundRewardAccount(input: {
+    accountAddress: Address;
+    currency: PaymentCurrency;
+    amount: number;
+  }): Promise<Hash> {
+    return this.fundAddress({
+      to: input.accountAddress,
+      currency: input.currency,
+      amount: input.amount,
+    });
+  }
+
+  /** Look up registered employment wallet for userKey (never invent EOA). */
+  async employmentWalletOf(userKey: Address): Promise<Address | null> {
+    const manager = this.managerAddress();
+    if (!manager) return null;
+    const registered = await this.client().readContract({
+      address: manager,
+      abi: CONTRACTS.EmploymentManager.abi,
+      functionName: "walletOf",
+      args: [userKey],
+    });
+    if (!registered || registered === zeroAddress) return null;
+    return registered as Address;
   }
 
   /**

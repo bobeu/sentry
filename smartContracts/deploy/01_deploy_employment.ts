@@ -57,20 +57,20 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
 
   // try {
-  //   log("Transferring ownership of EmploymentManager to new owner");
+  //   log("Transferring ownership of RewardFactory to new owner");
   //   const newOnwer = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
-  //   await execute("EmploymentManager", {from: deployer},  'transferOwnership', newOnwer);
+  //   await execute("RewardFactory", {from: deployer},  'transferOwnership', newOnwer);
   //   log(`Ownership transferred to ${newOnwer}`);
   // } catch (error) {
-  //   log(`Error executing EmploymentManager: ${error}`);
+  //   log(`Error executing RewardFactory: ${error}`);
   // }
   try {
-    log("Setting new operator for EmploymentManager");
+    log("Setting new operator for RewardFactory");
     const newOperator = '0xdD0952E29078C2aA01D6a20b8C2a92CC77f9f33D';
-    await execute("EmploymentManager", {from: dd09},  'setOperator', newOperator);
+    await execute("RewardFactory", {from: dd09},  'setOperator', newOperator);
     log(`Operator set to ${newOperator}`);
   } catch (error) {
-    log(`Error executing EmploymentManager: ${error}`);
+    log(`Error executing RewardFactory: ${error}`);
   }
 };
 

@@ -86,9 +86,14 @@ function sync() {
       if (!multiAddresses[name]) multiAddresses[name] = {};
       multiAddresses[name][chainId] = data.address;
 
-      if (data.abi) {
+      // Prefer Hardhat artifact ABI (tracks local source) over deployment snapshot.
+      const artifactAbi = loadArtifactAbi(`${name}.sol/${name}.json`);
+      if (artifactAbi) {
+        abis[name] = artifactAbi;
+        console.log(`  Extracted ABI for ${name} from artifacts (address from ${net})`);
+      } else if (data.abi) {
         abis[name] = data.abi;
-        console.log(`  Extracted ABI for ${name} from ${net}`);
+        console.log(`  Extracted ABI for ${name} from ${net} deployment`);
       }
 
       console.log(`  [${net}] ${name} @ ${data.address}`);

@@ -153,10 +153,46 @@ export class EngagementService {
   }
 
   async closeActivity(activityId: string) {
-    return prisma.engagementActivity.update({
+    const activity = await prisma.engagementActivity.update({
       where: { id: activityId },
       data: { status: "closed" },
     });
+    if (activity.type === "poll") {
+      await this.awardPollPointsOnClose(activity);
+    }
+    return activity;
+  }
+
+  /**
+   * After a poll closes, award pointsReward once per voter who submitted
+   * and has not already been paid for this activity.
+   */
+  private async awardPollPointsOnClose(activity: {
+    id: string;
+    groupId: string;
+    type: string;
+    title: string;
+    pointsReward: number;
+  }) {
+    if (activity.type !== "poll" || activity.pointsReward <= 0) return;
+    const submissions = await prisma.activitySubmission.findMany({
+      where: { activityId: activity.id, verified: true },
+    });
+    for (const sub of submissions) {
+      if (sub.pointsAwarded > 0) continue;
+      await prisma.activitySubmission.update({
+        where: { id: sub.id },
+        data: { pointsAwarded: activity.pointsReward },
+      });
+      await rewardService.awardPoints({
+        groupId: activity.groupId,
+        telegramUserId: sub.telegramUserId,
+        username: sub.username,
+        points: activity.pointsReward,
+        reason: `poll-close:${activity.title}`,
+        activityId: activity.id,
+      });
+    }
   }
 
   typeAllowed(
@@ -263,6 +299,22 @@ export class EngagementService {
 
     const points = this.defaultPoints(input.type, settings);
     const closesAt = new Date(Date.now() + parseDurationMs(input.hint));
+    const config = { ...draft.config } as Record<string, unknown>;
+    const question = String(
+      (typeof config.question === "string" && config.question.trim()) ||
+        draft.title.trim() ||
+        draft.description.trim() ||
+        "",
+    ).trim();
+    if (!question) {
+      throw new Error("Generated activity has an empty question — try again.");
+    }
+    config.question = question;
+    if (Array.isArray(config.options)) {
+      config.options = (config.options as unknown[])
+        .map((o) => String(o ?? "").trim())
+        .filter(Boolean);
+    }
     return prisma.engagementActivity.create({
       data: {
         groupId: input.groupId,
@@ -270,7 +322,7 @@ export class EngagementService {
         status: "active",
         title: draft.title,
         description: draft.description,
-        configJson: JSON.stringify(draft.config),
+        configJson: JSON.stringify(config),
         pointsReward: points,
         createdByUserId: input.createdByUserId ?? null,
         closesAt,
@@ -307,12 +359,17 @@ export class EngagementService {
 
     const lines = [
       `🎯 **${activity.title}**`,
+      "",
       activity.description?.trim() || null,
+      "",
       `Type: ${activity.type} · format: ${format}`,
       `Ends: ${formatClosesAt(activity.closesAt)}`,
       `Points to earn: **${activity.pointsReward}** (one verified entry)`,
+      "",
       cashLine,
+      "",
       "Withdrawal: tag me with your 0x address when you have pending cash.",
+      "",
       format === "open"
         ? "How to play: reply tagging me with your answer (no options)."
         : format === "multiple"
@@ -320,9 +377,21 @@ export class EngagementService {
           : activity.type === "poll"
             ? "How to play: tap an option on the poll — any vote counts."
             : "How to play: tap the correct option on the quiz poll.",
+      "",
       "Conditions: one entry per member · be kind · no spoilers in chat until it closes.",
     ];
-    return lines.filter(Boolean).join("\n");
+    return lines
+      .filter((line, i, arr) => {
+        if (line === null) return false;
+        // Drop consecutive blank separators
+        if (line === "" && (i === 0 || arr[i - 1] === "" || arr[i - 1] === null)) {
+          return false;
+        }
+        return true;
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   }
 
   enabledActivityTypes(settings: {
@@ -396,6 +465,11 @@ export class EngagementService {
       where: { id: { in: open.map((a) => a.id) } },
       data: { status: "closed" },
     });
+    for (const activity of open) {
+      if (activity.type === "poll") {
+        await this.awardPollPointsOnClose(activity);
+      }
+    }
     return { closed: open.length, titles: open.map((a) => a.title) };
   }
 
@@ -498,13 +572,23 @@ export class EngagementService {
     }
 
     const options = (
-      config.options?.filter((o) => o.trim()) ?? ["Yes", "No", "Maybe"]
+      config.options?.map((o) => o.trim()).filter(Boolean) ?? ["Yes", "No", "Maybe"]
     ).slice(0, 10);
     if (options.length < 2) {
       throw new Error("Poll needs at least 2 options");
     }
 
-    const question = (config.question || activity.title).slice(0, 300);
+    const question = (
+      config.question ||
+      activity.title ||
+      activity.description ||
+      ""
+    )
+      .trim()
+      .slice(0, 300);
+    if (!question) {
+      throw new Error("Poll/game question is empty — cannot post to Telegram.");
+    }
     // Default: public (non-anonymous) polls — anonymous only when employer enables it.
     let pollsAnonymous = Boolean(settings?.pollsAnonymous);
     if (settings?.pollsAnonymous === undefined) {
@@ -1065,7 +1149,9 @@ export class EngagementService {
       notes = verified ? "correct" : "incorrect";
     }
 
-    const points = verified ? activity.pointsReward : 0;
+    // Polls: record the vote now; award points only when the poll closes.
+    const points =
+      activity.type === "poll" ? 0 : verified ? activity.pointsReward : 0;
     await prisma.activitySubmission.create({
       data: {
         activityId: activity.id,
