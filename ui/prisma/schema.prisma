@@ -682,6 +682,8 @@ model RewardAccount {
   owner           User                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   address         String
   accountKey      String              @unique
+  /// RewardFactory address that deployed this account — used to detect redeploy staleness.
+  factoryAddress  String?
   /// Legacy single-currency label; on-chain accounts are multi-token (`MULTI`).
   currency        String              @default("MULTI")
   status          RewardAccountStatus @default(Provisioning)
@@ -691,6 +693,7 @@ model RewardAccount {
   ledgers RewardLedger[]
 
   @@index([ownerUserId])
+  @@index([factoryAddress])
 }
 
 model MemberPoints {
