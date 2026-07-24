@@ -446,14 +446,15 @@ async function handleEngagementAndRewards(
       await replyTo(ctx, gameResult.message, message.message_id, {
         reply_markup: engagementService.memberStatusKeyboard(),
       });
-      if (
+      const pointsAwarded =
         "pointsAwarded" in gameResult &&
-        gameResult.pointsAwarded > 0 &&
-        runtime.billable
-      ) {
+        typeof gameResult.pointsAwarded === "number"
+          ? gameResult.pointsAwarded
+          : 0;
+      if (pointsAwarded > 0 && runtime.billable) {
         await recordBillable(runtime, "points_award", {
           kind: "game_text",
-          points: gameResult.pointsAwarded,
+          points: pointsAwarded,
         });
       }
       return true;
