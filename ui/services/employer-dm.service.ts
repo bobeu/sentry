@@ -18,14 +18,15 @@ function mainMenuKeyboard(): InlineKeyboard {
         { text: "Work report", callback_data: "emp:report" },
       ],
       [
+        { text: "💰 Rewards", callback_data: "emp:rewards" },
         { text: "Wallet", callback_data: "emp:wallet" },
+      ],
+      [
         { text: "Spam & moderation", callback_data: "emp:spam" },
-      ],
-      [
         { text: "Report cadence", callback_data: "emp:cadence" },
-        { text: "Agreement", callback_data: "emp:agreement" },
       ],
       [
+        { text: "Agreement", callback_data: "emp:agreement" },
         { text: "Help", callback_data: "emp:help" },
       ],
     ],
@@ -57,12 +58,72 @@ function groupActionsKeyboard(groupId: string): InlineKeyboard {
         { text: "Q&A on/off", callback_data: `emp:gtog:${groupId}:answerQuestions` },
       ],
       [
+        { text: "💰 Rewards", callback_data: `emp:rew:${groupId}` },
+        { text: "Engagement", callback_data: `emp:eng:${groupId}` },
+      ],
+      [
         { text: "Report every 24h", callback_data: `emp:gint:${groupId}:24` },
         { text: "Every 6h", callback_data: `emp:gint:${groupId}:6` },
       ],
       [
         { text: "Every 1h", callback_data: `emp:gint:${groupId}:1` },
         { text: "← Groups", callback_data: "emp:groups" },
+      ],
+    ],
+  };
+}
+
+function rewardsHubKeyboard(
+  groups: Array<{ id: string; name: string | null; telegramId: string }>,
+): InlineKeyboard {
+  const rows = groups.slice(0, 8).map((g, i) => [
+    {
+      text: `${i + 1}. ${(g.name ?? g.telegramId).slice(0, 24)}`,
+      callback_data: `emp:rew:${g.id}`,
+    },
+  ]);
+  rows.push([{ text: "← Menu", callback_data: "emp:menu" }]);
+  return { inline_keyboard: rows };
+}
+
+function rewardGroupKeyboard(groupId: string): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Create / ensure account", callback_data: `emp:rewcreate:${groupId}` },
+        { text: "Status & balance", callback_data: `emp:rewstat:${groupId}` },
+      ],
+      [
+        { text: "Fund account", callback_data: `emp:rewfund:${groupId}` },
+        { text: "Cash on/off", callback_data: `emp:rewcash:${groupId}` },
+      ],
+      [
+        { text: "Pause rewards", callback_data: `emp:rewpause:${groupId}` },
+        { text: "Resume rewards", callback_data: `emp:rewresume:${groupId}` },
+      ],
+      [
+        { text: "Leaderboard", callback_data: `emp:rewboard:${groupId}` },
+        { text: "Member withdraw help", callback_data: `emp:rewwithdraw:${groupId}` },
+      ],
+      [{ text: "← Rewards", callback_data: "emp:rewards" }],
+    ],
+  };
+}
+
+function engagementGroupKeyboard(groupId: string): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Polls on/off", callback_data: `emp:gtog:${groupId}:allowPolls` },
+        { text: "Games on/off", callback_data: `emp:gtog:${groupId}:allowGames` },
+      ],
+      [
+        { text: "Members can start", callback_data: `emp:gtog:${groupId}:membersCanStartActivities` },
+        { text: "Anonymous polls", callback_data: `emp:gtog:${groupId}:pollsAnonymous` },
+      ],
+      [
+        { text: "Fun on/off", callback_data: `emp:gtog:${groupId}:allowFun` },
+        { text: "← Group", callback_data: `emp:group:${groupId}` },
       ],
     ],
   };
@@ -115,6 +176,12 @@ export class EmployerDmService {
     return mainMenuKeyboard();
   }
 
+  /** Rewards hub: pick a group, then create/fund/pause/withdraw help. */
+  async rewardsHubKeyboardForUser(userId: string) {
+    const groups = await groupService.listForUser(userId);
+    return rewardsHubKeyboard(groups);
+  }
+
   async handleCallback(input: {
     data: string;
     userId: string;
@@ -141,7 +208,8 @@ export class EmployerDmService {
           "I'm your hired community employee — not a command-line bot.",
           "",
           "• Ask about spam removed, group status, wallet, or employment",
-          "• Tap Groups to open settings for each community",
+          "• Tap Rewards to create/fund/pause RewardAccounts for cash prizes",
+          "• Tap Groups → Engagement to control who can start polls/games",
           "• Work report = what I've done recently",
           "• Report cadence = how often I DM you a work summary (default 24h)",
           "",
@@ -280,9 +348,17 @@ export class EmployerDmService {
     if (gtog) {
       const [, groupId, field] = gtog;
       await input.answerCb("Updated");
-      await this.toggleGroupSetting(userId, groupId, field);
-      const detail = await employerAgentService.formatGroupCard(userId, groupId);
-      await input.editOrReply(`Updated.\n\n${detail}`, groupActionsKeyboard(groupId));
+      await this.toggleGroupSetting(userId, groupId, field!);
+      const detail = await employerAgentService.formatGroupCard(userId, groupId!);
+      const kb =
+        field === "allowPolls" ||
+        field === "allowGames" ||
+        field === "allowFun" ||
+        field === "membersCanStartActivities" ||
+        field === "pollsAnonymous"
+          ? engagementGroupKeyboard(groupId!)
+          : groupActionsKeyboard(groupId!);
+      await input.editOrReply(`Updated.\n\n${detail}`, kb);
       return true;
     }
 
@@ -290,19 +366,254 @@ export class EmployerDmService {
     if (gint) {
       const [, groupId, hoursRaw] = gint;
       const hours = Number(hoursRaw);
-      await groupService.updateSettings(userId, groupId, {
+      await groupService.updateSettings(userId, groupId!, {
         workReportIntervalHours: hours,
       });
       await input.answerCb(`${hours}h`);
       await input.editOrReply(
         `Work report cadence for this group is now every ${hours} hour(s).`,
-        groupActionsKeyboard(groupId),
+        groupActionsKeyboard(groupId!),
+      );
+      return true;
+    }
+
+    // —— Rewards hub ——
+    if (data === "emp:rewards") {
+      await input.answerCb();
+      const groups = await groupService.listForUser(userId);
+      const brief = await employerAgentService.buildRewardsBrief(userId);
+      await input.editOrReply(
+        `${brief.slice(0, 2800)}\n\nPick a group to create/fund/pause rewards:`,
+        rewardsHubKeyboard(groups),
+      );
+      return true;
+    }
+
+    const rewOpen = data.match(/^emp:rew:(.+)$/);
+    if (rewOpen) {
+      const groupId = rewOpen[1]!;
+      await input.answerCb();
+      const card = await this.rewardStatusText(userId, groupId);
+      await input.editOrReply(card, rewardGroupKeyboard(groupId));
+      return true;
+    }
+
+    const engOpen = data.match(/^emp:eng:(.+)$/);
+    if (engOpen) {
+      const groupId = engOpen[1]!;
+      await input.answerCb();
+      const group = await groupService.getForUser(userId, groupId);
+      const s = group.settings;
+      await input.editOrReply(
+        [
+          `Engagement controls — ${group.name ?? group.telegramId}`,
+          "",
+          `Polls: ${s?.allowPolls ? "on" : "off"}`,
+          `Games: ${s?.allowGames ? "on" : "off"}`,
+          `Fun: ${s?.allowFun ? "on" : "off"}`,
+          `Members can start: ${s?.membersCanStartActivities !== false ? "yes" : "no (employer/admins only)"}`,
+          `Anonymous polls: ${s?.pollsAnonymous ? "yes" : "no (default public)"}`,
+          "",
+          "Toggle with the buttons below.",
+        ].join("\n"),
+        engagementGroupKeyboard(groupId),
+      );
+      return true;
+    }
+
+    const rewCreate = data.match(/^emp:rewcreate:(.+)$/);
+    if (rewCreate) {
+      const groupId = rewCreate[1]!;
+      await input.answerCb("Creating…");
+      const { rewardService } = await import("@/services/reward.service");
+      const { blockchainService } = await import("@/services/blockchain.service");
+      if (!blockchainService.isRewardFactoryConfigured()) {
+        await input.editOrReply(
+          "RewardFactory is not configured on this deployment yet.",
+          rewardGroupKeyboard(groupId),
+        );
+        return true;
+      }
+      try {
+        const group = await groupService.getForUser(userId, groupId);
+        const account = await rewardService.ensureRewardAccount({
+          groupId,
+          ownerUserId: userId,
+        });
+        await rewardService.setRewardConfig(groupId, {
+          rewardEnabled: true,
+          rewardPaused: false,
+        });
+        await input.editOrReply(
+          [
+            `Reward account ready for ${group.name ?? group.telegramId}.`,
+            "",
+            `Address: ${account.address}`,
+            `Currency: ${account.currency}`,
+            "",
+            "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x.",
+            "Dashboard → Reward accounts for one-click fund.",
+          ].join("\n"),
+          rewardGroupKeyboard(groupId),
+        );
+      } catch (err) {
+        await input.editOrReply(
+          err instanceof Error ? err.message : "Could not create reward account.",
+          rewardGroupKeyboard(groupId),
+        );
+      }
+      return true;
+    }
+
+    const rewStat = data.match(/^emp:rewstat:(.+)$/);
+    if (rewStat) {
+      await input.answerCb();
+      const card = await this.rewardStatusText(userId, rewStat[1]!);
+      await input.editOrReply(card, rewardGroupKeyboard(rewStat[1]!));
+      return true;
+    }
+
+    const rewFund = data.match(/^emp:rewfund:(.+)$/);
+    if (rewFund) {
+      const groupId = rewFund[1]!;
+      await input.answerCb();
+      const { rewardService } = await import("@/services/reward.service");
+      const account = await rewardService.getAccount(groupId);
+      if (!account) {
+        await input.editOrReply(
+          "No reward account yet — tap Create / ensure account first.",
+          rewardGroupKeyboard(groupId),
+        );
+        return true;
+      }
+      await input.editOrReply(
+        [
+          "**Fund this RewardAccount**",
+          "",
+          `Send ${account.currency} to:`,
+          account.address,
+          "",
+          "Or use Dashboard → Reward accounts → Fund (connected wallet).",
+          "Do not send to your employment SentryWallet — that pays Sentry's work fees, not member prizes.",
+        ].join("\n"),
+        rewardGroupKeyboard(groupId),
+      );
+      return true;
+    }
+
+    const rewPause = data.match(/^emp:rewpause:(.+)$/);
+    if (rewPause) {
+      await input.answerCb("Paused");
+      const { rewardService } = await import("@/services/reward.service");
+      await rewardService.pauseRewards(rewPause[1]!);
+      await input.editOrReply(
+        "Rewards paused for this group.",
+        rewardGroupKeyboard(rewPause[1]!),
+      );
+      return true;
+    }
+
+    const rewResume = data.match(/^emp:rewresume:(.+)$/);
+    if (rewResume) {
+      await input.answerCb("Resumed");
+      const { rewardService } = await import("@/services/reward.service");
+      await rewardService.resumeRewards(rewResume[1]!);
+      await input.editOrReply(
+        "Rewards resumed for this group.",
+        rewardGroupKeyboard(rewResume[1]!),
+      );
+      return true;
+    }
+
+    const rewBoard = data.match(/^emp:rewboard:(.+)$/);
+    if (rewBoard) {
+      await input.answerCb();
+      const { rewardService } = await import("@/services/reward.service");
+      const top = await rewardService.leaderboard(rewBoard[1]!, 10);
+      const lines = top.length
+        ? top.map(
+            (m, i) =>
+              `${i + 1}. ${m.username ? `@${m.username}` : m.telegramUserId} — ${m.points} pts`,
+          )
+        : ["No points yet."];
+      await input.editOrReply(
+        ["**Leaderboard**", "", ...lines].join("\n"),
+        rewardGroupKeyboard(rewBoard[1]!),
+      );
+      return true;
+    }
+
+    const rewCash = data.match(/^emp:rewcash:(.+)$/);
+    if (rewCash) {
+      const groupId = rewCash[1]!;
+      await input.answerCb("Toggled");
+      const { rewardService } = await import("@/services/reward.service");
+      const group = await groupService.getForUser(userId, groupId);
+      const next = !(group.settings?.rewardEnabled ?? false);
+      await rewardService.setRewardConfig(groupId, { rewardEnabled: next });
+      const card = await this.rewardStatusText(userId, groupId);
+      await input.editOrReply(
+        `Cash rewards ${next ? "enabled" : "disabled"}.\n\n${card}`,
+        rewardGroupKeyboard(groupId),
+      );
+      return true;
+    }
+
+    const rewWithdraw = data.match(/^emp:rewwithdraw:(.+)$/);
+    if (rewWithdraw) {
+      const groupId = rewWithdraw[1]!;
+      await input.answerCb();
+      await input.editOrReply(
+        [
+          "**How members withdraw cash rewards**",
+          "",
+          "1. They earn points in polls / quizzes / campaigns",
+          "2. Pending cash accrues when cash rewards are on and the RewardAccount is funded",
+          "3. In the group, they tag Sentry with their `0x` wallet (or say `withdraw rewards 0x…`)",
+          "4. Or they open /mystatus → How to withdraw",
+          "",
+          "Employers fund the RewardAccount (button above or Dashboard → Reward accounts).",
+          "Employment wallet withdrawals are separate (Menu → Wallet).",
+        ].join("\n"),
+        rewardGroupKeyboard(groupId),
       );
       return true;
     }
 
     void telegramUserId;
     return false;
+  }
+
+  private async rewardStatusText(userId: string, groupId: string) {
+    const group = await groupService.getForUser(userId, groupId);
+    const { rewardService } = await import("@/services/reward.service");
+    const { blockchainService } = await import("@/services/blockchain.service");
+    const account = await rewardService.getAccount(groupId);
+    const s = group.settings;
+    let balanceLine = "Balance: (unknown)";
+    if (account?.address && blockchainService.isRewardFactoryConfigured()) {
+      try {
+        const { formatUnits } = await import("viem");
+        const raw = await blockchainService.rewardAccountBalance(
+          account.address as `0x${string}`,
+        );
+        balanceLine = `Balance: ≈ ${Number(formatUnits(raw, 18)).toFixed(4)} ${account.currency}`;
+      } catch {
+        balanceLine = "Balance: (could not read)";
+      }
+    }
+    return [
+      `Rewards — ${group.name ?? group.telegramId}`,
+      "",
+      account
+        ? `Account: ${account.address}\nStatus: ${account.status}\nCurrency: ${account.currency}\n${balanceLine}`
+        : "Account: (none — create one to pay cash prizes)",
+      "",
+      `Cash rewards: ${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"}`,
+      `Per point: ${s?.rewardAmountPerPoint?.toString?.() ?? "0"} ${s?.rewardCurrency ?? ""}`,
+      "",
+      "Members withdraw pending cash by tagging Sentry with their 0x wallet in the group.",
+    ].join("\n");
   }
 
   private async setCadenceAll(userId: string, hours: number) {
@@ -335,6 +646,36 @@ export class EmployerDmService {
     if (field === "answerQuestions") {
       await groupService.updateSettings(userId, groupId, {
         answerQuestions: !settings.answerQuestions,
+      });
+      return;
+    }
+    if (field === "allowPolls") {
+      await groupService.updateSettings(userId, groupId, {
+        allowPolls: !settings.allowPolls,
+      });
+      return;
+    }
+    if (field === "allowGames") {
+      await groupService.updateSettings(userId, groupId, {
+        allowGames: !settings.allowGames,
+      });
+      return;
+    }
+    if (field === "allowFun") {
+      await groupService.updateSettings(userId, groupId, {
+        allowFun: !settings.allowFun,
+      });
+      return;
+    }
+    if (field === "membersCanStartActivities") {
+      await groupService.updateSettings(userId, groupId, {
+        membersCanStartActivities: !settings.membersCanStartActivities,
+      });
+      return;
+    }
+    if (field === "pollsAnonymous") {
+      await groupService.updateSettings(userId, groupId, {
+        pollsAnonymous: !settings.pollsAnonymous,
       });
     }
   }

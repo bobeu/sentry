@@ -41,6 +41,7 @@ export function SiteNav() {
   const router = useRouter();
   const panelId = useId();
   const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [user, setUser] = useState<SessionUser>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -63,6 +64,7 @@ export function SiteNav() {
 
   useEffect(() => {
     setOpen(false);
+    setMoreOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -77,6 +79,24 @@ export function SiteNav() {
       document.body.style.overflow = "";
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-nav-more]")) return;
+      setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
 
   async function signOut() {
     setSigningOut(true);
@@ -104,6 +124,10 @@ export function SiteNav() {
         ? "bg-primary text-white"
         : "text-text-dark hover:bg-primary/5 hover:text-primary"
     }`;
+
+  const moreActive = secondaryBase.some(
+    (l) => pathname === l.href || pathname.startsWith(`${l.href}/`),
+  );
 
   return (
     <header className="sticky top-0 z-50 w-full bg-transparent px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-4 sm:py-4">
@@ -133,12 +157,60 @@ export function SiteNav() {
               {link.label}
             </Link>
           ))}
-          <span className="mx-1.5 h-4 w-px shrink-0 bg-primary/20" />
-          {secondaryBase.map((link) => (
-            <Link key={link.href} href={link.href} className={linkClass(link.href)}>
-              {link.label}
-            </Link>
-          ))}
+          <div className="relative ml-1" data-nav-more>
+            <button
+              type="button"
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              onClick={() => setMoreOpen((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition ${
+                moreActive || moreOpen
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-dark hover:text-primary hover:bg-primary/5"
+              }`}
+            >
+              More
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden>
+                <path
+                  d="M6 9l6 6 6-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-50 mt-1.5 min-w-[10rem] rounded-xl border border-primary/15 bg-white p-1.5 shadow-lg"
+              >
+                {secondaryBase.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    role="menuitem"
+                    onClick={() => setMoreOpen(false)}
+                    className={`block rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition ${
+                      pathname === link.href
+                        ? "bg-primary text-white"
+                        : "text-text-dark hover:bg-primary/5 hover:text-primary"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                <a
+                  href="/dashboard#rewards"
+                  role="menuitem"
+                  onClick={() => setMoreOpen(false)}
+                  className="block rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary"
+                >
+                  Rewards
+                </a>
+              </div>
+            ) : null}
+          </div>
           {authChecked && user ? (
             <>
               <div className="ml-1.5 shrink-0">

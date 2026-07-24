@@ -190,17 +190,16 @@ export function toComicDisplay(text: string): string {
 }
 
 /**
- * Final envelope for every Sentry group/DM reply — distinctive comic display + clean HTML.
+ * Final envelope for every Sentry reply.
+ * Brand header only — body stays normal weight so **bold** is reserved for real emphasis.
  */
-export function formatSentryMessage(raw: string, opts?: { comic?: boolean }): string {
-  const comic = opts?.comic !== false;
-  const body = toTelegramHtml(raw);
+export function formatSentryMessage(raw: string, _opts?: { comic?: boolean }): string {
+  let body = toTelegramHtml(raw);
   if (!body) return "";
-  const stamped = comic ? toComicDisplay(body) : body;
-  const header = comic
-    ? toComicDisplay("<b>🎭 Sentry</b>") + " <i>· AI teammate</i>"
-    : "<b>🎭 Sentry</b> <i>· AI teammate</i>";
-  return `<blockquote>${header}</blockquote>\n\n${stamped}`;
+  // Prefer clear paragraphs (blank line between blocks)
+  body = body.replace(/\n{3,}/g, "\n\n").trim();
+  const header = "<b>🎭 Sentry</b> <i>· AI teammate</i>";
+  return `<blockquote>${header}</blockquote>\n\n${body}`;
 }
 
 function normalizeIntentText(text: string) {

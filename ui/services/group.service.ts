@@ -317,9 +317,12 @@ export class GroupService {
       allowComics?: boolean;
       allowSocialCampaigns?: boolean;
       engagementGuidelines?: string | null;
+      engagementSourceUrl?: string | null;
       funPromptIntervalHours?: number;
       humorEnabled?: boolean;
       humorStyle?: string | null;
+      pollsAnonymous?: boolean;
+      membersCanStartActivities?: boolean;
       rewardEnabled?: boolean;
       rewardPaused?: boolean;
       rewardAmountPerPoint?: number;
@@ -407,9 +410,12 @@ export class GroupService {
         allowComics: data.allowComics ?? false,
         allowSocialCampaigns: data.allowSocialCampaigns ?? false,
         engagementGuidelines: data.engagementGuidelines ?? null,
+        engagementSourceUrl: data.engagementSourceUrl ?? null,
         funPromptIntervalHours: funInterval ?? 48,
         humorEnabled: data.humorEnabled ?? true,
         humorStyle: data.humorStyle ?? "friendly",
+        pollsAnonymous: data.pollsAnonymous ?? false,
+        membersCanStartActivities: data.membersCanStartActivities ?? true,
         rewardEnabled: data.rewardEnabled ?? false,
         rewardPaused: data.rewardPaused ?? false,
         rewardAmountPerPoint: data.rewardAmountPerPoint ?? 0,
@@ -457,12 +463,15 @@ export class GroupService {
         allowComics: data.allowComics,
         allowSocialCampaigns: data.allowSocialCampaigns,
         engagementGuidelines: data.engagementGuidelines,
+        engagementSourceUrl: data.engagementSourceUrl,
         funPromptIntervalHours: funInterval,
         humorEnabled: data.humorEnabled,
         humorStyle:
           data.humorStyle === undefined
             ? undefined
             : data.humorStyle?.trim() || "friendly",
+        pollsAnonymous: data.pollsAnonymous,
+        membersCanStartActivities: data.membersCanStartActivities,
         rewardEnabled: data.rewardEnabled,
         rewardPaused: data.rewardPaused,
         rewardAmountPerPoint: data.rewardAmountPerPoint,

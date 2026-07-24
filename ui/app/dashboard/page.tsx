@@ -1,4 +1,5 @@
 import { DashboardLive } from "@/components/DashboardLive";
+import { RewardsPanel } from "@/components/RewardsPanel";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -10,7 +11,7 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-2 max-w-2xl text-xs text-muted font-semibold">
-            Live employment and prepaid wallet balance. No mock values.
+            Live employment, prepaid wallet, and group reward accounts. No mock values.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -23,12 +24,12 @@ export default function DashboardPage() {
           <Link href="/wallet" className="rounded-full border border-primary/20 bg-white px-4 py-2 font-bold text-text-dark hover:border-primary hover:text-primary transition shadow-sm">
             Wallet
           </Link>
-          <Link href="/settings" className="rounded-full border border-primary/20 bg-white px-4 py-2 font-bold text-text-dark hover:border-primary hover:text-primary transition shadow-sm">
-            Settings
-          </Link>
         </div>
       </div>
       <DashboardLive />
+      <div id="rewards">
+        <RewardsPanel />
+      </div>
     </main>
   );
 }
