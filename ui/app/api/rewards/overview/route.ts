@@ -26,23 +26,30 @@ export async function GET() {
         let balances: Record<string, string> | null = null;
         let operator: string | null = null;
         if (account?.address && factoryConfigured) {
-          try {
-            const raw = await blockchainService.rewardAccountBalances(
-              account.address as Address,
-            );
-            balances = {};
-            for (const c of PAYMENT_CURRENCIES) {
-              balances[c] = formatUnits(raw[c], tokenDecimals(c));
+          // Never read balances from a row that belongs to a previous factory.
+          const accountFactoryOk =
+            !account.factoryAddress ||
+            !factoryAddress ||
+            account.factoryAddress.toLowerCase() === factoryAddress.toLowerCase();
+          if (accountFactoryOk) {
+            try {
+              const raw = await blockchainService.rewardAccountBalances(
+                account.address as Address,
+              );
+              balances = {};
+              for (const c of PAYMENT_CURRENCIES) {
+                balances[c] = formatUnits(raw[c], tokenDecimals(c));
+              }
+            } catch {
+              balances = null;
             }
-          } catch {
-            balances = null;
-          }
-          try {
-            operator = await blockchainService.rewardAccountOperator(
-              account.address as Address,
-            );
-          } catch {
-            operator = null;
+            try {
+              operator = await blockchainService.rewardAccountOperator(
+                account.address as Address,
+              );
+            } catch {
+              operator = null;
+            }
           }
         }
         return {
@@ -55,6 +62,7 @@ export async function GET() {
                 address: account.address,
                 currency: account.currency,
                 status: account.status,
+                factoryAddress: account.factoryAddress ?? factoryAddress,
               }
             : null,
           operator,

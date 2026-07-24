@@ -33,6 +33,15 @@ function decimalNumber(value: { toString(): string } | number | string | null | 
 }
 
 export class RewardService {
+  private currentFactory(): Address | null {
+    return blockchainService.currentRewardFactoryAddress();
+  }
+
+  private isSameAddress(a: string | null | undefined, b: string | null | undefined) {
+    if (!a || !b) return false;
+    return a.toLowerCase() === b.toLowerCase();
+  }
+
   /**
    * Ensure a multi-currency RewardAccount exists for the group (on-chain + DB).
    * Always reconciles DB address with the current RewardFactory (`accountOfKey`) so
@@ -49,6 +58,11 @@ export class RewardService {
       throw new Error(
         "RewardFactory is not configured. Deploy on Celo and run smartContracts sync-data.",
       );
+    }
+
+    const factory = this.currentFactory();
+    if (!factory) {
+      throw new Error("RewardFactory address missing from synced contracts.");
     }
 
     const group = await prisma.telegramGroup.findUnique({
@@ -92,8 +106,9 @@ export class RewardService {
     const sameAddress =
       existing &&
       existing.status !== "Archived" &&
-      existing.address.toLowerCase() === onChain.toLowerCase() &&
-      existing.accountKey.toLowerCase() === accountKey.toLowerCase();
+      this.isSameAddress(existing.address, onChain) &&
+      this.isSameAddress(existing.accountKey, accountKey) &&
+      this.isSameAddress(existing.factoryAddress, factory);
 
     if (sameAddress) {
       return existing;
@@ -107,21 +122,23 @@ export class RewardService {
         ownerUserId: input.ownerUserId,
         address: onChain,
         accountKey,
+        factoryAddress: factory,
         currency: "MULTI",
         status: "Active",
       },
       update: {
         address: onChain,
         accountKey,
+        factoryAddress: factory,
         currency: "MULTI",
         status: "Active",
         ownerUserId: input.ownerUserId,
       },
     });
 
-    if (previousAddress && previousAddress.toLowerCase() !== onChain.toLowerCase()) {
+    if (previousAddress && !this.isSameAddress(previousAddress, onChain)) {
       console.info(
-        `[reward] Rebinding RewardAccount for group ${input.groupId}: ${previousAddress} → ${onChain} (factory ${blockchainService.currentRewardFactoryAddress()})`,
+        `[reward] Rebinding RewardAccount for group ${input.groupId}: ${previousAddress} → ${onChain} (factory ${factory})`,
       );
     }
 
@@ -135,7 +152,7 @@ export class RewardService {
         metadata: {
           address: onChain,
           currency: "MULTI",
-          factory: blockchainService.currentRewardFactoryAddress(),
+          factory,
         },
       });
     }
@@ -144,30 +161,62 @@ export class RewardService {
   }
 
   /**
-   * Soft-heal: if DB has a RewardAccount, re-resolve against the current factory
-   * and update the row. Never bills. Safe to call from overview / status reads.
+   * Soft-heal: re-resolve against the current factory and update the row.
+   * Never returns an orphaned pre-redeploy address. Never bills.
    */
   async reconcileRewardAccountIfStale(groupId: string) {
     if (!blockchainService.isRewardFactoryConfigured()) return null;
+    const factory = this.currentFactory();
+    if (!factory) return null;
+
     const existing = await prisma.rewardAccount.findUnique({
       where: { groupId },
     });
-    if (!existing || existing.status === "Archived") return existing;
+    if (!existing || existing.status === "Archived") return null;
 
     const group = await prisma.telegramGroup.findUnique({
       where: { id: groupId },
       select: { telegramId: true },
     });
-    if (!group) return existing;
+    if (!group) return null;
 
     const accountKey = accountKeyForGroup(group.telegramId);
-    const onChain = await blockchainService.rewardAccountOfKey(accountKey);
-
-    if (onChain && onChain.toLowerCase() === existing.address.toLowerCase()) {
+    let onChain: Address | null = null;
+    try {
+      onChain = await blockchainService.rewardAccountOfKey(accountKey);
+    } catch (err) {
+      console.warn(
+        `[reward] accountOfKey failed for group ${groupId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      // Do not serve a row from a different factory when RPC fails.
+      if (
+        existing.factoryAddress &&
+        !this.isSameAddress(existing.factoryAddress, factory)
+      ) {
+        return null;
+      }
       return existing;
     }
 
-    // On-chain missing or address mismatch → full ensure (no bill).
+    const factoryMatches =
+      !existing.factoryAddress ||
+      this.isSameAddress(existing.factoryAddress, factory);
+    const addressMatches =
+      onChain != null && this.isSameAddress(existing.address, onChain);
+
+    if (factoryMatches && addressMatches) {
+      // Backfill factoryAddress if older rows lack it.
+      if (!existing.factoryAddress) {
+        return prisma.rewardAccount.update({
+          where: { id: existing.id },
+          data: { factoryAddress: factory },
+        });
+      }
+      return existing;
+    }
+
+    // Stale vs current factory (or missing on-chain) → recreate / rebind.
     try {
       return await this.ensureRewardAccount({
         groupId,
@@ -176,10 +225,15 @@ export class RewardService {
       });
     } catch (err) {
       console.warn(
-        `[reward] reconcile failed for group ${groupId}:`,
+        `[reward] reconcile failed for group ${groupId} (hiding stale ${existing.address}):`,
         err instanceof Error ? err.message : err,
       );
-      return existing;
+      // Hide orphaned pre-redeploy address from the dashboard until recreate succeeds.
+      await prisma.rewardAccount.update({
+        where: { id: existing.id },
+        data: { status: "Archived" },
+      });
+      return null;
     }
   }
 
