@@ -290,11 +290,10 @@ export class EmployerAgentService {
       "Sentry cannot (politely decline):",
       "• change RewardFactory owner or global factory setOperator (platform-only)",
       "• enable/disable factory currencies or update token addresses",
-      "• change an account's immutable reward currency after creation",
-      "• withdraw leftover RewardAccount funds to an arbitrary wallet (only member payouts via operator)",
+      "• let employers self-sweep without operator (withdraw is operator-only; pending reserves protected)",
       "",
       "Ask in plain language, e.g. “update the Account Operator to 0x…” or “pause rewards for MyGroup”.",
-      "Dashboard: Wallets → Reward Account.",
+      "Dashboard: Wallets → Reward Account. Accounts hold CELO/USDm/USDC/USDT; campaign currency is set in settings.",
       "",
     ];
     for (const g of groups.slice(0, 8)) {
@@ -464,8 +463,9 @@ export class EmployerAgentService {
         return [
           `Reward account ready for ${g.name ?? g.telegramId}.`,
           `Address: ${account.address}`,
-          `Currency: ${account.currency}`,
-          "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x wallet.",
+          `Custody: multi-currency (CELO / USDm / USDC / USDT)`,
+          "Fund this address with any supported token (not your employment wallet). Members withdraw by tagging Sentry with their 0x wallet.",
+          "Set default campaign currency in group reward settings.",
           !before || before.status === "Archived"
             ? "Creation billed to your employment wallet."
             : "Account already existed — no new create fee.",

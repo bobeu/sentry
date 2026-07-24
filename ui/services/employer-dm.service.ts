@@ -452,10 +452,11 @@ export class EmployerDmService {
             `Reward account ready for ${group.name ?? group.telegramId}.`,
             "",
             `Address: ${account.address}`,
-            `Currency: ${account.currency}`,
+            `Custody: multi-currency (CELO / USDm / USDC / USDT)`,
             "",
-            "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x.",
-            "Wallets → Reward Account for one-click fund + sync balance.",
+            "Fund this address with any supported token (not your employment wallet). Members withdraw by tagging Sentry with their 0x.",
+            "Wallets → Reward Account for one-click fund + sync balances.",
+            "Set default campaign currency in group reward settings.",
           ].join("\n"),
           rewardGroupKeyboard(groupId),
         );
@@ -493,7 +494,7 @@ export class EmployerDmService {
         [
           "**Fund this RewardAccount**",
           "",
-          `Send ${account.currency} to:`,
+          "Send CELO / USDm / USDC / USDT to:",
           account.address,
           "",
           "Or use Wallets → Reward Account → Fund (connected wallet).",
@@ -619,23 +620,30 @@ export class EmployerDmService {
     if (account?.address && blockchainService.isRewardFactoryConfigured()) {
       try {
         const { formatUnits } = await import("viem");
-        const raw = await blockchainService.rewardAccountBalance(
+        const raw = await blockchainService.rewardAccountBalances(
           account.address as `0x${string}`,
         );
-        balanceLine = `Balance: ≈ ${Number(formatUnits(raw, 18)).toFixed(4)} ${account.currency}`;
+        const { PAYMENT_CURRENCIES, tokenDecimals } = await import(
+          "@/lib/payment-currency"
+        );
+        balanceLine = PAYMENT_CURRENCIES.map(
+          (c) =>
+            `${Number(formatUnits(raw[c], tokenDecimals(c))).toFixed(4)} ${c}`,
+        ).join(" · ");
+        balanceLine = `Balances: ${balanceLine}`;
       } catch {
-        balanceLine = "Balance: (could not read)";
+        balanceLine = "Balances: (could not read)";
       }
     }
     return [
       `Rewards — ${group.name ?? group.telegramId}`,
       "",
       account
-        ? `Account: ${account.address}\nStatus: ${account.status}\nCurrency: ${account.currency}\n${balanceLine}`
+        ? `Account: ${account.address}\nStatus: ${account.status}\nCustody: multi-currency\n${balanceLine}`
         : "Account: (none — create one to pay cash prizes)",
       "",
       `Cash rewards: ${s?.rewardEnabled ? (s.rewardPaused ? "paused" : "on") : "off"}`,
-      `Per point: ${s?.rewardAmountPerPoint?.toString?.() ?? "0"} ${s?.rewardCurrency ?? ""}`,
+      `Default campaign currency: ${s?.rewardCurrency ?? "USDm"} @ ${s?.rewardAmountPerPoint?.toString?.() ?? "0"}/pt`,
       "",
       "I can setAccountOperator, pause, resume, or archive when you ask in plain language (billed to employment wallet).",
       "Members withdraw pending cash by tagging Sentry with their 0x wallet in the group.",

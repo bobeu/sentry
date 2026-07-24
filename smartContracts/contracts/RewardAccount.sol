@@ -7,9 +7,8 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 
 /**
  * @title RewardAccount
- * @notice Factory-mediated custody for community engagement rewards (one account per group key).
- * @dev Independent of EmploymentManager / SentryWallet. Employer funds by transfer; all operator
- *      actions (payout, pause, withdraw-to-employer) go through RewardFactory only.
+ * @notice Factory-mediated multi-currency custody for community engagement rewards.
+ * @dev Holds CELO + USDm + USDC + USDT. Employer funds by transfer; privileged ops via RewardFactory.
  */
 contract RewardAccount is ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -28,22 +27,21 @@ contract RewardAccount is ReentrancyGuard {
         Archived
     }
 
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     /// @notice Factory that deployed this account (sole authorized caller for privileged ops).
     address public immutable factory;
 
-    /// @notice Employer who receives full balance when operator withdraws via factory.
+    /// @notice Employer who receives surplus when operator withdraws via factory.
     address public immutable employer;
 
     /// @notice Group / campaign identity commitment (e.g. keccak of telegram group id).
     bytes32 public immutable accountKey;
 
-    /// @notice Immutable reward asset for this account.
-    Token public immutable rewardCurrency;
-
-    /// @notice ERC20 for rewardCurrency, or zero for native CELO.
-    address public immutable tokenAddress;
+    /// @notice ERC20 addresses snapshotted at deploy (CELO uses address(0)).
+    address public immutable usdmToken;
+    address public immutable usdcToken;
+    address public immutable usdtToken;
 
     /// @notice Cached operator mirror (rotated only via factory).
     address public operator;
@@ -79,6 +77,8 @@ contract RewardAccount is ReentrancyGuard {
     error InvalidTokenConfig();
     error InvalidAccountStatus();
     error PayoutAlreadyProcessed();
+    error InsufficientReserve();
+    error NothingToWithdraw();
 
     modifier onlyFactory() {
         if (msg.sender != factory) revert UnauthorizedFactory();
@@ -95,34 +95,52 @@ contract RewardAccount is ReentrancyGuard {
         address operator_,
         address employer_,
         bytes32 accountKey_,
-        Token currency_,
-        address tokenAddress_
+        address usdm_,
+        address usdc_,
+        address usdt_
     ) {
         if (factory_ == address(0) || operator_ == address(0) || employer_ == address(0)) {
             revert ZeroAddress();
         }
         if (accountKey_ == bytes32(0)) revert InvalidAccountKey();
-        if (currency_ == Token.CELO && tokenAddress_ != address(0)) revert InvalidTokenConfig();
-        if (currency_ != Token.CELO && tokenAddress_ == address(0)) revert InvalidTokenConfig();
+        if (usdm_ == address(0) || usdc_ == address(0) || usdt_ == address(0)) {
+            revert InvalidTokenConfig();
+        }
 
         factory = factory_;
         operator = operator_;
         employer = employer_;
         accountKey = accountKey_;
-        rewardCurrency = currency_;
-        tokenAddress = tokenAddress_;
+        usdmToken = usdm_;
+        usdcToken = usdc_;
+        usdtToken = usdt_;
         status = AccountStatus.Provisioning;
     }
 
     receive() external payable {
-        if (rewardCurrency != Token.CELO) revert InvalidTokenConfig();
         emit NativeReceived(msg.sender, msg.value);
-        emit AccountFunded(address(this), msg.sender, msg.value, rewardCurrency);
+        emit AccountFunded(address(this), msg.sender, msg.value, Token.CELO);
     }
 
-    function balance() public view returns (uint256) {
-        if (rewardCurrency == Token.CELO) return address(this).balance;
-        return IERC20(tokenAddress).balanceOf(address(this));
+    function balance(Token currency) public view returns (uint256) {
+        if (currency == Token.CELO) return address(this).balance;
+        return IERC20(_tokenAddress(currency)).balanceOf(address(this));
+    }
+
+    function balances()
+        external
+        view
+        returns (uint256 celoBal, uint256 usdmBal, uint256 usdcBal, uint256 usdtBal)
+    {
+        celoBal = address(this).balance;
+        usdmBal = IERC20(usdmToken).balanceOf(address(this));
+        usdcBal = IERC20(usdcToken).balanceOf(address(this));
+        usdtBal = IERC20(usdtToken).balanceOf(address(this));
+    }
+
+    function tokenAddress(Token currency) external view returns (address) {
+        if (currency == Token.CELO) return address(0);
+        return _tokenAddress(currency);
     }
 
     function setOperator(address newOperator) external onlyFactory {
@@ -154,19 +172,19 @@ contract RewardAccount is ReentrancyGuard {
         _setStatus(AccountStatus.Archived);
     }
 
-    function notifyFunding(address from, uint256 amount) external onlyFactory {
+    function notifyFunding(address from, uint256 amount, Token currency) external onlyFactory {
         if (amount == 0) revert InvalidAmount();
-        emit AccountFunded(address(this), from, amount, rewardCurrency);
+        emit AccountFunded(address(this), from, amount, currency);
     }
 
     /**
-     * @notice Pays a reward to a member wallet. Replay-protected by payoutId.
-     * @dev Only callable by RewardFactory (operator calls factory.payout).
+     * @notice Pays a reward in the specified currency. Replay-protected by payoutId.
      */
     function payout(
         address to,
         uint256 amount,
-        bytes32 payoutId
+        bytes32 payoutId,
+        Token currency
     ) external onlyFactory onlyActive nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert InvalidAmount();
@@ -174,22 +192,39 @@ contract RewardAccount is ReentrancyGuard {
         if (processedPayouts[payoutId]) revert PayoutAlreadyProcessed();
 
         processedPayouts[payoutId] = true;
-        _transfer(to, amount);
-        emit RewardPaid(to, rewardCurrency, amount, payoutId);
+        _transfer(currency, to, amount);
+        emit RewardPaid(to, currency, amount, payoutId);
     }
 
     /**
-     * @notice Sends the full account balance to the immutable employer.
-     * @dev Active or Paused only; archived accounts cannot withdraw.
+     * @notice Sends surplus (balance minus pending reserves) of each currency to employer.
+     * @dev Active or Paused only. Reverts if any pending exceeds on-chain balance.
      */
-    function withdrawAllToEmployer() external onlyFactory nonReentrant returns (uint256 amount) {
+    function withdrawAllToEmployer(
+        uint256 pendingCELO,
+        uint256 pendingUSDm,
+        uint256 pendingUSDC,
+        uint256 pendingUSDT
+    ) external onlyFactory nonReentrant returns (uint256 totalSent) {
         if (status == AccountStatus.Archived || status == AccountStatus.Provisioning) {
             revert InvalidAccountStatus();
         }
-        amount = balance();
-        if (amount == 0) revert InvalidAmount();
-        _transfer(employer, amount);
-        emit WithdrawnToEmployer(employer, rewardCurrency, amount);
+
+        totalSent += _withdrawSurplus(Token.CELO, pendingCELO);
+        totalSent += _withdrawSurplus(Token.USDm, pendingUSDm);
+        totalSent += _withdrawSurplus(Token.USDC, pendingUSDC);
+        totalSent += _withdrawSurplus(Token.USDT, pendingUSDT);
+
+        if (totalSent == 0) revert NothingToWithdraw();
+    }
+
+    function _withdrawSurplus(Token currency, uint256 pending) private returns (uint256 sent) {
+        uint256 bal = balance(currency);
+        if (pending > bal) revert InsufficientReserve();
+        sent = bal - pending;
+        if (sent == 0) return 0;
+        _transfer(currency, employer, sent);
+        emit WithdrawnToEmployer(employer, currency, sent);
     }
 
     function _setStatus(AccountStatus newStatus) private {
@@ -199,12 +234,19 @@ contract RewardAccount is ReentrancyGuard {
         emit AccountStatusChanged(previousStatus, newStatus);
     }
 
-    function _transfer(address destination, uint256 amount) private {
-        if (rewardCurrency == Token.CELO) {
+    function _tokenAddress(Token currency) private view returns (address) {
+        if (currency == Token.USDm) return usdmToken;
+        if (currency == Token.USDC) return usdcToken;
+        if (currency == Token.USDT) return usdtToken;
+        revert InvalidTokenConfig();
+    }
+
+    function _transfer(Token currency, address destination, uint256 amount) private {
+        if (currency == Token.CELO) {
             (bool ok, ) = payable(destination).call{value: amount}("");
             if (!ok) revert NativeTransferFailed();
         } else {
-            IERC20(tokenAddress).safeTransfer(destination, amount);
+            IERC20(_tokenAddress(currency)).safeTransfer(destination, amount);
         }
     }
 }

@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import {
   formatAmount,
   isPaymentCurrency,
+  tokenDecimals,
   type PaymentCurrency,
 } from "@/lib/payment-currency";
 import { blockchainService } from "@/services/blockchain.service";
@@ -33,12 +34,13 @@ function decimalNumber(value: { toString(): string } | number | string | null | 
 
 export class RewardService {
   /**
-   * Ensure a RewardAccount exists for the group (on-chain + DB).
-   * Employer manages via Sentry; only the operator key can payout.
+   * Ensure a multi-currency RewardAccount exists for the group (on-chain + DB).
+   * Employer manages via Sentry; only the operator key can payout / withdraw surplus.
    */
   async ensureRewardAccount(input: {
     groupId: string;
     ownerUserId: string;
+    /** Ignored for on-chain create (multi-currency). Kept for API compatibility. */
     currency?: PaymentCurrency;
     bill?: boolean;
   }) {
@@ -54,15 +56,6 @@ export class RewardService {
     });
     if (!group) throw new Error("Group not found");
 
-    const settings = await prisma.groupSettings.findUnique({
-      where: { groupId: input.groupId },
-    });
-    const currencyRaw =
-      input.currency ??
-      (settings?.rewardCurrency && isPaymentCurrency(settings.rewardCurrency)
-        ? settings.rewardCurrency
-        : "USDm");
-    const currency = currencyRaw as PaymentCurrency;
     const accountKey = accountKeyForGroup(group.telegramId);
 
     const ownerUser = await prisma.user.findUnique({
@@ -85,7 +78,6 @@ export class RewardService {
 
     const address = await blockchainService.ensureRewardAccount({
       accountKey,
-      currency,
       employer,
     });
 
@@ -96,13 +88,13 @@ export class RewardService {
         ownerUserId: input.ownerUserId,
         address,
         accountKey,
-        currency,
+        currency: "MULTI",
         status: "Active",
       },
       update: {
         address,
         accountKey,
-        currency,
+        currency: "MULTI",
         status: "Active",
         ownerUserId: input.ownerUserId,
       },
@@ -113,7 +105,7 @@ export class RewardService {
         userId: input.ownerUserId,
         groupId: input.groupId,
         op: "create",
-        metadata: { address, currency },
+        metadata: { address, currency: "MULTI" },
       });
     }
 
@@ -350,6 +342,106 @@ export class RewardService {
     });
   }
 
+  async getOrCreateMemberRewardBalance(input: {
+    groupId: string;
+    telegramUserId: string;
+    currency: PaymentCurrency;
+  }) {
+    return prisma.memberRewardBalance.upsert({
+      where: {
+        groupId_telegramUserId_currency: {
+          groupId: input.groupId,
+          telegramUserId: input.telegramUserId,
+          currency: input.currency,
+        },
+      },
+      create: {
+        groupId: input.groupId,
+        telegramUserId: input.telegramUserId,
+        currency: input.currency,
+      },
+      update: {},
+    });
+  }
+
+  async listMemberPendingBalances(groupId: string, telegramUserId: string) {
+    return prisma.memberRewardBalance.findMany({
+      where: {
+        groupId,
+        telegramUserId,
+        pendingReward: { gt: 0 },
+      },
+      orderBy: { currency: "asc" },
+    });
+  }
+
+  /** Sum pending rewards for a group, in human units and wei per currency. */
+  async sumPendingByCurrency(groupId: string): Promise<{
+    human: Record<PaymentCurrency, number>;
+    wei: {
+      pendingCELO: bigint;
+      pendingUSDm: bigint;
+      pendingUSDC: bigint;
+      pendingUSDT: bigint;
+    };
+  }> {
+    const rows = await prisma.memberRewardBalance.groupBy({
+      by: ["currency"],
+      where: { groupId, pendingReward: { gt: 0 } },
+      _sum: { pendingReward: true },
+    });
+    const human: Record<PaymentCurrency, number> = {
+      CELO: 0,
+      USDm: 0,
+      USDC: 0,
+      USDT: 0,
+    };
+    for (const row of rows) {
+      if (!isPaymentCurrency(row.currency)) continue;
+      human[row.currency] = decimalNumber(row._sum.pendingReward);
+    }
+    const toWei = (c: PaymentCurrency) =>
+      parseUnits(human[c].toFixed(8), tokenDecimals(c));
+    return {
+      human,
+      wei: {
+        pendingCELO: toWei("CELO"),
+        pendingUSDm: toWei("USDm"),
+        pendingUSDC: toWei("USDC"),
+        pendingUSDT: toWei("USDT"),
+      },
+    };
+  }
+
+  /**
+   * Operator withdraws surplus above reserved member pendings to employer.
+   */
+  async withdrawSurplusToEmployer(groupId: string): Promise<{
+    ok: boolean;
+    message: string;
+    txHash?: string;
+  }> {
+    const account = await prisma.rewardAccount.findUnique({ where: { groupId } });
+    if (!account || account.status === "Archived") {
+      return { ok: false, message: "No active RewardAccount for this group." };
+    }
+    const { wei, human } = await this.sumPendingByCurrency(groupId);
+    try {
+      const txHash = await blockchainService.withdrawRewardToEmployer({
+        accountKey: account.accountKey as Hex,
+        ...wei,
+      });
+      return {
+        ok: true,
+        message: `Withdrew surplus to employer (reserved pending CELO=${human.CELO} USDm=${human.USDm} USDC=${human.USDC} USDT=${human.USDT}). Tx: ${txHash}`,
+        txHash,
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return { ok: false, message: `Withdraw failed: ${reason.slice(0, 200)}` };
+    }
+  }
+
   async awardPoints(input: {
     groupId: string;
     telegramUserId: string;
@@ -357,6 +449,8 @@ export class RewardService {
     points: number;
     reason?: string;
     activityId?: string;
+    /** Explicit currency override (otherwise activity stamp → group default). */
+    currency?: PaymentCurrency;
   }) {
     if (input.points <= 0) {
       return this.getOrCreateMemberPoints(input);
@@ -366,7 +460,28 @@ export class RewardService {
     const settings = await prisma.groupSettings.findUnique({
       where: { groupId: input.groupId },
     });
-    const amountPerPoint = decimalNumber(settings?.rewardAmountPerPoint);
+
+    let currency: PaymentCurrency =
+      input.currency ??
+      (settings?.rewardCurrency && isPaymentCurrency(settings.rewardCurrency)
+        ? settings.rewardCurrency
+        : "USDm");
+    let amountPerPoint = decimalNumber(settings?.rewardAmountPerPoint);
+
+    if (input.activityId) {
+      const activity = await prisma.engagementActivity.findUnique({
+        where: { id: input.activityId },
+      });
+      if (activity) {
+        if (isPaymentCurrency(activity.rewardCurrency)) {
+          currency = activity.rewardCurrency;
+        }
+        if (activity.rewardAmountPerPoint != null) {
+          amountPerPoint = decimalNumber(activity.rewardAmountPerPoint);
+        }
+      }
+    }
+
     const cashDelta =
       settings?.rewardEnabled && !settings.rewardPaused && amountPerPoint > 0
         ? amountPerPoint * input.points
@@ -377,10 +492,27 @@ export class RewardService {
       data: {
         points: { increment: input.points },
         lifetimePoints: { increment: input.points },
-        pendingReward: cashDelta > 0 ? { increment: cashDelta } : undefined,
         username: input.username ?? undefined,
       },
     });
+
+    if (cashDelta > 0) {
+      await this.getOrCreateMemberRewardBalance({
+        groupId: input.groupId,
+        telegramUserId: input.telegramUserId,
+        currency,
+      });
+      await prisma.memberRewardBalance.update({
+        where: {
+          groupId_telegramUserId_currency: {
+            groupId: input.groupId,
+            telegramUserId: input.telegramUserId,
+            currency,
+          },
+        },
+        data: { pendingReward: { increment: cashDelta } },
+      });
+    }
 
     await prisma.rewardLedger.create({
       data: {
@@ -390,7 +522,7 @@ export class RewardService {
         status: "sent",
         pointsDelta: input.points,
         amount: cashDelta,
-        currency: settings?.rewardCurrency ?? "USDm",
+        currency,
         metaJson: JSON.stringify({
           reason: input.reason ?? null,
           activityId: input.activityId ?? null,
@@ -407,13 +539,13 @@ export class RewardService {
           status: "pending",
           pointsDelta: 0,
           amount: cashDelta,
-          currency: settings?.rewardCurrency ?? "USDm",
+          currency,
           metaJson: JSON.stringify({ fromPoints: input.points }),
         },
       });
     }
 
-    return updated;
+    return { ...updated, awardedCurrency: currency, cashDelta };
   }
 
   async resetPoints(groupId: string, telegramUserId: string) {
@@ -485,13 +617,15 @@ export class RewardService {
   }
 
   /**
-   * Attempt on-chain payout for pending cash. On failure, keep pending for retry.
+   * Attempt on-chain payout for pending cash in one currency.
+   * Defaults to the largest pending balance (or `currency` override).
    */
   async tryPayoutMember(input: {
     groupId: string;
     telegramUserId: string;
     destination?: string;
     amountOverride?: number;
+    currency?: PaymentCurrency;
   }): Promise<{
     ok: boolean;
     message: string;
@@ -544,21 +678,44 @@ export class RewardService {
       );
     }
 
-    const pending = decimalNumber(member.pendingReward);
-    const amount = input.amountOverride ?? pending;
-    if (amount <= 0) {
+    const balances = await this.listMemberPendingBalances(
+      input.groupId,
+      input.telegramUserId,
+    );
+    let target = balances.find(
+      (b) => input.currency && b.currency === input.currency,
+    );
+    if (!target && !input.currency) {
+      target = [...balances].sort(
+        (a, b) => decimalNumber(b.pendingReward) - decimalNumber(a.pendingReward),
+      )[0];
+    }
+    if (!target || !isPaymentCurrency(target.currency)) {
       return {
         ok: false,
         message: `No pending cash reward yet. You have ${member.points} points.`,
       };
     }
 
-    const currency = (isPaymentCurrency(account.currency)
-      ? account.currency
-      : "USDm") as PaymentCurrency;
-    const payoutSeed = `payout:${input.groupId}:${input.telegramUserId}:${Date.now()}:${randomBytes(8).toString("hex")}`;
+    const currency = target.currency;
+    const pending = decimalNumber(target.pendingReward);
+    const amount = input.amountOverride ?? pending;
+    if (amount <= 0) {
+      return {
+        ok: false,
+        message: `No pending ${currency} reward yet. You have ${member.points} points.`,
+      };
+    }
+    if (amount > pending) {
+      return {
+        ok: false,
+        message: `Only ${formatAmount(pending, currency)} pending in ${currency}.`,
+      };
+    }
+
+    const payoutSeed = `payout:${input.groupId}:${input.telegramUserId}:${currency}:${Date.now()}:${randomBytes(8).toString("hex")}`;
     const payoutId = payoutIdHex(payoutSeed);
-    const amountWei = parseUnits(amount.toFixed(8), currency === "USDC" || currency === "USDT" ? 6 : 18);
+    const amountWei = parseUnits(amount.toFixed(8), tokenDecimals(currency));
 
     const ledger = await prisma.rewardLedger.create({
       data: {
@@ -576,10 +733,11 @@ export class RewardService {
     });
 
     try {
-      const balance = await blockchainService.rewardAccountBalance(
+      const onChainBal = await blockchainService.rewardAccountBalance(
         account.address as Address,
+        currency,
       );
-      if (balance < amountWei) {
+      if (onChainBal < amountWei) {
         await prisma.rewardLedger.update({
           where: { id: ledger.id },
           data: {
@@ -590,7 +748,7 @@ export class RewardService {
         });
         return {
           ok: false,
-          message: `Reward account needs more funds (need ${formatAmount(amount, currency)}). Your ${formatAmount(amount, currency)} stays pending — I'll pay when funded.`,
+          message: `Reward account needs more ${currency} (need ${formatAmount(amount, currency)}). Your balance stays pending — I'll pay when funded.`,
           amount,
           currency,
         };
@@ -601,24 +759,51 @@ export class RewardService {
         to: destination as Address,
         amount: amountWei,
         payoutId,
+        currency,
       });
 
+      const remainingAfter = await prisma.memberRewardBalance.findMany({
+        where: {
+          groupId: input.groupId,
+          telegramUserId: input.telegramUserId,
+          pendingReward: { gt: 0 },
+          NOT: { currency },
+        },
+      });
+      const otherPending = remainingAfter.reduce(
+        (s, r) => s + decimalNumber(r.pendingReward),
+        0,
+      );
+      const thisRemaining = pending - amount;
+      const clearPoints = otherPending <= 0 && thisRemaining <= 0;
       const pointsBefore = member.points;
+
       await prisma.$transaction([
         prisma.rewardLedger.update({
           where: { id: ledger.id },
           data: { status: "sent", txHash },
         }),
+        prisma.memberRewardBalance.update({
+          where: {
+            groupId_telegramUserId_currency: {
+              groupId: input.groupId,
+              telegramUserId: input.telegramUserId,
+              currency,
+            },
+          },
+          data: {
+            pendingReward: { decrement: amount },
+            lifetimeRewarded: { increment: amount },
+          },
+        }),
         prisma.memberPoints.update({
           where: { id: member.id },
           data: {
-            points: 0,
-            pendingReward: { decrement: amount },
-            lifetimeRewarded: { increment: amount },
+            ...(clearPoints ? { points: 0 } : {}),
             payoutAddress: destination,
           },
         }),
-        ...(pointsBefore > 0
+        ...(clearPoints && pointsBefore > 0
           ? [
               prisma.rewardLedger.create({
                 data: {
@@ -638,7 +823,9 @@ export class RewardService {
 
       return {
         ok: true,
-        message: `Sent ${formatAmount(amount, currency)} to ${destination}. Points reset to 0. Tx: ${txHash}`,
+        message: clearPoints
+          ? `Sent ${formatAmount(amount, currency)} to ${destination}. Points reset to 0. Tx: ${txHash}`
+          : `Sent ${formatAmount(amount, currency)} to ${destination}. Other currency pending remains. Tx: ${txHash}`,
         txHash,
         amount,
         currency,
@@ -663,30 +850,42 @@ export class RewardService {
     }
   }
 
-  /** Retry failed/pending accumulate payouts that have a known destination. */
+  /** Retry members with any per-currency pending and a known destination. */
   async retryPendingPayouts(limit = 25) {
-    const members = await prisma.memberPoints.findMany({
-      where: {
-        pendingReward: { gt: 0 },
-        payoutAddress: { not: null },
-      },
-      take: limit,
+    const balances = await prisma.memberRewardBalance.findMany({
+      where: { pendingReward: { gt: 0 } },
+      take: limit * 4,
       orderBy: { updatedAt: "asc" },
     });
-
+    const seen = new Set<string>();
+    let attempted = 0;
     let sent = 0;
-    for (const m of members) {
+    for (const b of balances) {
+      const key = `${b.groupId}:${b.telegramUserId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (attempted >= limit) break;
+      const member = await prisma.memberPoints.findUnique({
+        where: {
+          groupId_telegramUserId: {
+            groupId: b.groupId,
+            telegramUserId: b.telegramUserId,
+          },
+        },
+      });
+      if (!member?.payoutAddress) continue;
       const settings = await prisma.groupSettings.findUnique({
-        where: { groupId: m.groupId },
+        where: { groupId: b.groupId },
       });
       if (!settings?.rewardEnabled || settings.rewardPaused) continue;
+      attempted += 1;
       const result = await this.tryPayoutMember({
-        groupId: m.groupId,
-        telegramUserId: m.telegramUserId,
+        groupId: b.groupId,
+        telegramUserId: b.telegramUserId,
       });
       if (result.ok) sent += 1;
     }
-    return { attempted: members.length, sent };
+    return { attempted, sent };
   }
 
   async leaderboard(groupId: string, limit = 10) {
