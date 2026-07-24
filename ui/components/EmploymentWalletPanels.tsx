@@ -280,7 +280,7 @@ export function WalletPanel() {
   }
 
   return (
-    <div className="mt-6 max-w-lg space-y-6 animate-rise">
+    <div className="max-w-lg space-y-6 animate-rise">
       {/* Wallet Banner */}
       <div className="relative overflow-hidden rounded-[1.75rem] border border-primary/10 bg-primary p-6 text-white flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm">
         <div className="space-y-2 max-w-xl text-left">

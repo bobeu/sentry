@@ -10,7 +10,7 @@ const primary = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/groups", label: "Groups" },
   { href: "/employment", label: "Employment" },
-  { href: "/wallet", label: "Wallet" },
+  { href: "/wallet", label: "Wallets" },
 ];
 
 const secondaryBase = [
@@ -200,14 +200,6 @@ export function SiteNav() {
                     {link.label}
                   </Link>
                 ))}
-                <a
-                  href="/dashboard#rewards"
-                  role="menuitem"
-                  onClick={() => setMoreOpen(false)}
-                  className="block rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider text-text-dark hover:bg-primary/5 hover:text-primary"
-                >
-                  Rewards
-                </a>
               </div>
             ) : null}
           </div>

@@ -86,7 +86,7 @@ export default function DocsPage() {
               <li>
                 Fund the wallet on{" "}
                 <Link href="/wallet" className="text-primary font-bold hover:underline">
-                  Wallet
+                  Wallets
                 </Link>{" "}
                 (connect MetaMask / MiniPay or send funds to the address).
               </li>
@@ -165,7 +165,7 @@ export default function DocsPage() {
             <ul className="list-disc space-y-2 pl-5">
               <li>
                 <strong className="text-text-dark font-bold">Deposit from wallet:</strong> connect
-                MetaMask or MiniPay on the Wallet page, enter an amount, Deposit. Celo
+                MetaMask or MiniPay on the Wallets page, enter an amount, Deposit. Celo
                 transactions include Sentry&apos;s attribution tag for hackathon volume
                 tracking.
               </li>
