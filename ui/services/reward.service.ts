@@ -65,9 +65,28 @@ export class RewardService {
     const currency = currencyRaw as PaymentCurrency;
     const accountKey = accountKeyForGroup(group.telegramId);
 
+    const ownerUser = await prisma.user.findUnique({
+      where: { id: input.ownerUserId },
+      select: {
+        withdrawalAddress: true,
+        pendingWithdrawalAddress: true,
+      },
+    });
+    const employerRaw =
+      ownerUser?.withdrawalAddress ??
+      ownerUser?.pendingWithdrawalAddress ??
+      "";
+    if (!isAddress(employerRaw)) {
+      throw new Error(
+        "Set a withdrawal destination on your account before creating a RewardAccount (employer receive address).",
+      );
+    }
+    const employer = getAddress(employerRaw) as Address;
+
     const address = await blockchainService.ensureRewardAccount({
       accountKey,
       currency,
+      employer,
     });
 
     const row = await prisma.rewardAccount.upsert({
@@ -578,12 +597,13 @@ export class RewardService {
       }
 
       const txHash = await blockchainService.payoutReward({
-        accountAddress: account.address as Address,
+        accountKey: account.accountKey as Hex,
         to: destination as Address,
         amount: amountWei,
         payoutId,
       });
 
+      const pointsBefore = member.points;
       await prisma.$transaction([
         prisma.rewardLedger.update({
           where: { id: ledger.id },
@@ -592,16 +612,33 @@ export class RewardService {
         prisma.memberPoints.update({
           where: { id: member.id },
           data: {
+            points: 0,
             pendingReward: { decrement: amount },
             lifetimeRewarded: { increment: amount },
             payoutAddress: destination,
           },
         }),
+        ...(pointsBefore > 0
+          ? [
+              prisma.rewardLedger.create({
+                data: {
+                  groupId: input.groupId,
+                  rewardAccountId: account.id,
+                  telegramUserId: input.telegramUserId,
+                  kind: "reset_points",
+                  status: "sent",
+                  pointsDelta: -pointsBefore,
+                  amount: 0,
+                  currency,
+                },
+              }),
+            ]
+          : []),
       ]);
 
       return {
         ok: true,
-        message: `Sent ${formatAmount(amount, currency)} to ${destination}. Tx: ${txHash}`,
+        message: `Sent ${formatAmount(amount, currency)} to ${destination}. Points reset to 0. Tx: ${txHash}`,
         txHash,
         amount,
         currency,

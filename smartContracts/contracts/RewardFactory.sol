@@ -6,8 +6,9 @@ import { RewardAccount } from "./RewardAccount.sol";
 
 /**
  * @title RewardFactory
- * @notice Deploys one RewardAccount per account key (typically a Telegram group commitment).
- * @dev Standalone from SentryWalletFactory / EmploymentManager — no changes to existing contracts.
+ * @notice Deploys one RewardAccount per account key and is the sole gateway for operator actions.
+ * @dev Standalone from SentryWalletFactory / EmploymentManager — no changes to those contracts.
+ *      Owner: create/archive/currency/setAccountOperator. Operator: payout/notify/pause/resume/withdrawToEmployer.
  */
 contract RewardFactory is Ownable {
     enum Token {
@@ -26,7 +27,8 @@ contract RewardFactory is Ownable {
         bytes32 indexed accountKey,
         Token currency,
         address indexed account,
-        address operator
+        address operator,
+        address employer
     );
     event OperatorUpdated(address indexed previousOperator, address indexed newOperator);
     event CurrencyEnabled(Token indexed currency, bool enabled);
@@ -42,8 +44,9 @@ contract RewardFactory is Ownable {
     error CurrencyDisabled();
     error InvalidTokenConfig();
     error UnknownAccount();
+    error UnauthorizedOperator();
 
-    /// @notice Sentry operator assigned to newly created accounts.
+    /// @notice Sentry operator authorized for payout / pause / employer withdraw.
     address public operator;
 
     /// @notice Version of RewardAccount deployed by this factory.
@@ -52,6 +55,11 @@ contract RewardFactory is Ownable {
     mapping(Token currency => CurrencyConfig config) public currencies;
     mapping(bytes32 accountKey => address account) public accountOfKey;
     mapping(address account => bytes32 accountKey) public keyOfAccount;
+
+    modifier onlyOperator() {
+        if (msg.sender != operator) revert UnauthorizedOperator();
+        _;
+    }
 
     constructor(
         address initialOwner,
@@ -73,9 +81,11 @@ contract RewardFactory is Ownable {
 
     function createAccount(
         bytes32 accountKey,
-        Token currency
+        Token currency,
+        address employer
     ) external onlyOwner returns (address account) {
         if (accountKey == bytes32(0)) revert InvalidAccountKey();
+        if (employer == address(0)) revert ZeroAddress();
         if (accountOfKey[accountKey] != address(0)) revert AccountAlreadyExists();
 
         CurrencyConfig memory config = currencies[currency];
@@ -86,6 +96,7 @@ contract RewardFactory is Ownable {
         RewardAccount deployed = new RewardAccount(
             address(this),
             operator,
+            employer,
             accountKey,
             RewardAccount.Token(uint8(currency)),
             config.tokenAddress
@@ -95,7 +106,7 @@ contract RewardFactory is Ownable {
         keyOfAccount[account] = accountKey;
 
         deployed.activate();
-        emit AccountCreated(accountKey, currency, account, operator);
+        emit AccountCreated(accountKey, currency, account, operator, employer);
     }
 
     function setOperator(address newOperator) external onlyOwner {
@@ -105,29 +116,62 @@ contract RewardFactory is Ownable {
         emit OperatorUpdated(previous, newOperator);
     }
 
-    /// @notice Rotates operator on an existing account (employer asks Sentry; owner executes).
+    /// @notice Rotates operator on an existing account (owner executes).
     function setAccountOperator(bytes32 accountKey, address newOperator) external onlyOwner {
-        address account = accountOfKey[accountKey];
-        if (account == address(0)) revert UnknownAccount();
+        address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).setOperator(newOperator);
     }
 
     function pauseAccount(bytes32 accountKey) external onlyOwner {
-        address account = accountOfKey[accountKey];
-        if (account == address(0)) revert UnknownAccount();
+        address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).pause();
     }
 
     function resumeAccount(bytes32 accountKey) external onlyOwner {
-        address account = accountOfKey[accountKey];
-        if (account == address(0)) revert UnknownAccount();
+        address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).resume();
     }
 
     function archiveAccount(bytes32 accountKey) external onlyOwner {
-        address account = accountOfKey[accountKey];
-        if (account == address(0)) revert UnknownAccount();
+        address account = _requireAccount(accountKey);
         RewardAccount(payable(account)).archive();
+    }
+
+    /// @notice Operator pause (routine Sentry ops).
+    function pauseAccountByOperator(bytes32 accountKey) external onlyOperator {
+        address account = _requireAccount(accountKey);
+        RewardAccount(payable(account)).pause();
+    }
+
+    /// @notice Operator resume (routine Sentry ops).
+    function resumeAccountByOperator(bytes32 accountKey) external onlyOperator {
+        address account = _requireAccount(accountKey);
+        RewardAccount(payable(account)).resume();
+    }
+
+    function payout(
+        bytes32 accountKey,
+        address to,
+        uint256 amount,
+        bytes32 payoutId
+    ) external onlyOperator {
+        address account = _requireAccount(accountKey);
+        RewardAccount(payable(account)).payout(to, amount, payoutId);
+    }
+
+    function notifyFunding(
+        bytes32 accountKey,
+        address from,
+        uint256 amount
+    ) external onlyOperator {
+        address account = _requireAccount(accountKey);
+        RewardAccount(payable(account)).notifyFunding(from, amount);
+    }
+
+    /// @notice Operator withdraws full RewardAccount balance to the immutable employer.
+    function withdrawToEmployer(bytes32 accountKey) external onlyOperator returns (uint256) {
+        address account = _requireAccount(accountKey);
+        return RewardAccount(payable(account)).withdrawAllToEmployer();
     }
 
     function setCurrencyEnabled(Token currency, bool enabled) external onlyOwner {
@@ -141,6 +185,11 @@ contract RewardFactory is Ownable {
         address previous = currencies[currency].tokenAddress;
         currencies[currency].tokenAddress = tokenAddress_;
         emit TokenAddressUpdated(currency, previous, tokenAddress_);
+    }
+
+    function _requireAccount(bytes32 accountKey) private view returns (address account) {
+        account = accountOfKey[accountKey];
+        if (account == address(0)) revert UnknownAccount();
     }
 
     function _validateToken(address token) private pure {

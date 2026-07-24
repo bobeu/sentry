@@ -864,6 +864,7 @@ export class BlockchainService {
   async ensureRewardAccount(input: {
     accountKey: Hex;
     currency: PaymentCurrency;
+    employer: Address;
   }): Promise<Address> {
     const factory = this.rewardFactoryAddress();
     const owner = this.walletClient("owner", factory);
@@ -883,7 +884,7 @@ export class BlockchainService {
       address: factory,
       abi: CONTRACTS.RewardFactory.abi,
       functionName: "createAccount",
-      args: [input.accountKey, TOKEN_INDEX[input.currency]],
+      args: [input.accountKey, TOKEN_INDEX[input.currency], input.employer],
       account: owner.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
@@ -906,8 +907,9 @@ export class BlockchainService {
     })) as bigint;
   }
 
+  /** Member payout via RewardFactory (operator only). */
   async payoutReward(input: {
-    accountAddress: Address;
+    accountKey: Hex;
     to: Address;
     amount: bigint;
     payoutId: Hex;
@@ -917,10 +919,29 @@ export class BlockchainService {
     if (!factory || !operator) throw Errors.blockchainUnavailable();
 
     const hash = await operator.wallet.writeContract({
-      address: input.accountAddress,
-      abi: REWARD_ACCOUNT_ABI,
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
       functionName: "payout",
-      args: [input.to, input.amount, input.payoutId],
+      args: [input.accountKey, input.to, input.amount, input.payoutId],
+      account: operator.account,
+      chain: celo,
+      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
+      ...txFeeOpts(),
+    });
+    await this.requireSuccess(hash);
+    return hash;
+  }
+
+  /** Operator withdraws full RewardAccount balance to the immutable employer. */
+  async withdrawRewardToEmployer(accountKey: Hex): Promise<Hash> {
+    const factory = this.rewardFactoryAddress();
+    const operator = this.walletClient("operator", factory);
+    if (!factory || !operator) throw Errors.blockchainUnavailable();
+    const hash = await operator.wallet.writeContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "withdrawToEmployer",
+      args: [accountKey],
       account: operator.account,
       chain: celo,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,

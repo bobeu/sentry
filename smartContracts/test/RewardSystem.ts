@@ -20,7 +20,7 @@ async function deployRewardSystem() {
   );
 
   const accountKey = ethers.id("telegram-group:12345");
-  await factory.connect(owner).createAccount(accountKey, 1); // USDm
+  await factory.connect(owner).createAccount(accountKey, 1, employer.address); // USDm
   const accountAddress = await factory.accountOfKey(accountKey);
   const account = await ethers.getContractAt("RewardAccount", accountAddress);
 
@@ -41,24 +41,28 @@ async function deployRewardSystem() {
 }
 
 describe("RewardFactory + RewardAccount", function () {
-  it("creates one active USDm account per key with Sentry as operator", async function () {
-    const { factory, account, accountKey, operator } = await loadFixture(deployRewardSystem);
+  it("creates one active USDm account per key with employer and Sentry operator", async function () {
+    const { factory, account, accountKey, operator, employer } =
+      await loadFixture(deployRewardSystem);
     expect(await factory.accountOfKey(accountKey)).to.equal(await account.getAddress());
     expect(await account.operator()).to.equal(operator.address);
+    expect(await account.employer()).to.equal(employer.address);
     expect(await account.status()).to.equal(1); // Active
     expect(await account.rewardCurrency()).to.equal(1); // USDm
   });
 
-  it("rejects duplicate account keys", async function () {
-    const { factory, owner, accountKey } = await loadFixture(deployRewardSystem);
-    await expect(factory.connect(owner).createAccount(accountKey, 1)).to.be.revertedWithCustomError(
-      factory,
-      "AccountAlreadyExists",
-    );
+  it("rejects duplicate account keys and zero employer", async function () {
+    const { factory, owner, accountKey, employer } = await loadFixture(deployRewardSystem);
+    await expect(
+      factory.connect(owner).createAccount(accountKey, 1, employer.address),
+    ).to.be.revertedWithCustomError(factory, "AccountAlreadyExists");
+    await expect(
+      factory.connect(owner).createAccount(ethers.id("new-key"), 1, ethers.ZeroAddress),
+    ).to.be.revertedWithCustomError(factory, "ZeroAddress");
   });
 
-  it("lets anyone fund; only operator can payout with replay protection", async function () {
-    const { account, usdm, employer, operator, member, other } =
+  it("lets anyone fund; payout only via factory operator (not direct on account)", async function () {
+    const { account, factory, usdm, employer, operator, member, other, accountKey } =
       await loadFixture(deployRewardSystem);
     const accountAddress = await account.getAddress();
 
@@ -67,11 +71,17 @@ describe("RewardFactory + RewardAccount", function () {
     expect(await account.balance()).to.equal(500);
 
     const payoutId = ethers.id("payout-1");
-    await expect(
-      account.connect(other).payout(member.address, 100, payoutId),
-    ).to.be.revertedWithCustomError(account, "UnauthorizedOperator");
 
-    await expect(account.connect(operator).payout(member.address, 100, payoutId))
+    // Direct account payout must fail (onlyFactory)
+    await expect(
+      account.connect(operator).payout(member.address, 100, payoutId),
+    ).to.be.revertedWithCustomError(account, "UnauthorizedFactory");
+
+    await expect(
+      factory.connect(other).payout(accountKey, member.address, 100, payoutId),
+    ).to.be.revertedWithCustomError(factory, "UnauthorizedOperator");
+
+    await expect(factory.connect(operator).payout(accountKey, member.address, 100, payoutId))
       .to.emit(account, "RewardPaid")
       .withArgs(member.address, 1, 100, payoutId);
 
@@ -79,14 +89,14 @@ describe("RewardFactory + RewardAccount", function () {
     expect(await account.balance()).to.equal(400);
 
     await expect(
-      account.connect(operator).payout(member.address, 50, payoutId),
+      factory.connect(operator).payout(accountKey, member.address, 50, payoutId),
     ).to.be.revertedWithCustomError(account, "PayoutAlreadyProcessed");
   });
 
-  it("supports CELO reward accounts", async function () {
-    const { factory, owner, operator, member } = await loadFixture(deployRewardSystem);
+  it("supports CELO reward accounts via factory payout", async function () {
+    const { factory, owner, operator, member, employer } = await loadFixture(deployRewardSystem);
     const key = ethers.id("telegram-group:celo");
-    await factory.connect(owner).createAccount(key, 0);
+    await factory.connect(owner).createAccount(key, 0, employer.address);
     const accountAddress = await factory.accountOfKey(key);
     const account = await ethers.getContractAt("RewardAccount", accountAddress);
 
@@ -94,25 +104,50 @@ describe("RewardFactory + RewardAccount", function () {
     expect(await account.balance()).to.equal(ethers.parseEther("1"));
 
     const payoutId = ethers.id("celo-payout");
-    await account.connect(operator).payout(member.address, ethers.parseEther("0.25"), payoutId);
+    await factory
+      .connect(operator)
+      .payout(key, member.address, ethers.parseEther("0.25"), payoutId);
     expect(await account.balance()).to.equal(ethers.parseEther("0.75"));
   });
 
-  it("operator and factory can pause/resume payouts", async function () {
+  it("operator and owner can pause/resume via factory; direct account pause gone", async function () {
     const { account, factory, owner, operator, usdm, member, accountKey } =
       await loadFixture(deployRewardSystem);
     await usdm.mint(await account.getAddress(), 200);
 
-    await account.connect(operator).pauseByOperator();
+    await factory.connect(operator).pauseAccountByOperator(accountKey);
     expect(await account.status()).to.equal(2); // Paused
     await expect(
-      account.connect(operator).payout(member.address, 10, ethers.id("x")),
+      factory.connect(operator).payout(accountKey, member.address, 10, ethers.id("x")),
     ).to.be.revertedWithCustomError(account, "InvalidAccountStatus");
 
     await factory.connect(owner).resumeAccount(accountKey);
     expect(await account.status()).to.equal(1);
-    await account.connect(operator).payout(member.address, 10, ethers.id("y"));
+    await factory.connect(operator).payout(accountKey, member.address, 10, ethers.id("y"));
     expect(await usdm.balanceOf(member.address)).to.equal(10);
+  });
+
+  it("withdrawToEmployer sends full balance; employer cannot withdraw directly", async function () {
+    const { factory, account, operator, employer, other, usdm, accountKey } =
+      await loadFixture(deployRewardSystem);
+    const accountAddress = await account.getAddress();
+    await usdm.mint(accountAddress, 250);
+
+    await expect(account.connect(employer).withdrawAllToEmployer()).to.be.revertedWithCustomError(
+      account,
+      "UnauthorizedFactory",
+    );
+    await expect(factory.connect(other).withdrawToEmployer(accountKey)).to.be.revertedWithCustomError(
+      factory,
+      "UnauthorizedOperator",
+    );
+
+    const before = await usdm.balanceOf(employer.address);
+    await expect(factory.connect(operator).withdrawToEmployer(accountKey))
+      .to.emit(account, "WithdrawnToEmployer")
+      .withArgs(employer.address, 1, 250);
+    expect(await usdm.balanceOf(employer.address)).to.equal(before + 250n);
+    expect(await account.balance()).to.equal(0);
   });
 
   it("archives account and blocks further payouts", async function () {
@@ -122,30 +157,38 @@ describe("RewardFactory + RewardAccount", function () {
     await factory.connect(owner).archiveAccount(accountKey);
     expect(await account.status()).to.equal(3); // Archived
     await expect(
-      account.connect(operator).payout(member.address, 1, ethers.id("archived")),
+      factory.connect(operator).payout(accountKey, member.address, 1, ethers.id("archived")),
     ).to.be.revertedWithCustomError(account, "InvalidAccountStatus");
+    await expect(factory.connect(operator).withdrawToEmployer(accountKey)).to.be.revertedWithCustomError(
+      account,
+      "InvalidAccountStatus",
+    );
   });
 
-  it("rotates account operator via factory", async function () {
-    const { factory, owner, account, accountKey, other, usdm, member } =
+  it("rotates account operator mirror via factory; payout still uses factory operator", async function () {
+    const { factory, owner, account, accountKey, other, operator, usdm, member } =
       await loadFixture(deployRewardSystem);
     await factory.connect(owner).setAccountOperator(accountKey, other.address);
     expect(await account.operator()).to.equal(other.address);
     await usdm.mint(await account.getAddress(), 30);
-    await account.connect(other).payout(member.address, 5, ethers.id("rot"));
+    // Account mirror rotation does not change factory.operator — factory operator still pays
+    await factory.connect(operator).payout(accountKey, member.address, 5, ethers.id("rot"));
     expect(await usdm.balanceOf(member.address)).to.equal(5);
   });
 
   it("rejects zero-key and zero-amount payouts", async function () {
-    const { factory, owner, account, operator, member, usdm } =
+    const { factory, owner, operator, member, usdm, accountKey, employer } =
       await loadFixture(deployRewardSystem);
     await expect(
-      factory.connect(owner).createAccount(ethers.ZeroHash, 1),
+      factory.connect(owner).createAccount(ethers.ZeroHash, 1, employer.address),
     ).to.be.revertedWithCustomError(factory, "InvalidAccountKey");
-    await usdm.mint(await account.getAddress(), 10);
+    await usdm.mint(await factory.accountOfKey(accountKey), 10);
     await expect(
-      account.connect(operator).payout(member.address, 0, ethers.id("zero")),
-    ).to.be.revertedWithCustomError(account, "InvalidAmount");
+      factory.connect(operator).payout(accountKey, member.address, 0, ethers.id("zero")),
+    ).to.be.revertedWithCustomError(
+      await ethers.getContractAt("RewardAccount", await factory.accountOfKey(accountKey)),
+      "InvalidAmount",
+    );
   });
 
   it("does not touch EmploymentManager / SentryWallet factories", async function () {

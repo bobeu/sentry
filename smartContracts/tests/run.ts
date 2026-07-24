@@ -3,11 +3,16 @@
  * private keys from accounts.json (viem, no wallet provider).
  *
  * Usage:
- *   npx tsx tests/run.ts <command> [--count N] [--txcount N] [--wait MS]
- *     [--currency CELO|USDm|USDC|USDT] [--amount N] [--loop N]
- *     [--accounts path] [--destination 0x...]
+ *   npx tsx tests/run.ts <command> [--count N] [--txcount N] [--wait SECONDS]
+ *     [--currency|--cur CELO|USDm|USDC|USDT] [--amount N] [--min N] [--max N]
+ *     [--fundmin N] [--fundmax N] [--loop N] [--accounts path] [--destination 0x...]
  *
  * Network: Celo mainnet (42220) only. Attribution: celo_e3cc4c8d8a0e
+ *
+ * Roles:
+ *   Owner env key  — create wallet / register / create reward account
+ *   accounts.json  — operator identity (userKey) for charge / payout / pause
+ *   FUNDER_KEY     — funds employment + reward wallets
  */
 import "dotenv/config";
 import {
@@ -26,8 +31,11 @@ import {
 import {
   loadAccounts,
   parseArgs,
+  resolveAmount,
+  resolveFundAmount,
   selectAccounts,
   sleep,
+  type CliArgs,
   type VolumeAccount,
 } from "./lib/accounts";
 import { CELO_ATTRIBUTION_TAG } from "./lib/attribution";
@@ -42,44 +50,48 @@ Commands (map to blockchain.service.ts):
   balance                 getEmploymentBalance for each selected account
   sync-balance            syncBalanceCache
   wallet-token            getWalletTokenAddress
-  create-wallet           ensureSentryWallet (needs factory owner key in account)
-  register                registerEmploymentOnChain
-  charge                  chargeSettlementOnChain
+  create-wallet           ensureSentryWallet (owner key)
+  register                registerEmploymentOnChain (owner; never defaults to EOA)
+  charge                  ensureEmploymentReady → chargeSettlementOnChain
   estimate-fee            estimateChargeSettlementFeeCelo
   set-withdrawal          setWithdrawalDestination
-  withdraw                withdrawOnChain
+  withdraw                ensureEmploymentReady → withdrawOnChain
   pause                   pauseOnChain
   resume                  resumeOnChain
   notify-funding          notifyWalletFunding
   set-currency            setCurrencyEnabled (--enabled true|false)
   update-token            updateTokenAddress (--destination = token addr)
-  create-reward           ensureRewardAccount
-  reward-balance          rewardAccountBalance (--destination = account)
-  reward-payout           payoutReward
-  pause-reward            pauseRewardAccount
-  resume-reward           resumeRewardAccount
+  create-reward           ensureRewardAccount (employer = EMPLOYER_ADDRESS|FUNDER)
+  reward-balance          rewardAccountBalance
+  reward-payout           ensureRewardReady → factory payout
+  pause-reward            pauseAccountByOperator
+  resume-reward           resumeAccountByOperator
+  withdraw-reward         withdrawToEmployer (full balance → employer)
   transfer                sendNativeAttributed (CELO volume with attribution)
   volume                  loop transfer across accounts for high tx count
 
 Flags:
   --count N         randomly select N accounts from accounts.json (default 1)
   --txcount N       run the command N times per selected account (default 1)
-  --wait MS         delay between txs (default 1500)
-  --currency NAME   CELO | USDm | USDC | USDT (default CELO)
-  --amount N        amount in token units (default 0.001)
+  --wait SECONDS    delay between txs in seconds (default 1.5). Example: --wait 5
+  --currency|--cur  CELO | USDm | USDC | USDT (default CELO)
+  --amount N        fixed amount in token units (default 0.001)
+  --min / --max     random charge/payout/transfer amount in range (overrides --amount)
+  --fundmin/max     random fund into employment/reward wallet before mutating cmds
   --loop N          outer batch repeat; re-selects random accounts each round (default 1)
   --accounts PATH   path to accounts.json
-  --destination 0x  extra address (withdrawal / payout / token)
-  --identity HEX    identityHash for create-wallet (default keccak of address)
+  --destination 0x  extra address (withdrawal / payout target / token)
+  --identity HEX    identityHash for create-wallet (default keccak of volume:addr)
   --enabled true    for set-currency
 
 Example:
-  npm run vol:transfer -- --count 5 --txcount 3 --wait 2000 --amount 0.0001
+  bun run vol:charge --cur celo --count 10 --fundmin 0.1 --fundmax 0.5 --min 0.001 --max 0.1 --wait 5
 
 Env:
-  FUNDER_KEY          private key used by topUpIfNeeded when a signer is short on CELO gas
-  CELO_RPC / CELO_RPC_URL
-  EMPLOYMENT_OWNER_KEY / EMPLOYMENT_OPERATOR_KEY (or VOLUME_SIGNER_KEY via accounts.json)
+  FUNDER_KEY              funds employment/reward wallets + gas top-ups
+  EMPLOYER_ADDRESS        optional employer receive addr for create-reward
+  EMPLOYMENT_OWNER_KEY / SENTRY_OWNER_KEY
+  EMPLOYMENT_OPERATOR_KEY (or VOLUME_SIGNER_KEY via accounts.json)
 `);
 }
 
@@ -97,13 +109,89 @@ function formatErr(err: unknown): string {
   return String(err);
 }
 
+function waitMs(args: CliArgs): number {
+  return Math.max(0, args.wait) * 1000;
+}
+
+/**
+ * Owner path: create SentryWallet + register employment (never register EOA).
+ * Optionally fund the employment wallet from FUNDER_KEY when fundmin/max set
+ * or `forceFund` is true.
+ */
+async function ensureEmploymentReady(
+  svc: BlockchainService,
+  acct: VolumeAccount,
+  currency: PaymentCurrency,
+  args: CliArgs,
+  opts?: { fund?: boolean },
+): Promise<Address> {
+  const identity = (args.identity ??
+    keccak256(toBytes(`volume:${acct.address}`))) as Hex;
+  const wallet = await svc.ensureSentryWallet({
+    identityHash: identity,
+    userKey: acct.address,
+    currency,
+  });
+  console.log(`  ready wallet ${wallet}`);
+  await svc.registerEmploymentOnChain(acct.address, wallet);
+  console.log(`  registered ${acct.address} → ${wallet}`);
+
+  if (opts?.fund) {
+    const fundAmt = resolveFundAmount(args);
+    if (fundAmt !== undefined && fundAmt > 0) {
+      const hash = await svc.fundEmploymentWallet({
+        walletAddress: wallet,
+        currency,
+        amount: fundAmt,
+      });
+      console.log(`  funded employment ${fundAmt} ${currency}`, hash);
+    }
+  }
+  return wallet;
+}
+
+/**
+ * Ensure reward account exists (employer immutable), optionally fund it.
+ */
+async function ensureRewardReady(
+  svc: BlockchainService,
+  acct: VolumeAccount,
+  currency: PaymentCurrency,
+  args: CliArgs,
+  opts?: { fund?: boolean; fundFallbackAmount?: boolean },
+): Promise<{ accountKey: Hex; accountAddress: Address }> {
+  const accountKey = keccak256(toBytes(`reward:${acct.address}`)) as Hex;
+  const employer = svc.resolveEmployerAddress();
+  const accountAddress = await svc.ensureRewardAccount({
+    accountKey,
+    currency,
+    employer,
+  });
+  console.log(`  reward account ${accountAddress} employer=${employer}`);
+
+  if (opts?.fund) {
+    const fundAmt =
+      resolveFundAmount(args) ??
+      (opts.fundFallbackAmount ? resolveAmount(args) : undefined);
+    if (fundAmt !== undefined && fundAmt > 0) {
+      const hash = await svc.fundRewardAccount({
+        accountAddress,
+        currency,
+        amount: fundAmt,
+      });
+      console.log(`  funded reward ${fundAmt} ${currency}`, hash);
+    }
+  }
+  return { accountKey, accountAddress };
+}
+
 /**
  * For each selected account, run `work` exactly `txcount` times.
  * Failures are caught per tx so one bad send does not block the next.
  */
 async function forEachAccount(
   accounts: VolumeAccount[],
-  waitMs: number,
+  waitMilliseconds: number,
   txcount: number,
   work: TxWork,
 ): Promise<RunStats> {
@@ -129,9 +217,8 @@ async function forEachAccount(
             `  FAILED [account ${i + 1}/${totalAccounts} tx ${t + 1}/${reps}] ${acct.address}: ${formatErr(err)}`,
           );
         }
-        const isLast =
-          i === totalAccounts - 1 && t === reps - 1;
-        if (waitMs > 0 && !isLast) await sleep(waitMs);
+        const isLast = i === totalAccounts - 1 && t === reps - 1;
+        if (waitMilliseconds > 0 && !isLast) await sleep(waitMilliseconds);
       }
     } finally {
       clearVolumeSigner();
@@ -156,11 +243,11 @@ async function main() {
   console.log(`Network: Celo mainnet · RPC=${process.env.CELO_RPC}`);
   console.log(`Attribution: ${CELO_ATTRIBUTION_TAG}`);
   console.log(
-    `Command=${args.command} count=${args.count} txcount=${args.txcount} wait=${args.wait}ms currency=${args.currency} amount=${args.amount} loop=${args.loop}`,
+    `Command=${args.command} count=${args.count} txcount=${args.txcount} wait=${args.wait}s currency=${args.currency} amount=${args.amount} min=${args.min ?? "-"} max=${args.max ?? "-"} fundmin=${args.fundmin ?? "-"} fundmax=${args.fundmax ?? "-"} loop=${args.loop}`,
   );
   if (!(process.env.FUNDER_KEY || "").trim()) {
     console.warn(
-      "⚠️  FUNDER_KEY is not set — gas top-ups via topUpIfNeeded will fail when balances are low.",
+      "⚠️  FUNDER_KEY is not set — funding + gas top-ups will fail when balances are low.",
     );
   }
 
@@ -172,10 +259,10 @@ async function main() {
   }
 
   const currency = args.currency as PaymentCurrency;
+  const delay = waitMs(args);
   const totals: RunStats = { ok: 0, failed: 0 };
 
   for (let round = 0; round < args.loop; round++) {
-    // Fresh random selection each outer loop round.
     const selected = selectAccounts(all, args.count);
     if (args.loop > 1) {
       console.log(`\n=== loop ${round + 1}/${args.loop} ===`);
@@ -196,7 +283,7 @@ async function main() {
         case "balance":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log("  balance", await svc.getEmploymentBalance(acct.address, currency));
             }),
           );
@@ -204,7 +291,7 @@ async function main() {
         case "sync-balance":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log("  sync", await svc.syncBalanceCache(acct.address, currency));
             }),
           );
@@ -212,7 +299,7 @@ async function main() {
         case "wallet-token":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log("  token", await svc.getWalletTokenAddress(acct.address));
             }),
           );
@@ -220,24 +307,18 @@ async function main() {
         case "create-wallet":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
-              const identity = (args.identity ??
-                keccak256(toBytes(`volume:${acct.address}`))) as Hex;
-              const wallet = await svc.ensureSentryWallet({
-                identityHash: identity,
-                userKey: acct.address,
-                currency,
-              });
-              console.log("  wallet", wallet, "identity", identity);
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const wallet = await ensureEmploymentReady(svc, acct, currency, args);
+              console.log("  wallet", wallet);
             }),
           );
           break;
         case "register":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
-              const wallet = (args.destination ?? acct.address) as Address;
-              console.log("  register", await svc.registerEmploymentOnChain(acct.address, wallet));
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const wallet = await ensureEmploymentReady(svc, acct, currency, args);
+              console.log("  register ok", wallet);
             }),
           );
           break;
@@ -246,19 +327,44 @@ async function main() {
             totals,
             await forEachAccount(
               selected,
-              args.wait,
+              delay,
               args.txcount,
               async (svc, acct, _i, txIndex) => {
+                const shouldFund =
+                  args.fundmin !== undefined || args.fundmax !== undefined;
+                const wallet = await ensureEmploymentReady(
+                  svc,
+                  acct,
+                  currency,
+                  args,
+                  { fund: shouldFund && txIndex === 0 },
+                );
+                if (shouldFund && txIndex > 0) {
+                  const fundAmt = resolveFundAmount(args);
+                  if (fundAmt !== undefined && fundAmt > 0) {
+                    await svc.fundEmploymentWallet({
+                      walletAddress: wallet,
+                      currency,
+                      amount: fundAmt,
+                    });
+                    console.log(`  funded employment ${fundAmt} ${currency}`);
+                  }
+                }
+                const amount = resolveAmount(args);
                 const settlementId = keccak256(
-                  toBytes(`settlement:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`),
+                  toBytes(
+                    `settlement:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`,
+                  ),
                 );
                 console.log(
                   "  charge",
+                  amount,
+                  currency,
                   await svc.chargeSettlementOnChain({
                     userKey: acct.address,
                     currency,
-                    serviceAmount: args.amount,
-                    settlementFee: Math.max(args.amount * 0.01, 0.0001),
+                    serviceAmount: amount,
+                    settlementFee: Math.max(amount * 0.01, 0.0001),
                     settlementId,
                   }),
                 );
@@ -271,9 +377,10 @@ async function main() {
             totals,
             await forEachAccount(
               selected,
-              args.wait,
+              delay,
               args.txcount,
               async (svc, acct, _i, txIndex) => {
+                const amount = resolveAmount(args);
                 const settlementId = keccak256(
                   toBytes(`est:${acct.address}:${txIndex}`),
                 );
@@ -282,7 +389,7 @@ async function main() {
                   await svc.estimateChargeSettlementFeeCelo({
                     userKey: acct.address,
                     currency,
-                    serviceAmount: args.amount,
+                    serviceAmount: amount,
                     settlementFee: 0.0001,
                     settlementId,
                   }),
@@ -295,10 +402,13 @@ async function main() {
           if (!args.destination) throw new Error("--destination required");
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log(
                 "  setWithdrawal",
-                await svc.setWithdrawalDestination(acct.address, args.destination as Address),
+                await svc.setWithdrawalDestination(
+                  acct.address,
+                  args.destination as Address,
+                ),
               );
             }),
           );
@@ -308,18 +418,22 @@ async function main() {
             totals,
             await forEachAccount(
               selected,
-              args.wait,
+              delay,
               args.txcount,
               async (svc, acct, _i, txIndex) => {
+                await ensureEmploymentReady(svc, acct, currency, args);
+                const amount = resolveAmount(args);
                 const withdrawalId = keccak256(
-                  toBytes(`wd:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`),
+                  toBytes(
+                    `wd:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`,
+                  ),
                 );
                 console.log(
                   "  withdraw",
                   await svc.withdrawOnChain(
                     acct.address,
                     withdrawalId,
-                    args.amount,
+                    amount,
                     currency,
                   ),
                 );
@@ -330,7 +444,7 @@ async function main() {
         case "pause":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log("  pause", await svc.pauseOnChain(acct.address));
             }),
           );
@@ -338,7 +452,7 @@ async function main() {
         case "resume":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
               console.log("  resume", await svc.resumeOnChain(acct.address));
             }),
           );
@@ -346,13 +460,14 @@ async function main() {
         case "notify-funding":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const amount = resolveAmount(args);
               console.log(
                 "  notify",
                 await svc.notifyWalletFunding(
                   acct.address,
                   acct.address,
-                  args.amount,
+                  amount,
                   currency,
                 ),
               );
@@ -397,48 +512,61 @@ async function main() {
         case "create-reward":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
-              const accountKey = keccak256(toBytes(`reward:${acct.address}`));
-              console.log(
-                "  rewardAccount",
-                await svc.ensureRewardAccount({ accountKey, currency }),
-                "key",
-                accountKey,
-              );
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const ready = await ensureRewardReady(svc, acct, currency, args);
+              console.log("  rewardAccount", ready.accountAddress, "key", ready.accountKey);
             }),
           );
           break;
-        case "reward-balance": {
-          const target = (args.destination ?? selected[0]?.address) as Address;
-          const svc = new BlockchainService(selected[0]);
-          try {
-            console.log("  rewardBalance", await svc.rewardAccountBalance(target));
-            totals.ok += 1;
-          } catch (err) {
-            totals.failed += 1;
-            console.error(`  FAILED reward-balance: ${formatErr(err)}`);
-          }
+        case "reward-balance":
+          mergeStats(
+            totals,
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const { accountAddress } = await ensureRewardReady(
+                svc,
+                acct,
+                currency,
+                args,
+              );
+              const target = (args.destination as Address | undefined) ?? accountAddress;
+              console.log("  rewardBalance", await svc.rewardAccountBalance(target));
+            }),
+          );
           break;
-        }
         case "reward-payout":
-          if (!args.destination) throw new Error("--destination reward account required");
           mergeStats(
             totals,
             await forEachAccount(
               selected,
-              args.wait,
+              delay,
               args.txcount,
               async (svc, acct, _i, txIndex) => {
-                const payoutId = keccak256(
-                  toBytes(`payout:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`),
+                const { accountKey } = await ensureRewardReady(
+                  svc,
+                  acct,
+                  currency,
+                  args,
+                  {
+                    fund: true,
+                    fundFallbackAmount: true,
+                  },
                 );
+                const amount = resolveAmount(args);
                 const decimals = currency === "USDC" || currency === "USDT" ? 6 : 18;
+                const payoutId = keccak256(
+                  toBytes(
+                    `payout:${acct.address}:${Date.now()}:${txIndex}:${Math.random()}`,
+                  ),
+                );
+                const to = (args.destination as Address | undefined) ?? acct.address;
                 console.log(
                   "  payout",
+                  amount,
+                  currency,
                   await svc.payoutReward({
-                    accountAddress: args.destination as Address,
-                    to: acct.address,
-                    amount: parseUnits(String(args.amount), decimals),
+                    accountKey,
+                    to,
+                    amount: parseUnits(String(amount), decimals),
                     payoutId,
                   }),
                 );
@@ -449,18 +577,45 @@ async function main() {
         case "pause-reward":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
-              const key = keccak256(toBytes(`reward:${acct.address}`)) as Hex;
-              console.log("  pauseReward", await svc.pauseRewardAccount(key));
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const { accountKey } = await ensureRewardReady(svc, acct, currency, args);
+              console.log(
+                "  pauseReward",
+                await svc.pauseRewardAccountByOperator(accountKey),
+              );
             }),
           );
           break;
         case "resume-reward":
           mergeStats(
             totals,
-            await forEachAccount(selected, args.wait, args.txcount, async (svc, acct) => {
-              const key = keccak256(toBytes(`reward:${acct.address}`)) as Hex;
-              console.log("  resumeReward", await svc.resumeRewardAccount(key));
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const { accountKey } = await ensureRewardReady(svc, acct, currency, args);
+              console.log(
+                "  resumeReward",
+                await svc.resumeRewardAccountByOperator(accountKey),
+              );
+            }),
+          );
+          break;
+        case "withdraw-reward":
+          mergeStats(
+            totals,
+            await forEachAccount(selected, delay, args.txcount, async (svc, acct) => {
+              const { accountKey } = await ensureRewardReady(
+                svc,
+                acct,
+                currency,
+                args,
+                {
+                  fund:
+                    args.fundmin !== undefined || args.fundmax !== undefined,
+                },
+              );
+              console.log(
+                "  withdrawToEmployer",
+                await svc.withdrawRewardToEmployer(accountKey),
+              );
             }),
           );
           break;
@@ -470,17 +625,18 @@ async function main() {
             totals,
             await forEachAccount(
               selected,
-              args.wait,
+              delay,
               args.txcount,
               async (svc, acct, accountIndex) => {
                 const to =
                   (args.destination as Address | undefined) ??
                   selected[(accountIndex + 1) % selected.length]!.address;
+                const amount = resolveAmount(args);
                 const hash = await svc.sendNativeAttributed({
                   to,
-                  amountWei: parseEther(String(args.amount)),
+                  amountWei: parseEther(String(amount)),
                 });
-                console.log(`  ${args.command} ${acct.address} -> ${to}`, hash);
+                console.log(`  ${args.command} ${acct.address} -> ${to} ${amount}`, hash);
               },
             ),
           );
