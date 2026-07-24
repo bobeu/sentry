@@ -126,6 +126,7 @@ export function capabilitiesSummary(username: string) {
     "",
     "DM tip: type / to open commands, or /menu for action buttons.",
     `Try in a group: ${tag} what is this group about?`,
+    "Group tip: /mystatus or /points for your interactive rewards menu.",
     "Commands (DM): /menu /status /report /groups /mywallet",
     "Commands (group): /ban /mute /announce /poll /trivia /campaign /birthday /remember",
   ].join("\n");

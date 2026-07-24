@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { rewardService } from "@/services/reward.service";
 import { aiService } from "@/services/ai.service";
 import type { ContextBundle } from "@/services/context.service";
+import { escapeTelegramHtml } from "@/lib/telegram-message";
 
 export type ActivityType = "poll" | "game" | "learn" | "social" | "comic" | "fun";
 
@@ -461,7 +462,10 @@ export class EngagementService {
 
     // Open-text: no native poll — announce only; answers via tagged replies.
     if (format === "open") {
-      const msg = await telegram.sendMessage(chatId, brief);
+      const { formatSentryMessage } = await import("@/lib/telegram-message");
+      const msg = await telegram.sendMessage(chatId, formatSentryMessage(brief), {
+        parse_mode: "HTML",
+      });
       await prisma.engagementActivity.update({
         where: { id: activity.id },
         data: { telegramMsgId: String(msg.message_id) },
@@ -494,7 +498,23 @@ export class EngagementService {
       }
     }
 
-    await telegram.sendMessage(chatId, brief).catch(() => undefined);
+    const { formatSentryMessage } = await import("@/lib/telegram-message");
+    await telegram.sendMessage(chatId, formatSentryMessage(brief), {
+      parse_mode: "HTML",
+    }).catch(() => undefined);
+
+    // Games / learn / fun / comic → prefer inline buttons (instant judging + feedback).
+    // Regular polls stay as native Telegram polls for anonymous voting UX.
+    const preferInline =
+      activity.type === "learn" ||
+      activity.type === "game" ||
+      activity.type === "fun" ||
+      activity.type === "comic" ||
+      format === "quiz";
+
+    if (preferInline) {
+      return this.postInlineQuiz(telegram, chatId, activity, options, question);
+    }
 
     const msg = await telegram.sendPoll(
       chatId,
@@ -512,6 +532,401 @@ export class EngagementService {
     });
 
     return msg;
+  }
+
+  /** Inline-button quiz — works great for games and instant feedback. */
+  async postInlineQuiz(
+    telegram: Context["telegram"],
+    chatId: string | number,
+    activity: { id: string; title: string; type: string; pointsReward?: number },
+    options: string[],
+    question: string,
+  ) {
+    const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+    for (let i = 0; i < options.length; i++) {
+      // callback_data max 64 bytes — cuid (~25) fits: q:{id}:{i}
+      rows.push([
+        {
+          text: options[i]!.slice(0, 60),
+          callback_data: `q:${activity.id}:${i}`,
+        },
+      ]);
+    }
+    const msg = await telegram.sendMessage(
+      chatId,
+      `🎮 <b>${escapeTelegramHtml(question.slice(0, 280))}</b>\n\nTap an answer · <b>${activity.pointsReward ?? 0}</b> pts on the line`,
+      {
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: rows },
+      },
+    );
+    await prisma.engagementActivity.update({
+      where: { id: activity.id },
+      data: { telegramMsgId: String(msg.message_id) },
+    });
+    return msg;
+  }
+
+  /** Score an inline-button quiz answer. */
+  async handleInlineQuizAnswer(input: {
+    activityId: string;
+    optionIndex: number;
+    telegramUserId: string;
+    username?: string | null;
+  }) {
+    const activity = await prisma.engagementActivity.findFirst({
+      where: { id: input.activityId, status: "active" },
+    });
+    if (!activity) return { ok: false as const, message: "That round already ended." };
+
+    const existing = await prisma.activitySubmission.findUnique({
+      where: {
+        activityId_telegramUserId: {
+          activityId: activity.id,
+          telegramUserId: input.telegramUserId,
+        },
+      },
+    });
+    if (existing) {
+      const points = await rewardService.getOrCreateMemberPoints({
+        groupId: activity.groupId,
+        telegramUserId: input.telegramUserId,
+        username: input.username,
+      });
+      return {
+        ok: true as const,
+        duplicate: true as const,
+        verified: existing.verified,
+        pointsAwarded: existing.pointsAwarded,
+        balance: points.points,
+        pending: points.pendingReward.toString(),
+        message: existing.verified
+          ? `You already nailed this one earlier (+${existing.pointsAwarded} pts). Balance: **${points.points}** pts.`
+          : `You already played this round. Balance: **${points.points}** pts.`,
+      };
+    }
+
+    const config = parseConfig<QuizConfig>(activity.configJson);
+    const isPoll = activity.type === "poll";
+    const verified =
+      isPoll ||
+      (typeof config.correctIndex === "number" &&
+        input.optionIndex === config.correctIndex);
+    const pointsAwarded = verified ? activity.pointsReward : 0;
+
+    await prisma.activitySubmission.create({
+      data: {
+        activityId: activity.id,
+        telegramUserId: input.telegramUserId,
+        username: input.username ?? null,
+        payload: JSON.stringify({ optionIndex: input.optionIndex, via: "inline" }),
+        verified,
+        pointsAwarded,
+        notes: verified ? "inline-correct" : "inline-incorrect",
+      },
+    });
+
+    if (pointsAwarded > 0) {
+      await rewardService.awardPoints({
+        groupId: activity.groupId,
+        telegramUserId: input.telegramUserId,
+        username: input.username,
+        points: pointsAwarded,
+        reason: `${activity.type}:${activity.title}`,
+        activityId: activity.id,
+      });
+    }
+
+    const balance = await rewardService.getOrCreateMemberPoints({
+      groupId: activity.groupId,
+      telegramUserId: input.telegramUserId,
+      username: input.username,
+    });
+
+    const explain =
+      !verified && config.explanation
+        ? `\n\n_Hint:_ ${config.explanation}`
+        : "";
+
+    return {
+      ok: true as const,
+      duplicate: false as const,
+      verified,
+      pointsAwarded,
+      balance: balance.points,
+      pending: balance.pendingReward.toString(),
+      message: verified
+        ? `✅ **Correct!** +${pointsAwarded} pts\nBalance: **${balance.points}** · Pending cash: ${balance.pendingReward.toString()}${explain}`
+        : `❌ Not this time.${explain}\nBalance: **${balance.points}** pts · keep playing!`,
+    };
+  }
+
+  /**
+   * Detect & score a tagged/reply answer to an active game.
+   * Returns null when the message is not an answer attempt.
+   */
+  async handleGameTextAnswer(input: {
+    groupId: string;
+    telegramUserId: string;
+    username?: string | null;
+    text: string;
+    replyToMsgId?: string | null;
+  }) {
+    const active = await prisma.engagementActivity.findMany({
+      where: {
+        groupId: input.groupId,
+        status: "active",
+        type: { in: ["learn", "fun", "comic", "game", "poll"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    });
+    if (!active.length) return null;
+
+    // Prefer the activity this message is replying to.
+    const byReply = input.replyToMsgId
+      ? active.find((a) => a.telegramMsgId === input.replyToMsgId)
+      : null;
+
+    const answerRaw = input.text.replace(/@\w+/g, "").trim();
+    const answer = answerRaw.toLowerCase();
+    if (!answer || answer.length > 200) return null;
+    // Don't steal normal Q&A
+    if (/\?/.test(answerRaw) && !input.replyToMsgId) return null;
+    if (
+      !input.replyToMsgId &&
+      answer.length > 80 &&
+      /\b(what|why|how|when|where|who|can you|please|help)\b/i.test(answer)
+    ) {
+      return null;
+    }
+
+    // Open-text acceptedAnswers path
+    const openCandidate =
+      byReply ??
+      active.find((a) => {
+        const c = parseConfig<QuizConfig>(a.configJson);
+        return c.format === "open" || Boolean(c.acceptedAnswers?.length);
+      });
+
+    if (openCandidate) {
+      const config = parseConfig<QuizConfig>(openCandidate.configJson);
+      const accepted = (config.acceptedAnswers ?? []).map((a) =>
+        a.toLowerCase().trim(),
+      );
+      const options = (config.options ?? []).map((o) => o.toLowerCase().trim());
+
+      // Match accepted answers OR option text (members typing the choice)
+      let optionIndex = -1;
+      if (options.length) {
+        optionIndex = options.findIndex(
+          (o) => o === answer || answer.includes(o) || o.includes(answer),
+        );
+      }
+      const openHit =
+        accepted.length > 0 &&
+        accepted.some((a) => answer === a || answer.includes(a) || a.includes(answer));
+
+      if (optionIndex >= 0) {
+        return this.handleInlineQuizAnswer({
+          activityId: openCandidate.id,
+          optionIndex,
+          telegramUserId: input.telegramUserId,
+          username: input.username,
+        });
+      }
+
+      if (openHit || (config.format === "open" && accepted.length)) {
+        // Delegate to open-text scorer (re-use existing)
+        return this.handleOpenTextAnswer({
+          groupId: input.groupId,
+          telegramUserId: input.telegramUserId,
+          username: input.username,
+          text: input.text,
+        }).then(async (r) => {
+          if (!r) return null;
+          const balance = await rewardService.getOrCreateMemberPoints({
+            groupId: input.groupId,
+            telegramUserId: input.telegramUserId,
+            username: input.username,
+          });
+          if (r.duplicate) {
+            return {
+              ok: true as const,
+              duplicate: true as const,
+              verified: r.verified,
+              pointsAwarded: 0,
+              balance: balance.points,
+              pending: balance.pendingReward.toString(),
+              message: `Already counted. Balance: **${balance.points}** pts.`,
+            };
+          }
+          return {
+            ok: true as const,
+            duplicate: false as const,
+            verified: r.verified,
+            pointsAwarded: r.points,
+            balance: balance.points,
+            pending: balance.pendingReward.toString(),
+            message: r.verified
+              ? `✅ **Correct!** +${r.points} pts\nBalance: **${balance.points}** · Pending: ${balance.pendingReward.toString()}`
+              : `❌ Not quite.\nBalance: **${balance.points}** pts`,
+          };
+        });
+      }
+    }
+
+    // Letter/number (A/B/1/2) or typed option text — prefer reply target, else latest quiz.
+    const quizTarget =
+      byReply ??
+      active.find((a) => {
+        const c = parseConfig<QuizConfig>(a.configJson);
+        return Boolean(c.options?.length) && c.format !== "open";
+      });
+    if (quizTarget) {
+      const config = parseConfig<QuizConfig>(quizTarget.configJson);
+      const opts = config.options ?? [];
+      const letter = answerRaw.trim().match(/^([a-d])(?:\b|[.)\s]|$)/i)?.[1];
+      const num = answerRaw.trim().match(/^([1-9])(?:\b|[.)\s]|$)/)?.[1];
+      let idx = -1;
+      if (letter) idx = letter.toLowerCase().charCodeAt(0) - 97;
+      if (num) idx = Number(num) - 1;
+      if (idx < 0) {
+        idx = opts.findIndex((o) => {
+          const t = o.toLowerCase().trim();
+          return t === answer || answer.includes(t) || t.includes(answer);
+        });
+      }
+      if (idx >= 0 && idx < opts.length) {
+        return this.handleInlineQuizAnswer({
+          activityId: quizTarget.id,
+          optionIndex: idx,
+          telegramUserId: input.telegramUserId,
+          username: input.username,
+        });
+      }
+    }
+
+    return null;
+  }
+
+  memberStatusKeyboard() {
+    return {
+      inline_keyboard: [
+        [
+          { text: "🏠 Overview", callback_data: "me:home" },
+          { text: "⭐ Points", callback_data: "me:points" },
+        ],
+        [
+          { text: "💰 Pending cash", callback_data: "me:pending" },
+          { text: "🎮 My games", callback_data: "me:games" },
+        ],
+        [
+          { text: "🏆 Leaderboard", callback_data: "me:board" },
+          { text: "📋 Active now", callback_data: "me:active" },
+        ],
+        [{ text: "📤 How to withdraw", callback_data: "me:withdraw" }],
+      ],
+    };
+  }
+
+  async buildMemberStatusPanel(input: {
+    groupId: string;
+    telegramUserId: string;
+    username?: string | null;
+    section?:
+      | "home"
+      | "points"
+      | "pending"
+      | "games"
+      | "board"
+      | "withdraw"
+      | "active";
+  }) {
+    const section = input.section ?? "home";
+    const mine = await rewardService.getOrCreateMemberPoints({
+      groupId: input.groupId,
+      telegramUserId: input.telegramUserId,
+      username: input.username,
+    });
+    const settings = await prisma.groupSettings.findUnique({
+      where: { groupId: input.groupId },
+    });
+
+    if (section === "points") {
+      return [
+        "**Your points**",
+        "",
+        `Current: **${mine.points}**`,
+        `Lifetime: **${mine.lifetimePoints}**`,
+        `Payout wallet: ${mine.payoutAddress ?? "_(not set — tag me with your 0x address)_"}`,
+      ].join("\n");
+    }
+    if (section === "pending") {
+      const cashOn =
+        settings?.rewardEnabled && !settings.rewardPaused
+          ? `Cash rewards ON · ${settings.rewardAmountPerPoint.toString()} ${settings.rewardCurrency}/pt`
+          : "Cash rewards off or paused (points still count)";
+      return [
+        "**Pending withdrawals**",
+        "",
+        `Pending cash: **${mine.pendingReward.toString()}** ${settings?.rewardCurrency ?? "USDm"}`,
+        cashOn,
+        "",
+        "To withdraw: tag me with your **0x** wallet (or say `withdraw rewards 0x…`).",
+      ].join("\n");
+    }
+    if (section === "games") {
+      const subs = await prisma.activitySubmission.findMany({
+        where: { telegramUserId: input.telegramUserId, activity: { groupId: input.groupId } },
+        include: { activity: true },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+      });
+      if (!subs.length) return "You haven't played a round here yet — ask me what's available!";
+      return [
+        "**Your recent games**",
+        "",
+        ...subs.map(
+          (s) =>
+            `• **${s.activity.title}** (${s.activity.type}) — ${s.verified ? "✅" : "❌"} · +${s.pointsAwarded} pts`,
+        ),
+      ].join("\n");
+    }
+    if (section === "board") {
+      const top = await rewardService.leaderboard(input.groupId, 8);
+      if (!top.length) return "Leaderboard is empty — be the first!";
+      return [
+        "**Leaderboard**",
+        "",
+        ...top.map(
+          (m, i) =>
+            `${i + 1}. ${m.username ? `@${m.username}` : m.telegramUserId} — **${m.points}** pts`,
+        ),
+      ].join("\n");
+    }
+    if (section === "withdraw") {
+      return [
+        "**How to withdraw**",
+        "",
+        "1. Earn points in polls / quizzes / campaigns",
+        "2. Set your wallet by tagging me with `0x…`",
+        "3. Say **withdraw rewards** (with your 0x if needed)",
+        "",
+        `Pending now: **${mine.pendingReward.toString()}**`,
+      ].join("\n");
+    }
+    if (section === "active") {
+      return this.summarizeActiveForGroup(input.groupId);
+    }
+
+    return [
+      "**Your Sentry status**",
+      "",
+      `⭐ Points: **${mine.points}** (lifetime ${mine.lifetimePoints})`,
+      `💰 Pending: **${mine.pendingReward.toString()}** ${settings?.rewardCurrency ?? ""}`,
+      `🎮 Tap a button below for details — or ask me anything.`,
+    ].join("\n");
   }
 
   /** Score open-text answers for active open-format learn/fun/comic activities. */

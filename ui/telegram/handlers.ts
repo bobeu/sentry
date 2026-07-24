@@ -19,7 +19,7 @@ import {
   isCasualGreeting,
   isGratitudeOnly,
   splitTelegramMessage,
-  toTelegramHtml,
+  formatSentryMessage,
 } from "@/lib/telegram-message";
 import {
   engagementService,
@@ -113,12 +113,12 @@ async function replyTo(
   if (chunks.length === 0) return;
 
   for (let i = 0; i < chunks.length; i++) {
-    const html = toTelegramHtml(chunks[i]);
+    const html = formatSentryMessage(chunks[i]!);
     const isLast = i === chunks.length - 1;
     const opts: {
       parse_mode: "HTML";
       reply_parameters?: { message_id: number };
-      reply_markup?: typeof extra extends undefined ? never : NonNullable<typeof extra>["reply_markup"];
+      reply_markup?: NonNullable<typeof extra>["reply_markup"];
     } = { parse_mode: "HTML" };
     try {
       if (i === 0 && replyToMessageId != null && ctx.chat) {
@@ -130,7 +130,12 @@ async function replyTo(
       await ctx.reply(html, opts);
     } catch (err) {
       console.warn("[telegram:reply]", err);
-      await ctx.reply(chunks[i], isLast && extra?.reply_markup ? { reply_markup: extra.reply_markup } : undefined).catch(() => undefined);
+      await ctx
+        .reply(
+          chunks[i]!,
+          isLast && extra?.reply_markup ? { reply_markup: extra.reply_markup } : undefined,
+        )
+        .catch(() => undefined);
     }
   }
 }
@@ -142,7 +147,7 @@ async function replyPlain(
 ) {
   const chunks = splitTelegramMessage(text);
   for (let i = 0; i < chunks.length; i++) {
-    const html = toTelegramHtml(chunks[i]);
+    const html = formatSentryMessage(chunks[i]!);
     const isLast = i === chunks.length - 1;
     try {
       await ctx.reply(html, {
@@ -155,7 +160,7 @@ async function replyPlain(
       console.warn("[telegram:replyPlain]", err);
       await ctx
         .reply(
-          chunks[i],
+          chunks[i]!,
           isLast && extra?.reply_markup
             ? { reply_markup: extra.reply_markup }
             : undefined,
@@ -212,7 +217,7 @@ async function handleModeration(
     if (fromUserId) moderationService.noteWarning(runtime.group.id, fromUserId);
     await ctx
       .reply(
-        toTelegramHtml(
+        formatSentryMessage(
           `Heads up — this looks off (**${decision.reason}**). Please keep the chat on-topic and constructive.`,
         ),
         { parse_mode: "HTML" },
@@ -257,7 +262,7 @@ async function handleModeration(
 
     await ctx
       .reply(
-        toTelegramHtml(
+        formatSentryMessage(
           actionTaken === "ban"
             ? `Removed spam and **banned** the sender (${decision.reason}).`
             : actionTaken === "mute"
@@ -275,7 +280,7 @@ async function handleModeration(
     await ctx.telegram
       .sendMessage(
         Number(adminId),
-        toTelegramHtml(
+        formatSentryMessage(
           `Sentry moderation in **${runtime.group.name ?? telegramId}**: ${actionTaken} (${decision.reason}, ${(decision.confidence * 100).toFixed(0)}%) from ${fromUsername ?? fromUserId}\n\n${text.slice(0, 400)}`,
         ),
         { parse_mode: "HTML" },
@@ -424,49 +429,54 @@ async function handleEngagementAndRewards(
     return true;
   }
 
-  // Open-text quiz / fun answers — only short answer-shaped replies (don't steal Q&A).
-  const looksLikeOpenAnswer =
-    addressed &&
-    cleaned.length > 0 &&
-    cleaned.length <= 120 &&
-    !/\?/.test(cleaned) &&
-    !wantsCreateActivity(cleaned) &&
-    !isEngagementQuery(cleaned) &&
-    !isActivityMenuRequest(cleaned) &&
-    !/\b(my\s+points|leaderboard|withdraw|reward|help|what|how|why|when)\b/i.test(
-      cleaned,
-    );
-  if (looksLikeOpenAnswer) {
-    const openResult = await engagementService.handleOpenTextAnswer({
+  // Game / quiz answers (tagged or reply-to activity) — instant judging + balance.
+  if (addressed) {
+    const replyToMsgId =
+      message && "reply_to_message" in message && message.reply_to_message
+        ? String(message.reply_to_message.message_id)
+        : null;
+    const gameResult = await engagementService.handleGameTextAnswer({
       groupId: runtime.group.id,
       telegramUserId: fromUserId,
       username: fromUsername,
       text: cleaned,
+      replyToMsgId,
     });
-    if (openResult) {
-      if (openResult.duplicate) {
-        await replyTo(ctx, "You already played this one — wait for the next round!", message.message_id);
-      } else if (openResult.verified && openResult.points > 0) {
-        await replyTo(
-          ctx,
-          `Nailed it — +${openResult.points} points. You're on a roll!`,
-          message.message_id,
-        );
-        if (runtime.billable) {
-          await recordBillable(runtime, "points_award", {
-            kind: "open",
-            points: openResult.points,
-          });
-        }
-      } else {
-        await replyTo(
-          ctx,
-          "Not quite — hang in there for the next round (or ask what's active).",
-          message.message_id,
-        );
+    if (gameResult && "message" in gameResult && gameResult.message) {
+      await replyTo(ctx, gameResult.message, message.message_id, {
+        reply_markup: engagementService.memberStatusKeyboard(),
+      });
+      if (
+        "pointsAwarded" in gameResult &&
+        gameResult.pointsAwarded > 0 &&
+        runtime.billable
+      ) {
+        await recordBillable(runtime, "points_award", {
+          kind: "game_text",
+          points: gameResult.pointsAwarded,
+        });
       }
       return true;
     }
+  }
+
+  // Member status hub
+  if (
+    addressed &&
+    /\b(my\s+status|mystatus|my\s+stats|game\s+status|my\s+rewards?|check\s+my\s+(points|status|balance))\b/i.test(
+      cleaned,
+    )
+  ) {
+    const panel = await engagementService.buildMemberStatusPanel({
+      groupId: runtime.group.id,
+      telegramUserId: fromUserId,
+      username: fromUsername,
+      section: "home",
+    });
+    await replyTo(ctx, panel, message.message_id, {
+      reply_markup: engagementService.memberStatusKeyboard(),
+    });
+    return true;
   }
 
   // Start activity ONLY on explicit create/start intent (never on "when does the poll end?").
@@ -1123,6 +1133,78 @@ export function registerHandlers(bot: Telegraf) {
       if (handled) return;
     }
 
+    // Inline quiz answers: q:{activityId}:{optionIndex}
+    if (data.startsWith("q:")) {
+      const parts = data.split(":");
+      const activityId = parts[1];
+      const optionIndex = Number(parts[2]);
+      if (!activityId || !fromUserId || !Number.isFinite(optionIndex)) {
+        await ctx.answerCbQuery("Invalid").catch(() => undefined);
+        return;
+      }
+      const result = await engagementService.handleInlineQuizAnswer({
+        activityId,
+        optionIndex,
+        telegramUserId: fromUserId,
+        username: ctx.from?.username ?? ctx.from?.first_name ?? null,
+      });
+      await ctx.answerCbQuery(result.ok ? (result.verified ? "Correct!" : "Noted") : "Ended").catch(() => undefined);
+      if (result.ok) {
+        await ctx
+          .reply(formatSentryMessage(result.message), {
+            parse_mode: "HTML",
+            reply_markup: engagementService.memberStatusKeyboard(),
+          })
+          .catch(() => undefined);
+      } else {
+        await ctx.reply(formatSentryMessage(result.message), { parse_mode: "HTML" }).catch(() => undefined);
+      }
+      return;
+    }
+
+    // Member status hub: me:home | me:points | me:pending | me:games | me:board | me:withdraw | me:active
+    if (data.startsWith("me:")) {
+      const section = data.slice(3) as
+        | "home"
+        | "points"
+        | "pending"
+        | "games"
+        | "board"
+        | "withdraw"
+        | "active";
+      const chatId = chatIdOf(ctx);
+      if (!chatId || !fromUserId) {
+        await ctx.answerCbQuery("Unavailable").catch(() => undefined);
+        return;
+      }
+      const runtime = await resolveGroupRuntime(chatId);
+      if (!runtime?.communityMode) {
+        await ctx.answerCbQuery("Community mode off").catch(() => undefined);
+        return;
+      }
+      const panel = await engagementService.buildMemberStatusPanel({
+        groupId: runtime.group.id,
+        telegramUserId: fromUserId,
+        username: ctx.from?.username ?? null,
+        section,
+      });
+      await ctx.answerCbQuery("Updated").catch(() => undefined);
+      try {
+        await ctx.editMessageText(formatSentryMessage(panel), {
+          parse_mode: "HTML",
+          reply_markup: engagementService.memberStatusKeyboard(),
+        });
+      } catch {
+        await ctx
+          .reply(formatSentryMessage(panel), {
+            parse_mode: "HTML",
+            reply_markup: engagementService.memberStatusKeyboard(),
+          })
+          .catch(() => undefined);
+      }
+      return;
+    }
+
     // Group activity picker: act:poll | act:learn | act:game | act:fun | act:comic
     if (data.startsWith("act:")) {
       const type = data.slice(4) as ActivityType;
@@ -1402,7 +1484,7 @@ export function registerHandlers(bot: Telegraf) {
             setTimeout(() => reject(new Error("welcome-timeout")), 12_000),
           ),
         ]);
-        await ctx.reply(toTelegramHtml(welcome), { parse_mode: "HTML" });
+        await ctx.reply(formatSentryMessage(welcome), { parse_mode: "HTML" });
         if (runtime.billable) {
           await recordBillable(runtime, "welcome", { member: name });
         }
@@ -1598,3 +1680,4 @@ export function registerHandlers(bot: Telegraf) {
     );
   });
 }
+

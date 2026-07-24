@@ -81,12 +81,12 @@ function dmMenuExtra(ctx: Context) {
 }
 
 async function replyDm(ctx: Context, text: string, withMenu = true) {
-  const { splitTelegramMessage, toTelegramHtml } = await import(
+  const { splitTelegramMessage, formatSentryMessage } = await import(
     "@/lib/telegram-message"
   );
   const chunks = splitTelegramMessage(text);
   for (let i = 0; i < chunks.length; i++) {
-    const html = toTelegramHtml(chunks[i]);
+    const html = formatSentryMessage(chunks[i]!);
     const isLast = i === chunks.length - 1;
     try {
       await ctx.reply(html, {
@@ -590,24 +590,58 @@ export function registerCommands(bot: Telegraf) {
       return;
     }
     const arg = commandArgs(ctx, "points").toLowerCase();
-    const { rewardService } = await import("@/services/reward.service");
+    const { engagementService } = await import("@/services/engagement.service");
+    const { formatSentryMessage } = await import("@/lib/telegram-message");
     if (arg.includes("top") || arg.includes("board")) {
-      const top = await rewardService.leaderboard(runtime.group.id, 8);
-      const lines = top.map(
-        (m, i) =>
-          `${i + 1}. ${m.username ? `@${m.username}` : m.telegramUserId} — ${m.points}`,
-      );
-      await ctx.reply(lines.length ? `Leaderboard:\n${lines.join("\n")}` : "No points yet.");
+      const panel = await engagementService.buildMemberStatusPanel({
+        groupId: runtime.group.id,
+        telegramUserId: fromUserId,
+        username: ctx.from?.username ?? null,
+        section: "board",
+      });
+      await ctx.reply(formatSentryMessage(panel), {
+        parse_mode: "HTML",
+        reply_markup: engagementService.memberStatusKeyboard(),
+      });
       return;
     }
-    const mine = await rewardService.getOrCreateMemberPoints({
+    const panel = await engagementService.buildMemberStatusPanel({
       groupId: runtime.group.id,
       telegramUserId: fromUserId,
       username: ctx.from?.username ?? null,
+      section: "home",
     });
-    await ctx.reply(
-      `Your points: ${mine.points} (lifetime ${mine.lifetimePoints}). Pending reward: ${mine.pendingReward.toString()}.`,
-    );
+    await ctx.reply(formatSentryMessage(panel), {
+      parse_mode: "HTML",
+      reply_markup: engagementService.memberStatusKeyboard(),
+    });
+  });
+
+  bot.command("mystatus", async (ctx) => {
+    if (!isGroupChat(ctx)) {
+      await ctx.reply("Use /mystatus inside a group where Sentry works.");
+      return;
+    }
+    const telegramId = chatIdOf(ctx);
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId || !fromUserId) return;
+    const runtime = await resolveGroupRuntime(telegramId);
+    if (!runtime?.communityMode) {
+      await ctx.reply("Community mode isn't enabled here.");
+      return;
+    }
+    const { engagementService } = await import("@/services/engagement.service");
+    const { formatSentryMessage } = await import("@/lib/telegram-message");
+    const panel = await engagementService.buildMemberStatusPanel({
+      groupId: runtime.group.id,
+      telegramUserId: fromUserId,
+      username: ctx.from?.username ?? null,
+      section: "home",
+    });
+    await ctx.reply(formatSentryMessage(panel), {
+      parse_mode: "HTML",
+      reply_markup: engagementService.memberStatusKeyboard(),
+    });
   });
 
   bot.command("birthday", async (ctx) => {

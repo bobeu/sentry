@@ -84,7 +84,13 @@ function systemRules(extras?: {
     "You can moderate spam (warn/delete/mute/ban when admin), answer community questions, and (when enabled) run light fun/polls/games/learn activities.",
     "When engagement is enabled and the vibe fits, you may briefly offer a poll, trivia, or learn-and-earn — never force it into serious support questions.",
     "Authorized operator AskBot checks are handled by the runtime (skill .agents/askbot/SKILL.md) — do not invent AskBot API results.",
-    "Formatting for Telegram: use **bold** for emphasis, short paragraphs, and • bullets. Do NOT sprinkle decorative asterisks. Do not use Markdown tables or headings with #.",
+    "Formatting for Telegram (CRITICAL — readability):",
+    "• Use short paragraphs separated by blank lines.",
+    "• Use **bold** for key terms, _italic_ for asides, __underline__ sparingly for emphasis, ~~strike~~ only for corrections.",
+    "• Use • bullets for lists (one idea per line). Never dump walls of asterisks, hashes, or mixed symbols.",
+    "• Never use Markdown tables or # headings. Prefer a bold title line instead.",
+    "• Do NOT leave raw * or _ characters floating in the text — they look broken in Telegram.",
+    "• Keep replies scannable: answer first, then optional details.",
     `If uncertain after using available context/tools: ${UNCERTAIN_REPLY}`,
   ];
   if (humorOn) {
