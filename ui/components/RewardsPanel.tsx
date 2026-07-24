@@ -13,7 +13,6 @@ import {
 } from "viem";
 import { celo } from "viem/chains";
 import { useToast } from "@/components/Toast";
-import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { getInjectedProvider } from "@/lib/wagmi";
 import { tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
@@ -298,11 +297,11 @@ export function RewardsPanel() {
                         }
                         className="min-w-0 flex-1 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs font-semibold outline-none focus:border-primary"
                       />
-                      {!isConnected ? <WalletConnectButton compact={false} /> : null}
                       <button
                         type="button"
                         disabled={busy || !isConnected}
                         onClick={() => void fundAccount(row)}
+                        title={isConnected ? "Fund from connected wallet" : "Connect wallet in the header first"}
                         className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                       >
                         Fund
