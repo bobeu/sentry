@@ -492,6 +492,16 @@ async function handleEngagementAndRewards(
       return true;
     }
 
+    const membersMayStart = settings?.membersCanStartActivities !== false;
+    if (!fromAdmin && !membersMayStart) {
+      await replyTo(
+        ctx,
+        "Only group admins / the employer can start activities here. Ask them to enable **Members can start activities** in the dashboard or Sentry DM.",
+        message.message_id,
+      );
+      return true;
+    }
+
     // Social campaign: employer/admin posts URL + start command.
     if (type === "social") {
       if (!fromAdmin && !runtime.employerUserId) {
@@ -916,7 +926,10 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       await employerAgentService.tryHandleEngagementCommand(user.id, cleaned);
     if (engagementHandled) {
       await replyPlain(ctx, engagementHandled, {
-        reply_markup: employerDmService.mainMenuKeyboard(),
+        reply_markup:
+          intent === "rewards"
+            ? await employerDmService.rewardsHubKeyboardForUser(user.id)
+            : employerDmService.mainMenuKeyboard(),
       });
       return;
     }
@@ -927,12 +940,19 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       user.id,
       cleaned,
     );
+    const rewardsKb = await employerDmService.rewardsHubKeyboardForUser(user.id);
     if (handled) {
-      await replyPlain(ctx, handled, {
-        reply_markup: employerDmService.mainMenuKeyboard(),
-      });
+      await replyPlain(ctx, handled, { reply_markup: rewardsKb });
       return;
     }
+    // No specific command — open Rewards hub with create/fund/pause/withdraw buttons.
+    const brief = await employerAgentService.buildRewardsBrief(user.id);
+    await replyPlain(
+      ctx,
+      `${brief.slice(0, 2800)}\n\nPick a group for create / fund / pause / member withdraw help:`,
+      { reply_markup: rewardsKb },
+    );
+    return;
   }
 
   const groupPick = cleaned.match(
@@ -1034,8 +1054,7 @@ async function handlePrivateAgent(ctx: Context, text: string) {
       intent === "report" ||
       intent === "spam" ||
       intent === "agreement" ||
-      intent === "employment" ||
-      intent === "rewards"
+      intent === "employment"
     ) {
       const report = await employerAgentService.formatDirectReport(user.id, intent);
       await replyPlain(ctx, report, {
@@ -1221,6 +1240,20 @@ export function registerHandlers(bot: Telegraf) {
       }
       if (!engagementService.typeAllowed(type, runtime.group.settings)) {
         await ctx.answerCbQuery("Not enabled").catch(() => undefined);
+        return;
+      }
+      const fromAdminIds = runtime.adminTelegramIds ?? [];
+      const isAdmin = Boolean(fromUserId && fromAdminIds.includes(fromUserId));
+      if (
+        !isAdmin &&
+        runtime.group.settings?.membersCanStartActivities === false
+      ) {
+        await ctx.answerCbQuery("Only admins can start").catch(() => undefined);
+        await ctx
+          .reply(
+            "Only admins/employer can start activities here. Ask them to enable member starts in dashboard or Sentry DM.",
+          )
+          .catch(() => undefined);
         return;
       }
       if (type === "social") {

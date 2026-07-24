@@ -102,9 +102,12 @@ export function GroupDetailPanel() {
     allowComics: false,
     allowSocialCampaigns: false,
     engagementGuidelines: "",
+    engagementSourceUrl: "",
     funPromptIntervalHours: 48,
     humorEnabled: true,
     humorStyle: "friendly",
+    pollsAnonymous: false,
+    membersCanStartActivities: true,
     rewardEnabled: false,
     rewardPaused: false,
     rewardAmountPerPoint: 0,
@@ -179,9 +182,12 @@ export function GroupDetailPanel() {
       allowComics: g.settings?.allowComics ?? false,
       allowSocialCampaigns: g.settings?.allowSocialCampaigns ?? false,
       engagementGuidelines: g.settings?.engagementGuidelines ?? "",
+      engagementSourceUrl: g.settings?.engagementSourceUrl ?? "",
       funPromptIntervalHours: g.settings?.funPromptIntervalHours ?? 48,
       humorEnabled: g.settings?.humorEnabled ?? true,
       humorStyle: g.settings?.humorStyle ?? "friendly",
+      pollsAnonymous: g.settings?.pollsAnonymous ?? false,
+      membersCanStartActivities: g.settings?.membersCanStartActivities ?? true,
       rewardEnabled: g.settings?.rewardEnabled ?? false,
       rewardPaused: g.settings?.rewardPaused ?? false,
       rewardAmountPerPoint: Number(g.settings?.rewardAmountPerPoint ?? 0),
@@ -585,6 +591,20 @@ export function GroupDetailPanel() {
                 label="Social Campaigns"
                 description="Twitter/X like / retweet verification."
               />
+              <Toggle
+                checked={settings.membersCanStartActivities}
+                onChange={(v) =>
+                  setSettings((s) => ({ ...s, membersCanStartActivities: v }))
+                }
+                label="Members can start activities"
+                description="When off, only admins/employer may start polls & games."
+              />
+              <Toggle
+                checked={settings.pollsAnonymous}
+                onChange={(v) => setSettings((s) => ({ ...s, pollsAnonymous: v }))}
+                label="Anonymous polls"
+                description="Off by default — votes are public unless you enable this."
+              />
             </div>
             <label className="block text-xs font-bold text-muted">
               Engagement guidelines (what Sentry should invent)
@@ -596,6 +616,18 @@ export function GroupDetailPanel() {
                 rows={3}
                 placeholder="Prefer Celo education quizzes; keep polls short; no politics."
                 className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary leading-relaxed text-xs font-normal"
+              />
+            </label>
+            <label className="block text-xs font-bold text-muted">
+              Source doc / link (optional — Sentry generates from this when set)
+              <input
+                type="url"
+                value={settings.engagementSourceUrl}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, engagementSourceUrl: e.target.value }))
+                }
+                placeholder="https://docs.example.com/faq or blog post"
+                className="mt-2 w-full rounded-xl border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-normal"
               />
             </label>
             <label className="block text-xs font-bold text-muted">
@@ -640,8 +672,42 @@ export function GroupDetailPanel() {
           <div className="space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Rewards (points → cash)</h2>
             <p className="text-xs text-muted">
-              Cash pays from a separate RewardAccount (not the employment wallet). Create the account via Sentry DM or the Rewards API after deploy.
+              Cash pays from a separate RewardAccount (not the employment wallet). Create it here or on the Dashboard → Reward accounts, then fund the address.
             </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setMessage(null);
+                  const res = await fetch(`/api/groups/${groupId}/rewards`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      action: "ensure",
+                      currency: settings.rewardCurrency,
+                    }),
+                  });
+                  const json = await res.json();
+                  if (!res.ok) {
+                    setError(json.error ?? "Could not create reward account");
+                    return;
+                  }
+                  setMessage(
+                    `Reward account ready: ${json.account?.address ?? "(ok)"} — fund it from the Dashboard.`,
+                  );
+                  await refresh();
+                }}
+                className="rounded-xl bg-accent px-4 py-2 text-xs font-bold text-slate-900 shadow-sm"
+              >
+                Create / ensure RewardAccount
+              </button>
+              <Link
+                href="/dashboard#rewards"
+                className="rounded-xl border border-primary/20 bg-white px-4 py-2 text-xs font-bold text-text-dark hover:border-primary"
+              >
+                Open dashboard rewards
+              </Link>
+            </div>
             <div className="grid gap-3.5 sm:grid-cols-2">
               <Toggle
                 checked={settings.rewardEnabled}

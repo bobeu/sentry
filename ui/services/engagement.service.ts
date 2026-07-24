@@ -231,10 +231,33 @@ export class EngagementService {
       );
     }
 
+    let sourceHint = "";
+    const sourceUrl = settings?.engagementSourceUrl?.trim();
+    if (sourceUrl) {
+      try {
+        const res = await fetch(sourceUrl, {
+          signal: AbortSignal.timeout(8_000),
+          headers: { "User-Agent": "SentryBot/1.0" },
+        });
+        if (res.ok) {
+          const text = (await res.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+          sourceHint = text.slice(0, 3500);
+        }
+      } catch {
+        sourceHint = `Employer source URL (fetch failed, use URL as topic hint): ${sourceUrl}`;
+      }
+    }
+
     const draft = await aiService.generateEngagementActivity({
       type: input.type,
       context: input.context,
-      guidelines: input.guidelines ?? settings?.engagementGuidelines,
+      guidelines: [
+        input.guidelines ?? settings?.engagementGuidelines,
+        sourceUrl ? `Source URL: ${sourceUrl}` : null,
+        sourceHint ? `Source material excerpt:\n${sourceHint}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n") || null,
       hint: input.hint,
     });
 
@@ -432,6 +455,7 @@ export class EngagementService {
       rewardPaused?: boolean | null;
       rewardAmountPerPoint?: { toString(): string } | number | null;
       rewardCurrency?: string | null;
+      pollsAnonymous?: boolean | null;
     } | null,
   ) {
     const telegram =
@@ -481,7 +505,21 @@ export class EngagementService {
     }
 
     const question = (config.question || activity.title).slice(0, 300);
-    const isAnonymous = activity.type === "poll";
+    // Default: public (non-anonymous) polls — anonymous only when employer enables it.
+    let pollsAnonymous = Boolean(settings?.pollsAnonymous);
+    if (settings?.pollsAnonymous === undefined) {
+      const activityRow = await prisma.engagementActivity.findUnique({
+        where: { id: activity.id },
+        select: { groupId: true },
+      });
+      if (activityRow) {
+        const gs = await prisma.groupSettings.findUnique({
+          where: { groupId: activityRow.groupId },
+        });
+        pollsAnonymous = Boolean(gs?.pollsAnonymous);
+      }
+    }
+    const isAnonymous = activity.type === "poll" && pollsAnonymous;
     const isQuiz =
       format === "quiz" || activity.type === "learn" || activity.type === "game";
     const extra: Record<string, unknown> = {
@@ -825,7 +863,7 @@ export class EngagementService {
           { text: "🏆 Leaderboard", callback_data: "me:board" },
           { text: "📋 Active now", callback_data: "me:active" },
         ],
-        [{ text: "📤 How to withdraw", callback_data: "me:withdraw" }],
+        [{ text: "📤 Withdraw cash", callback_data: "me:withdraw" }],
       ],
     };
   }
