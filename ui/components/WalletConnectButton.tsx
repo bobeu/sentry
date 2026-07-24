@@ -2,10 +2,12 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useEffect, useState } from "react";
+import { useDisconnect } from "wagmi";
 import { isFarcaster, isMiniPay } from "@/lib/wagmi";
 
 /**
- * Themed RainbowKit connect control. Compact for the site header.
+ * Themed RainbowKit connect control with an explicit disconnect action.
+ * Compact for the site header.
  */
 export function WalletConnectButton({
   compact = true,
@@ -13,6 +15,7 @@ export function WalletConnectButton({
   compact?: boolean;
 }) {
   const [implicit, setImplicit] = useState(false);
+  const { disconnectAsync, isPending: disconnecting } = useDisconnect();
 
   useEffect(() => {
     setImplicit(isMiniPay() || isFarcaster());
@@ -25,6 +28,14 @@ export function WalletConnectButton({
         MiniPay
       </span>
     );
+  }
+
+  async function handleDisconnect() {
+    try {
+      await disconnectAsync();
+    } catch (err) {
+      console.error("[wallet] disconnect failed", err);
+    }
   }
 
   return (
@@ -100,9 +111,38 @@ export function WalletConnectButton({
                   <button
                     type="button"
                     onClick={openAccountModal}
+                    title="Wallet details"
                     className="rounded-xl border border-primary/20 bg-white px-3 py-1.5 text-xs font-bold text-text-dark transition hover:border-primary hover:text-primary shadow-sm"
                   >
                     {account.displayName}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDisconnect()}
+                    disabled={disconnecting}
+                    title="Disconnect wallet"
+                    aria-label="Disconnect wallet"
+                    className={
+                      compact
+                        ? "inline-flex min-h-8 min-w-8 items-center justify-center rounded-xl border border-primary/15 bg-white px-2 py-1.5 text-xs font-bold text-muted transition hover:border-danger/40 hover:bg-danger/5 hover:text-danger disabled:opacity-60"
+                        : "rounded-xl border border-primary/15 bg-white px-2.5 py-1.5 text-xs font-bold text-muted transition hover:border-danger/40 hover:bg-danger/5 hover:text-danger disabled:opacity-60"
+                    }
+                  >
+                    {disconnecting ? (
+                      "…"
+                    ) : compact ? (
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden>
+                        <path
+                          d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      "Disconnect"
+                    )}
                   </button>
                 </div>
               );
