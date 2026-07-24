@@ -452,7 +452,7 @@ export class EmployerDmService {
             `Currency: ${account.currency}`,
             "",
             "Fund this address (not your employment wallet). Members withdraw by tagging Sentry with their 0x.",
-            "Dashboard → Reward accounts for one-click fund.",
+            "Wallets → Reward Account for one-click fund + sync balance.",
           ].join("\n"),
           rewardGroupKeyboard(groupId),
         );
@@ -493,7 +493,7 @@ export class EmployerDmService {
           `Send ${account.currency} to:`,
           account.address,
           "",
-          "Or use Dashboard → Reward accounts → Fund (connected wallet).",
+          "Or use Wallets → Reward Account → Fund (connected wallet).",
           "Do not send to your employment SentryWallet — that pays Sentry's work fees, not member prizes.",
         ].join("\n"),
         rewardGroupKeyboard(groupId),
@@ -572,8 +572,8 @@ export class EmployerDmService {
           "3. In the group, they tag Sentry with their `0x` wallet (or say `withdraw rewards 0x…`)",
           "4. Or they open /mystatus → How to withdraw",
           "",
-          "Employers fund the RewardAccount (button above or Dashboard → Reward accounts).",
-          "Employment wallet withdrawals are separate (Menu → Wallet).",
+          "Employers fund the RewardAccount (button above or Wallets → Reward Account).",
+          "Employment wallet withdrawals are separate (Menu → Wallet / Wallets → Employment).",
         ].join("\n"),
         rewardGroupKeyboard(groupId),
       );

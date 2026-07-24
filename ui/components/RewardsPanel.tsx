@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import {
@@ -54,9 +55,8 @@ function envToken(currency: string): Address | null {
     USDC: process.env.NEXT_PUBLIC_CELO_USDC_ADDRESS || process.env.CELO_USDC_ADDRESS,
     USDT: process.env.NEXT_PUBLIC_CELO_USDT_ADDRESS || process.env.CELO_USDT_ADDRESS,
   };
-  // Client: only NEXT_PUBLIC_* is available; fall back to known mainnet defaults if unset.
   const defaults: Record<string, string> = {
-    USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a", // cUSD / Mento Dollar commonly used as USDm
+    USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
     USDC: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
     USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
   };
@@ -64,93 +64,153 @@ function envToken(currency: string): Address | null {
   return raw.startsWith("0x") ? (raw as Address) : null;
 }
 
-export function RewardsPanel() {
+export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   const toast = useToast();
   const { isConnected, address: connectedAddress } = useAccount();
   const [rows, setRows] = useState<RewardRow[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [fundAmount, setFundAmount] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<"fund" | "controls">("fund");
+  const [fundAmount, setFundAmount] = useState("1");
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/rewards/overview", { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to load rewards");
-      setRows(json.groups ?? []);
-    } catch (err) {
-      toast.push(err instanceof Error ? err.message : "Could not load rewards");
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+    const res = await fetch("/api/rewards/overview", { cache: "no-store" });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Failed to load rewards");
+    const groups = (json.groups ?? []) as RewardRow[];
+    setRows(groups);
+    setSelectedGroupId((prev) => {
+      if (prev && groups.some((g) => g.groupId === prev)) return prev;
+      return groups[0]?.groupId ?? "";
+    });
+    return groups;
+  }, []);
 
   useEffect(() => {
-    void load();
+    void (async () => {
+      try {
+        await load();
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load rewards");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [load]);
 
-  async function createAccount(groupId: string, currency?: string) {
-    setBusyId(groupId);
+  const row = useMemo(
+    () => rows.find((r) => r.groupId === selectedGroupId) ?? null,
+    [rows, selectedGroupId],
+  );
+
+  const address = row?.account?.address ?? null;
+  const currency = row?.account?.currency || row?.rewardCurrency || "USDm";
+  const balance = row?.balance != null ? Number(row.balance) : 0;
+  const hasAccount = Boolean(address);
+
+  async function refresh(notify = false) {
+    setBusy(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/groups/${groupId}/rewards`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ensure", currency }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Create failed");
-      toast.push("Reward account created");
-      await load();
+      const groups = await load();
+      const selected =
+        groups.find((g) => g.groupId === selectedGroupId) ?? groups[0] ?? null;
+      if (notify && selected?.account) {
+        const bal =
+          selected.balance != null ? Number(selected.balance).toFixed(4) : "—";
+        setMessage(
+          `Balance updated: ${bal} ${selected.account.currency || selected.rewardCurrency}`,
+        );
+      }
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   }
 
-  async function pauseOrResume(groupId: string, action: "pause" | "resume") {
-    setBusyId(groupId);
+  async function copyAddress() {
+    if (!address) return;
+    await navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function createAccount() {
+    if (!row) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
     try {
-      const res = await fetch(`/api/groups/${groupId}/rewards`, {
+      const res = await fetch(`/api/groups/${row.groupId}/rewards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ensure",
+          currency: row.rewardCurrency || "USDm",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Create failed");
+      setMessage("Reward account created. Fund it below.");
+      toast.push("Reward account created");
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Create failed";
+      setError(msg);
+      toast.push(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pauseOrResume(action: "pause" | "resume") {
+    if (!row) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${row.groupId}/rewards`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Update failed");
+      setMessage(action === "pause" ? "Rewards paused." : "Rewards resumed.");
       toast.push(action === "pause" ? "Rewards paused" : "Rewards resumed");
       await load();
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : "Update failed");
+      setError(err instanceof Error ? err.message : "Update failed");
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   }
 
-  async function copyAddress(address: string) {
-    try {
-      await navigator.clipboard.writeText(address);
-      toast.push("Reward address copied");
-    } catch {
-      toast.push(address);
-    }
-  }
-
-  async function fundAccount(row: RewardRow) {
-    if (!row.account?.address) return;
-    const amountStr = (fundAmount[row.groupId] ?? "").trim();
+  async function fundAccount(event: FormEvent) {
+    event.preventDefault();
+    if (!row?.account?.address) return;
+    const amountStr = fundAmount.trim();
     if (!amountStr || Number(amountStr) <= 0) {
-      toast.push("Enter a positive fund amount");
+      setError("Enter a positive fund amount");
       return;
     }
     const eth = getInjectedProvider();
     if (!eth || !isConnected) {
-      toast.push("Connect a wallet to fund");
+      toast.push("Connect a wallet in the header to fund.");
       return;
     }
-    const currency = (row.account.currency || row.rewardCurrency || "USDm") as PaymentCurrency;
-    setBusyId(row.groupId);
+
+    setBusy(true);
+    setError(null);
+    setMessage("Submitting fund…");
     try {
+      const payCurrency = (row.account.currency || row.rewardCurrency || "USDm") as PaymentCurrency;
       const transport = custom(eth as Parameters<typeof custom>[0]);
       const client = createWalletClient({ chain: celo, transport });
       const publicClient = createPublicClient({ chain: celo, transport });
@@ -159,7 +219,7 @@ export function RewardsPanel() {
         : await client.requestAddresses();
       const to = row.account.address as Address;
       let hash: Hash;
-      if (currency === "CELO") {
+      if (payCurrency === "CELO") {
         hash = await client.sendTransaction({
           to,
           value: parseUnits(amountStr, 18),
@@ -167,181 +227,344 @@ export function RewardsPanel() {
           data: CELO_ATTRIBUTION_SUFFIX,
         });
       } else {
-        const token = envToken(currency);
-        if (!token) throw new Error(`Token address missing for ${currency}`);
+        const token = envToken(payCurrency);
+        if (!token) throw new Error(`Token address missing for ${payCurrency}`);
         hash = await client.writeContract({
           address: token,
           abi: ERC20_ABI,
           functionName: "transfer",
-          args: [to, parseUnits(amountStr, tokenDecimals(currency))],
+          args: [to, parseUnits(amountStr, tokenDecimals(payCurrency))],
           account,
           chain: celo,
           dataSuffix: CELO_ATTRIBUTION_SUFFIX,
         });
       }
-      toast.push("Waiting for confirmation…");
+      setMessage("Waiting for confirmation…");
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("Fund transaction reverted");
-      toast.push("Reward account funded");
-      await load();
+      await refresh(true);
+      const ok = "Reward account funded. Balance synced.";
+      setMessage(ok);
+      toast.push(ok, "success");
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : "Fund failed");
+      const msg = err instanceof Error ? err.message : "Fund failed";
+      setError(msg);
+      toast.push(msg);
+      setMessage(null);
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   }
 
   if (loading) {
     return (
-      <div className="mt-8 rounded-2xl border border-primary/10 bg-white p-6 shadow-sm">
-        <p className="text-sm text-muted font-medium">Loading rewards…</p>
+      <div className={embedded ? "space-y-4" : "mt-6 max-w-lg space-y-4"}>
+        <p className="text-sm text-muted font-medium">Loading reward accounts…</p>
       </div>
     );
   }
 
   return (
-    <section className="mt-8 space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
-            Engagement payouts
-          </p>
-          <h2 className="text-xl font-black text-text-dark sm:text-2xl">
-            Reward accounts
-          </h2>
-          <p className="mt-1 max-w-2xl text-xs text-muted font-semibold leading-relaxed">
-            Separate from your employment wallet. Create a RewardAccount per group, fund it, then
-            members earn points and withdraw by tagging Sentry with their 0x address.
+    <div className={`${embedded ? "" : "mt-6"} max-w-lg space-y-6 animate-rise`}>
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-primary/10 bg-primary p-6 text-white flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm">
+        <div className="space-y-2 max-w-xl text-left">
+          <h1 className="text-xl font-black tracking-tight leading-tight">
+            Reward Account Console
+          </h1>
+          <p className="text-[11px] text-white/80 leading-relaxed font-semibold">
+            Fund member cash prizes separately from employment fees. Create a RewardAccount per
+            group, sync the on-chain balance, then pause or resume payouts anytime.
           </p>
         </div>
-        <Link
-          href="/groups"
-          className="rounded-full border border-primary/20 bg-white px-4 py-2 text-xs font-bold text-text-dark hover:border-primary hover:text-primary transition shadow-sm"
-        >
-          Open groups
-        </Link>
+        <div className="relative h-20 w-28 rounded-xl overflow-hidden border border-white/20 shrink-0">
+          <Image
+            src="/sentry_real_work.png"
+            alt="Sentry engagement rewards"
+            fill
+            className="object-cover object-center"
+          />
+        </div>
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-primary/20 bg-primary/5 p-6 text-center">
-          <p className="text-sm font-semibold text-text-dark">No groups yet</p>
-          <p className="mt-1 text-xs text-muted">
+        <div className="surface-card p-5 sm:p-6 space-y-3 border border-primary/10 shadow-sm text-center">
+          <p className="text-sm font-bold text-text-dark">No groups yet</p>
+          <p className="text-xs text-muted font-medium">
             Enable Sentry in a Telegram group, then create a reward account here.
           </p>
           <Link
             href="/groups"
-            className="mt-4 inline-block rounded-full bg-primary px-5 py-2 text-xs font-bold text-white"
+            className="inline-block rounded-full bg-primary px-5 py-2 text-xs font-bold text-white"
           >
             Go to Groups
           </Link>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {rows.map((row) => {
-            const busy = busyId === row.groupId;
-            const hasAccount = Boolean(row.account?.address);
-            return (
-              <article
-                key={row.groupId}
-                className="rounded-2xl border border-primary/10 bg-white p-4 shadow-sm space-y-3"
+        <>
+          <div className="surface-card p-5 sm:p-6 space-y-4 border border-primary/10 shadow-sm">
+            <div className="flex items-center justify-between border-b border-primary/10 pb-3 gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
+                Reward Account
+              </p>
+              <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 rounded px-2 py-0.5 font-bold uppercase font-mono">
+                {currency}
+              </span>
+            </div>
+
+            <label className="block text-xs text-muted font-bold uppercase tracking-wider">
+              Group
+              <select
+                value={selectedGroupId}
+                onChange={(e) => {
+                  setSelectedGroupId(e.target.value);
+                  setMessage(null);
+                  setError(null);
+                  setShowQr(false);
+                }}
+                className="mt-2 block w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-semibold normal-case tracking-normal"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-black text-text-dark">
-                      {row.groupName ?? row.telegramId}
-                    </h3>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                      {hasAccount
-                        ? `${row.account!.status} · ${row.account!.currency}`
-                        : "No reward account"}
-                      {row.rewardPaused ? " · paused" : row.rewardEnabled ? " · cash on" : ""}
-                    </p>
-                  </div>
+                {rows.map((g) => (
+                  <option key={g.groupId} value={g.groupId}>
+                    {g.groupName ?? g.telegramId}
+                    {g.account ? "" : " (no account)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <p className="break-all font-mono text-[11px] font-bold text-text-dark bg-bg-light/60 border border-primary/10 rounded-lg p-3.5 leading-relaxed">
+              {address ?? "Create a RewardAccount for this group to get a fund address"}
+            </p>
+
+            {hasAccount ? (
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void copyAddress()}
+                  className="rounded-full border border-primary/10 bg-white px-4 py-1.5 text-xs font-bold text-text-dark hover:bg-slate-100 transition cursor-pointer shadow-sm"
+                >
+                  {copied ? "Address Copied" : "Copy Address"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQr((v) => !v)}
+                  className="rounded-full border border-primary/10 bg-white px-4 py-1.5 text-xs font-bold text-text-dark hover:bg-slate-100 transition cursor-pointer shadow-sm"
+                >
+                  {showQr ? "Hide QR" : "Display QR"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void refresh(true)}
+                  className="rounded-full border border-primary/10 bg-white px-4 py-1.5 text-xs font-bold text-text-dark hover:bg-slate-100 transition cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  Sync Balance
+                </button>
+                {row ? (
                   <Link
                     href={`/groups/${row.groupId}`}
-                    className="shrink-0 text-[10px] font-bold uppercase text-primary hover:underline"
+                    className="rounded-full border border-primary/10 bg-white px-4 py-1.5 text-xs font-bold text-text-dark hover:bg-slate-100 transition shadow-sm"
                   >
-                    Settings
+                    Group settings
                   </Link>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || !row?.factoryConfigured}
+                onClick={() => void createAccount()}
+                className="rounded-full bg-accent px-6 py-2.5 text-xs font-bold text-slate-900 shadow hover:bg-accent/90 transition cursor-pointer disabled:opacity-50"
+              >
+                {busy
+                  ? "Creating…"
+                  : row?.factoryConfigured
+                    ? "Create RewardAccount"
+                    : "RewardFactory not configured"}
+              </button>
+            )}
+
+            {showQr && address ? (
+              <div className="flex justify-center py-2 animate-rise">
+                <Image
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(address)}`}
+                  alt="Reward account QR code"
+                  className="rounded-lg border border-primary/10 bg-white p-1.5 shadow-md"
+                  width={140}
+                  height={140}
+                  unoptimized
+                />
+              </div>
+            ) : null}
+          </div>
+
+          {hasAccount && row ? (
+            <>
+              <div className="surface-card p-5 sm:p-6 space-y-4 border border-primary/10 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted border-b border-primary/10 pb-2">
+                  Balance & Reward Metrics
+                </h3>
+                <p className="text-3xl font-black text-text-dark">
+                  {Number.isFinite(balance) ? balance.toFixed(4) : "—"}{" "}
+                  <span className="text-lg text-muted font-bold font-sans">{currency}</span>
+                </p>
+                <div className="grid grid-cols-2 gap-4 text-xs pt-1 border-t border-primary/10">
+                  <div className="space-y-0.5">
+                    <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
+                      Cash rewards
+                    </p>
+                    <p className="text-text-dark font-bold text-sm">
+                      {row.rewardPaused
+                        ? "Paused"
+                        : row.rewardEnabled
+                          ? "On"
+                          : "Off"}
+                    </p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
+                      Per point
+                    </p>
+                    <p className="text-primary font-bold font-mono text-sm">
+                      {row.rewardAmountPerPoint} {row.rewardCurrency}
+                    </p>
+                  </div>
+                  <div className="space-y-0.5 pt-2">
+                    <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
+                      Account status
+                    </p>
+                    <p className="text-text-dark text-sm font-bold capitalize">
+                      {row.account?.status ?? "—"}
+                    </p>
+                  </div>
+                  <div className="space-y-0.5 pt-2">
+                    <p className="text-muted font-bold uppercase tracking-wider text-[10px]">
+                      Member withdraw
+                    </p>
+                    <p className="text-text-dark text-sm font-bold">Tag Sentry + 0x</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="surface-card p-5 sm:p-6 space-y-4 border border-primary/10 shadow-sm">
+                <div className="flex border-b border-primary/10 pb-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("fund");
+                      setMessage(null);
+                      setError(null);
+                    }}
+                    className={`pb-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
+                      activeTab === "fund"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted hover:text-primary"
+                    }`}
+                  >
+                    Fund Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("controls");
+                      setMessage(null);
+                      setError(null);
+                    }}
+                    className={`pb-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
+                      activeTab === "controls"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted hover:text-primary"
+                    }`}
+                  >
+                    Controls
+                  </button>
                 </div>
 
-                {hasAccount ? (
-                  <>
-                    <div className="rounded-xl bg-slate-50 border border-primary/10 px-3 py-2">
-                      <p className="text-[10px] font-bold uppercase text-muted">Fund address</p>
-                      <p className="mt-0.5 break-all font-mono text-[11px] font-semibold text-text-dark">
-                        {row.account!.address}
+                {activeTab === "fund" ? (
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <p className="text-xs text-text-dark font-bold">
+                        Option A: Injected Wallet Fund
                       </p>
-                      {row.balance != null ? (
-                        <p className="mt-1 text-xs font-bold text-primary">
-                          On-chain ≈ {Number(row.balance).toFixed(4)} {row.account!.currency}
-                        </p>
-                      ) : null}
+                      <p className="text-xs text-muted font-medium">
+                        Connect in the header, then submit a fund amount in {currency}.
+                      </p>
+                      <form onSubmit={(e) => void fundAccount(e)} className="flex flex-wrap items-end gap-3 pt-1">
+                        <label className="flex-1 text-xs text-muted">
+                          Fund Amount ({currency})
+                          <input
+                            value={fundAmount}
+                            onChange={(e) => setFundAmount(e.target.value)}
+                            className="mt-2 block w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary font-mono text-xs"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={busy || !isConnected}
+                          title={
+                            isConnected
+                              ? "Fund from connected wallet"
+                              : "Connect wallet in the header first"
+                          }
+                          className="rounded-full bg-accent px-6 py-2.5 text-xs font-bold text-slate-900 shadow hover:bg-accent/90 transition cursor-pointer disabled:opacity-60"
+                        >
+                          Submit Fund
+                        </button>
+                      </form>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void copyAddress(row.account!.address)}
-                        className="rounded-xl border border-primary/20 bg-white px-3 py-2 text-xs font-bold text-text-dark"
-                      >
-                        Copy
-                      </button>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="Amount"
-                        value={fundAmount[row.groupId] ?? ""}
-                        onChange={(e) =>
-                          setFundAmount((s) => ({ ...s, [row.groupId]: e.target.value }))
-                        }
-                        className="min-w-0 flex-1 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs font-semibold outline-none focus:border-primary"
-                      />
-                      <button
-                        type="button"
-                        disabled={busy || !isConnected}
-                        onClick={() => void fundAccount(row)}
-                        title={isConnected ? "Fund from connected wallet" : "Connect wallet in the header first"}
-                        className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-                      >
-                        Fund
-                      </button>
+                    <div className="border-t border-primary/10 pt-4 space-y-1.5">
+                      <p className="text-xs text-text-dark font-bold">
+                        Option B: Direct Ledger Transfer
+                      </p>
+                      <p className="text-xs text-muted leading-relaxed font-medium">
+                        Send accepted tokens directly to the reward address above. Once the tx
+                        completes, tap <strong className="text-text-dark font-extrabold">Sync Balance</strong>.
+                        Do not send to your employment wallet.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted leading-relaxed font-medium">
+                      Pause stops new cash accruals for member points. Resume turns cash rewards
+                      back on. Fine-tune rates in group settings.
+                    </p>
+                    <div className="flex flex-wrap gap-2.5">
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() =>
-                          void pauseOrResume(
-                            row.groupId,
-                            row.rewardPaused ? "resume" : "pause",
-                          )
+                          void pauseOrResume(row.rewardPaused ? "resume" : "pause")
                         }
-                        className="rounded-xl border border-primary/20 bg-white px-3 py-2 text-xs font-bold text-text-dark hover:border-primary"
+                        className="rounded-full border border-primary/10 bg-white px-5 py-2.5 text-xs font-bold text-text-dark hover:bg-slate-100 transition cursor-pointer shadow-sm disabled:opacity-50"
                       >
-                        {row.rewardPaused ? "Resume" : "Pause"}
+                        {row.rewardPaused ? "Resume rewards" : "Pause rewards"}
                       </button>
+                      <Link
+                        href={`/groups/${row.groupId}`}
+                        className="rounded-full bg-accent px-5 py-2.5 text-xs font-bold text-slate-900 shadow hover:bg-accent/90 transition"
+                      >
+                        Edit rates & points
+                      </Link>
                     </div>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busy || !row.factoryConfigured}
-                    onClick={() =>
-                      void createAccount(row.groupId, row.rewardCurrency || "USDm")
-                    }
-                    className="w-full rounded-xl bg-accent px-4 py-2.5 text-xs font-bold text-slate-900 shadow-sm disabled:opacity-50"
-                  >
-                    {busy
-                      ? "Creating…"
-                      : row.factoryConfigured
-                        ? "Create RewardAccount"
-                        : "RewardFactory not configured"}
-                  </button>
+                  </div>
                 )}
-              </article>
-            );
-          })}
-        </div>
+              </div>
+            </>
+          ) : null}
+        </>
       )}
-    </section>
+
+      {message ? (
+        <div className="rounded-lg border border-accent/25 bg-accent/10 px-4 py-3 text-xs text-slate-900 font-bold animate-rise">
+          {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-lg border border-alert/25 bg-alert/10 px-4 py-3 text-xs text-alert font-bold animate-rise">
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }

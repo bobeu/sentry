@@ -672,7 +672,8 @@ export function GroupDetailPanel() {
           <div className="space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Rewards (points → cash)</h2>
             <p className="text-xs text-muted">
-              Cash pays from a separate RewardAccount (not the employment wallet). Create it here or on the Dashboard → Reward accounts, then fund the address.
+              Cash pays from a separate RewardAccount (not the employment wallet). Create it here
+              or open Wallets → Reward Account to fund, sync balance, and pause payouts.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -693,7 +694,7 @@ export function GroupDetailPanel() {
                     return;
                   }
                   setMessage(
-                    `Reward account ready: ${json.account?.address ?? "(ok)"} — fund it from the Dashboard.`,
+                    `Reward account ready: ${json.account?.address ?? "(ok)"} — fund it under Wallets → Reward Account.`,
                   );
                   await refresh();
                 }}
@@ -702,10 +703,10 @@ export function GroupDetailPanel() {
                 Create / ensure RewardAccount
               </button>
               <Link
-                href="/dashboard#rewards"
+                href="/wallet?tab=reward"
                 className="rounded-xl border border-primary/20 bg-white px-4 py-2 text-xs font-bold text-text-dark hover:border-primary"
               >
-                Open dashboard rewards
+                Open Reward Account
               </Link>
             </div>
             <div className="grid gap-3.5 sm:grid-cols-2">
