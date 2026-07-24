@@ -482,7 +482,7 @@ export class EmployerDmService {
       const groupId = rewFund[1]!;
       await input.answerCb();
       const { rewardService } = await import("@/services/reward.service");
-      const account = await rewardService.getAccount(groupId);
+      const account = await rewardService.reconcileRewardAccountIfStale(groupId);
       if (!account) {
         await input.editOrReply(
           "No reward account yet — tap Create / ensure account first.",
@@ -614,7 +614,7 @@ export class EmployerDmService {
     const group = await groupService.getForUser(userId, groupId);
     const { rewardService } = await import("@/services/reward.service");
     const { blockchainService } = await import("@/services/blockchain.service");
-    const account = await rewardService.getAccount(groupId);
+    const account = await rewardService.reconcileRewardAccountIfStale(groupId);
     const s = group.settings;
     let balanceLine = "Balance: (unknown)";
     if (account?.address && blockchainService.isRewardFactoryConfigured()) {

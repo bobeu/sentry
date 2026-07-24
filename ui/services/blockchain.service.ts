@@ -470,6 +470,25 @@ export class BlockchainService {
     return addr && isAddress(addr) && addr !== zeroAddress ? addr : null;
   }
 
+  /** Public accessor for the synced RewardFactory address. */
+  currentRewardFactoryAddress(): Address | null {
+    return this.rewardFactoryAddress();
+  }
+
+  /** Look up RewardAccount for accountKey on the current factory (null if none). */
+  async rewardAccountOfKey(accountKey: Hex): Promise<Address | null> {
+    const factory = this.rewardFactoryAddress();
+    if (!factory) return null;
+    const existing = await this.client().readContract({
+      address: factory,
+      abi: CONTRACTS.RewardFactory.abi,
+      functionName: "accountOfKey",
+      args: [accountKey],
+    });
+    if (!existing || (existing as Address) === zeroAddress) return null;
+    return existing as Address;
+  }
+
   private walletClient(kind: "owner" | "operator", address: Address | null) {
     const privateKey = key(kind);
     if (!privateKey || !address) return null;

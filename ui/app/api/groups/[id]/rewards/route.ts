@@ -13,7 +13,7 @@ export async function GET(_request: Request, { params }: Params) {
     const user = await requireSessionUser();
     const { id } = await params;
     await groupService.getForUser(user.id, id);
-    const account = await rewardService.getAccount(id);
+    const account = await rewardService.reconcileRewardAccountIfStale(id);
     const leaderboard = await rewardService.leaderboard(id, 15);
     const operator = account
       ? await rewardService.readOnChainOperator(id)
@@ -23,6 +23,7 @@ export async function GET(_request: Request, { params }: Params) {
       operator,
       leaderboard,
       factoryConfigured: blockchainService.isRewardFactoryConfigured(),
+      factoryAddress: blockchainService.currentRewardFactoryAddress(),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed";
