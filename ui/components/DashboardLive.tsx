@@ -22,6 +22,7 @@ type NextSettlement = {
 
 type StatusPayload = {
   status: string;
+  preferredNetwork?: "CELO" | "GOAT";
   currency: string;
   wallet: {
     address: string;
@@ -124,6 +125,7 @@ export function DashboardLive() {
   const [data, setData] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [networkSaving, setNetworkSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,7 +191,35 @@ export function DashboardLive() {
   const available = data.availableBalance ?? data.wallet?.availableBalance ?? balance;
   const outstanding = data.outstandingCharges ?? data.wallet?.outstandingCharges ?? 0;
   const currency = data.currency ?? "USDm";
+  const preferredNetwork = data.preferredNetwork ?? "CELO";
   const next = data.nextSettlement;
+
+  async function setPreferredNetwork(nextNetwork: "CELO" | "GOAT") {
+    if (!data || nextNetwork === preferredNetwork) return;
+    setNetworkSaving(true);
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredNetwork: nextNetwork }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Failed to switch network");
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              preferredNetwork: json.settings?.preferredNetwork ?? nextNetwork,
+            }
+          : prev,
+      );
+      toast.push(`Network switched to ${nextNetwork}`, "success");
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : "Failed to switch network");
+    } finally {
+      setNetworkSaving(false);
+    }
+  }
 
   return (
     <div className="mt-8 space-y-8 animate-rise">
@@ -197,8 +227,31 @@ export function DashboardLive() {
         <div className="space-y-2 max-w-xl text-left">
           <h1 className="text-2xl font-black tracking-tight leading-tight">Active Sentry Command Terminal</h1>
           <p className="text-xs text-white/80 leading-relaxed font-medium">
-            Review real-time transaction settlements, automated moderate actions, and playbook instruction triggers. Sentry is synchronised with the Celo network.
+            Review real-time transaction settlements, automated moderate actions, and playbook instruction triggers. Sentry is synchronized with the selected network profile.
           </p>
+          <div className="pt-2">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-white/85">
+              Billing/Identity Network
+            </label>
+            <div className="mt-1.5">
+              <select
+                value={preferredNetwork}
+                disabled={networkSaving}
+                onChange={(event) =>
+                  void setPreferredNetwork(event.target.value as "CELO" | "GOAT")
+                }
+                className="rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold text-white outline-none"
+                aria-label="Preferred network"
+              >
+                <option value="CELO" className="text-text-dark">
+                  CELO (existing on-chain billing)
+                </option>
+                <option value="GOAT" className="text-text-dark">
+                  GOAT (AgentKit + ERC-8004)
+                </option>
+              </select>
+            </div>
+          </div>
         </div>
         <div className="relative h-24 w-36 rounded-xl overflow-hidden border border-white/20 shrink-0">
           <Image src="/dashboard.png" alt="Dashboard Graphic" fill className="object-cover object-top" />
@@ -213,7 +266,7 @@ export function DashboardLive() {
           <Card
             title="Prepaid Balance"
             value={`${balance.toFixed(4)} ${currency}`}
-            description="Total Celo on-chain wallet balance"
+            description={`Total on-chain wallet balance (${preferredNetwork})`}
           />
           <Card
             title="Available Balance"

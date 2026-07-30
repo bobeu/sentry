@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 
 type SettingsState = {
   displayName: string;
+  preferredNetwork: "CELO" | "GOAT";
   timeZone: string;
   autoResume: boolean;
   emailNotifications: boolean;
@@ -21,10 +22,26 @@ type ApiKeyRow = {
   createdAt: string;
 };
 
+type GoatStatus = {
+  config: {
+    network: string;
+    chainId: number;
+    registryIdentifier: string;
+    configured: boolean;
+  };
+  identity: {
+    agentId: string | null;
+    agentUri: string | null;
+    registeredAt: string | null;
+    registrationTx: string | null;
+  };
+};
+
 export default function SettingsPage() {
   const toast = useToast();
   const [settings, setSettings] = useState<SettingsState>({
     displayName: "",
+    preferredNetwork: "CELO",
     timeZone: "UTC",
     autoResume: true,
     emailNotifications: true,
@@ -36,11 +53,22 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [keyLabel, setKeyLabel] = useState("default");
+  const [goat, setGoat] = useState<GoatStatus | null>(null);
+  const [goatUri, setGoatUri] = useState("");
+  const [goatBusy, setGoatBusy] = useState(false);
 
   async function loadKeys() {
     const res = await fetch("/api/agent/keys");
     const json = await res.json();
     if (res.ok) setKeys(json.keys ?? []);
+  }
+
+  async function loadGoat() {
+    const res = await fetch("/api/goat/erc8004");
+    const json = await res.json();
+    if (!res.ok) return;
+    setGoat(json);
+    setGoatUri(json.identity?.agentUri ?? "");
   }
 
   useEffect(() => {
@@ -53,8 +81,32 @@ export default function SettingsPage() {
       }
       setSettings(json.settings);
       await loadKeys();
+      await loadGoat();
     })();
   }, [toast]);
+
+  async function runGoatAction(action: "register_agent" | "set_agent_uri") {
+    setGoatBusy(true);
+    try {
+      const payload =
+        action === "register_agent"
+          ? { action, agentUri: goatUri || undefined }
+          : { action, agentUri: goatUri };
+      const res = await fetch("/api/goat/erc8004", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "GOAT action failed");
+      toast.push(json.message ?? "GOAT identity updated", "success");
+      await loadGoat();
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : "GOAT action failed");
+    } finally {
+      setGoatBusy(false);
+    }
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -143,6 +195,22 @@ export default function SettingsPage() {
               className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition font-mono text-sm"
               placeholder="UTC"
             />
+          </label>
+          <label className="block text-xs text-muted font-semibold">
+            Preferred Network
+            <select
+              value={settings.preferredNetwork}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  preferredNetwork: e.target.value as "CELO" | "GOAT",
+                }))
+              }
+              className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition text-sm font-bold"
+            >
+              <option value="CELO">CELO (existing billing network)</option>
+              <option value="GOAT">GOAT (AgentKit + ERC-8004)</option>
+            </select>
           </label>
         </div>
 
@@ -268,6 +336,50 @@ export default function SettingsPage() {
             ))
           )}
         </ul>
+      </div>
+
+      <div className="surface-card p-6 space-y-4 max-w-xl border border-primary/10 shadow-sm">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-text-dark border-b border-primary/10 pb-2">
+          GOAT Agent Identity (ERC-8004)
+        </h2>
+        <p className="text-xs text-muted leading-relaxed font-medium">
+          This uses GOAT AgentKit to register your Sentry identity on GOAT without changing existing CELO settlement flows.
+        </p>
+        <div className="text-[11px] text-muted font-medium space-y-1">
+          <p>Network: <span className="font-bold text-text-dark">{goat?.config.network ?? "goat-testnet"}</span></p>
+          <p>Registry: <span className="font-mono text-text-dark">{goat?.config.registryIdentifier ?? "—"}</span></p>
+          <p>Wallet key configured: <span className="font-bold text-text-dark">{goat?.config.configured ? "Yes" : "No (set GOAT_AGENT_PRIVATE_KEY)"}</span></p>
+          <p>Agent ID: <span className="font-mono text-text-dark">{goat?.identity.agentId ?? "Not registered"}</span></p>
+        </div>
+
+        <label className="block text-xs text-muted font-semibold">
+          Agent Metadata URI (HTTPS/IPFS)
+          <input
+            value={goatUri}
+            onChange={(e) => setGoatUri(e.target.value)}
+            placeholder="https://example.com/registration.json"
+            className="mt-2 w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary transition text-sm"
+          />
+        </label>
+
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            disabled={goatBusy}
+            onClick={() => void runGoatAction("register_agent")}
+            className="rounded-full bg-primary px-5 py-2.5 text-xs font-bold text-white hover:bg-primary/95 cursor-pointer transition shadow-sm disabled:opacity-60"
+          >
+            Register GOAT Agent
+          </button>
+          <button
+            type="button"
+            disabled={goatBusy || !goat?.identity.agentId}
+            onClick={() => void runGoatAction("set_agent_uri")}
+            className="rounded-full border border-primary/15 bg-white px-5 py-2.5 text-xs font-bold text-text-dark hover:bg-slate-50 cursor-pointer transition shadow-sm disabled:opacity-60"
+          >
+            Update Agent URI
+          </button>
+        </div>
       </div>
     </main>
   );

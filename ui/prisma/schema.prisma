@@ -490,12 +490,17 @@ model Settings {
   userId             String?  @unique
   user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName        String?
+  preferredNetwork   String   @default("CELO")
   timeZone           String   @default("UTC")
   autoResume         Boolean  @default(true)
   emailNotifications Boolean  @default(true)
   /// Telegram identity for private mention notifications
   telegramUserId     String?
   telegramUsername   String?
+  goatAgentId        String?
+  goatAgentUri       String?
+  goatRegisteredAt   DateTime?
+  goatRegistrationTx String?
   /// Allow agent task API once keys exist
   agentApiEnabled    Boolean  @default(false)
   createdAt          DateTime @default(now())
