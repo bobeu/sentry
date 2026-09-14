@@ -19,7 +19,7 @@ const talentHash = process.env.NEXT_PUBLIC_TALENT_PROJECT_VERIFICATION?.trim();
 export const metadata: Metadata = {
   title: "Sentry — AI Telegram Employee",
   description:
-    "Hire an intelligent AI Telegram employee: FAQs, moderation, polls & learn-and-earn games with points/cash rewards, and work reports — paid from a prepaid Celo wallet.",
+    "Sentry is a Telegram community operations agent. It can answer FAQs, moderate spam, host polls and quizzes, and send work summaries in enabled groups. The employer funds a prepaid wallet and reviews the configured workflows.",
   ...(talentHash
     ? {
         other: {

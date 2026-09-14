@@ -162,3 +162,6 @@ pnpm contracts:sync
 ```
 
 Set `DEMO_MODE=true` in `.env` for hackathon demos with micro-priced actions (e.g. 0.0001 instead of 0.01).
+
+
+<!-- The site's metadata claims to offer an "AI Telegram Employee" providing FAQs, moderation, polls, learn-and-earn games with points and cash rewards, work reports, and payments from a prepaid Celo wallet. However, none of these functional claims can be verified from publicly observable evidence: all seven responses report that the returned HTML contained only title and meta description tags, with no rendered headings, links, forms, buttons, images, or executed JavaScript. Specifically unverifiable are privacy policies, security controls, custody models, wallet ownership or boundaries, Celo contract addresses, on-chain transaction evidence, Telegram integration details, AI implementation, reward mechanisms, and payment execution flows. While HTTPS delivery and a 200 response were observable, the page provided no documentation, technical specifications, or visible interface elements to independently confirm how the service works, who controls user funds, what data is collected, or whether the advertised capabilities exist. -->

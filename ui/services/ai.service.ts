@@ -618,6 +618,7 @@ export class AiService {
             "Keep questions under 280 chars. Options under 80 chars each.",
             "Stay on-brand for the group's purpose; never invent fake company policies as quiz facts.",
             "Be playful, funny, wholesome — no harassment, politics bait, or adult content.",
+            "CRITICAL: Every activity must be UNIQUE — new question, new options, new angle. Never reuse generic stock polls like 'How's the vibe' or the same Celo trivia every time.",
           ].join("\n"),
         },
         {
@@ -630,7 +631,7 @@ export class AiService {
               ? `Employer guidelines:\n${input.guidelines.trim()}`
               : "",
             input.hint?.trim() ? `Extra hint: ${input.hint.trim()}` : "",
-            "Invent one fun activity now as JSON.",
+            "Invent one brand-new activity now as JSON. Make it feel hand-crafted for this moment.",
           ]
             .filter(Boolean)
             .join("\n"),
@@ -655,15 +656,15 @@ export class AiService {
         qRaw ||
         title.trim() ||
         description.trim() ||
-        (input.type === "poll"
-          ? "How's the vibe in this group today?"
-          : "Which chain is Celo built for?");
+        "";
+      if (!question) {
+        throw new Error("empty question");
+      }
       config.question = question;
       if (!Array.isArray(config.options) || config.options.length < 2) {
-        config.options =
-          input.type === "poll"
-            ? ["Great", "Okay", "Needs energy", "Surprise me"]
-            : ["Mobile-first payments", "Only NFTs", "Gaming only", "Private intranet"];
+        if (config.format !== "open") {
+          throw new Error("missing options");
+        }
       } else {
         config.options = (config.options as unknown[])
           .map((o) => String(o ?? "").trim())
@@ -671,30 +672,66 @@ export class AiService {
           .slice(0, 10);
       }
       if (
-        (config.options as string[]).length < 2 &&
-        config.format !== "open"
+        config.format !== "open" &&
+        (!Array.isArray(config.options) || (config.options as string[]).length < 2)
       ) {
-        config.options = ["Yes", "No", "Maybe"];
+        throw new Error("need 2+ options");
       }
       return { title, description, config };
     } catch {
+      // Last-resort unique fallback — never return the same stock poll twice.
+      const n = (Date.now() % 7) + 1;
+      const pollBank = [
+        {
+          question: `Quick pulse #${n}: what's the group energy right now?`,
+          options: ["🚀 Shipping", "🧠 Deep work", "☕ Catching up", "🎉 Celebrating"],
+        },
+        {
+          question: `Round ${n}: pick this week's community focus`,
+          options: ["Onboarding new members", "Product feedback", "Memes & morale", "Learning together"],
+        },
+        {
+          question: `Hot take #${n} — best way to kick off the next hour?`,
+          options: ["Standup check-in", "Async update", "Mini challenge", "Open floor"],
+        },
+      ];
+      const triviaBank = [
+        {
+          question: `Trivia ${n}: What makes Celo especially mobile-friendly?`,
+          options: [
+            "Phone number mappings & light clients",
+            "Only desktop wallets",
+            "Mining with GPUs",
+            "Closed private intranet",
+          ],
+          correctIndex: 0,
+          explanation: "Celo prioritizes mobile-first payments and accessibility.",
+        },
+        {
+          question: `Trivia ${n}: Stable value on Celo is often discussed via…`,
+          options: ["Mento / stable assets", "Proof-of-work coins only", "NFT floor prices", "Gasless L1 mining"],
+          correctIndex: 0,
+          explanation: "Celo's stability story centers on Mento and accessible stables.",
+        },
+      ];
+      if (input.type === "poll") {
+        const pick = pollBank[n % pollBank.length]!;
+        return {
+          title: `Live poll ${n}`,
+          description: "Tap an option on the Telegram poll — one entry counts.",
+          config: { format: "single", question: pick.question, options: pick.options },
+        };
+      }
+      const pick = triviaBank[n % triviaBank.length]!;
       return {
-        title: input.type === "poll" ? "Quick pulse check" : "Trivia time",
-        description: "Tap an option — winners earn points!",
+        title: `Trivia round ${n}`,
+        description: "Tap your answer — points for correct picks!",
         config: {
-          question:
-            input.type === "poll"
-              ? "How's the vibe in this group today?"
-              : "Which chain is Celo built for?",
-          options:
-            input.type === "poll"
-              ? ["Great", "Okay", "Needs energy", "Surprise me"]
-              : ["Mobile-first payments", "Only NFTs", "Gaming only", "Private intranet"],
-          correctIndex: input.type === "poll" ? undefined : 0,
-          explanation:
-            input.type === "poll"
-              ? undefined
-              : "Celo focuses on mobile-first, accessible payments and DeFi.",
+          format: "quiz",
+          question: pick.question,
+          options: pick.options,
+          correctIndex: pick.correctIndex,
+          explanation: pick.explanation,
         },
       };
     }

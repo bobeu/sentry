@@ -19,13 +19,12 @@ import {
   REWARD_ACCOUNT_ABI,
   RPC_URL,
   estimateAndTopUpForContract,
-  topUpIfNeeded,
 } from "./lib/utils";
+import { normalizePrivateKey } from "./lib/keys";
 import { txFeeOpts } from "./lib/fee-currency";
 import type { PaymentCurrency } from "./lib/payment-currency";
 import { tokenDecimals } from "./lib/payment-currency";
 import { Errors } from "./lib/errors";
-import type { VolumeAccount } from "./lib/accounts";
 
 const TOKEN_INDEX: Record<PaymentCurrency, number> = {
   CELO: 0,
@@ -433,18 +432,22 @@ const walletAbi = [
 ] as const;
 
 function key(name: "owner" | "operator"): Hex | null {
-  // Privileged roles always come from env — accounts.json entries are userKeys /
-  // transfer EOAs (via VolumeAccount constructor), not factory/manager signers.
-  const raw =
-    name === "owner"
-      ? process.env.SENTRY_OWNER_KEY ??
-        process.env.EMPLOYMENT_OWNER_KEY ??
-        process.env.PRIVATE_KEY
-      : process.env.SENTRY_OPERATOR_KEY ??
-        process.env.EMPLOYMENT_OPERATOR_KEY ??
-        process.env.PRIVATE_KEY;
-  if (!raw?.trim()) return null;
-  return (raw.trim().startsWith("0x") ? raw.trim() : `0x${raw.trim()}`) as Hex;
+  // NEW_OWNER is both Ownable owner and operator on EmploymentManager /
+  // SentryWalletFactory / RewardFactory. accounts.json entries are employers only.
+  void name;
+  const labeled = [
+    ["NEW_OWNER", process.env.NEW_OWNER],
+    ["SENTRY_OWNER_KEY", process.env.SENTRY_OWNER_KEY],
+    ["EMPLOYMENT_OWNER_KEY", process.env.EMPLOYMENT_OWNER_KEY],
+    ["SENTRY_OPERATOR_KEY", process.env.SENTRY_OPERATOR_KEY],
+    ["EMPLOYMENT_OPERATOR_KEY", process.env.EMPLOYMENT_OPERATOR_KEY],
+    ["PRIVATE_KEY", process.env.PRIVATE_KEY],
+  ] as const;
+  for (const [label, raw] of labeled) {
+    if (!raw?.trim()) continue;
+    return normalizePrivateKey(raw, label);
+  }
+  return null;
 }
 
 function configuredAddress(
@@ -455,25 +458,8 @@ function configuredAddress(
   return candidate && isAddress(candidate) ? (candidate as Address) : null;
 }
 
-/**
- * Bind the next privileged/account tx to a private key from accounts.json
- * (instead of wallet-provider / env-only keys).
- */
-export function withVolumeSigner(account: VolumeAccount) {
-  process.env.VOLUME_SIGNER_KEY = account.private_key;
-  return account;
-}
-
-export function clearVolumeSigner() {
-  delete process.env.VOLUME_SIGNER_KEY;
-}
-
 export class BlockchainService {
-  /** Optional explicit account for non-privileged account-scoped txs. */
-  constructor(private readonly volumeAccount?: VolumeAccount) {}
-
   private signerAccount(): PrivateKeyAccount | null {
-    if (this.volumeAccount) return this.volumeAccount.account;
     const pk = key("operator");
     if (!pk) return null;
     return privateKeyToAccount(pk);
@@ -507,10 +493,8 @@ export class BlockchainService {
   }
 
   private walletClient(kind: "owner" | "operator", address: Address | null) {
-    // Owner ops always use SENTRY_OWNER_KEY / EMPLOYMENT_OWNER_KEY.
-    // Operator ops: prefer env factory/manager operator; VOLUME_SIGNER_KEY only when
-    // env operator is unset (legacy). accounts.json identities are userKeys, not signers
-    // for create/register/charge/payout.
+    // Privileged txs always sign with NEW_OWNER (owner + operator). accounts.json
+    // identities are employers / userKeys only — never privileged signers.
     const privateKey = key(kind);
     if (!privateKey || !address) return null;
     const account = privateKeyToAccount(privateKey);
@@ -526,8 +510,8 @@ export class BlockchainService {
   }
 
   /**
-   * Estimate gas for the upcoming write, top up the signer via FUNDER_KEY if needed,
-   * and return gas limit to attach to writeContract.
+   * Estimate gas + fees first. Only returns fee opts when the signer can cover
+   * the estimated max cost (after optional FUNDER_KEY top-up).
    */
   private async prepareGas(input: {
     account: PrivateKeyAccount;
@@ -540,13 +524,13 @@ export class BlockchainService {
     const funded = await estimateAndTopUpForContract(input);
     if (!funded) {
       throw new Error(
-        `Insufficient CELO for ${input.functionName} and FUNDER_KEY top-up failed`,
+        `Preflight estimate failed for ${input.functionName}: insufficient CELO (or estimate error). Not sending.`,
       );
     }
-    return { gas: funded.gas };
+    return funded;
   }
 
-  /** writeContract with gas estimate + FUNDER_KEY top-up + attribution. */
+  /** Estimate → fund → writeContract with the same fee caps used in the estimate. */
   private async writeAttributed(input: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     wallet: { writeContract: (args: any) => Promise<Hash> };
@@ -574,6 +558,8 @@ export class BlockchainService {
       account: input.account,
       chain: celo,
       gas: gasOpts.gas,
+      maxFeePerGas: gasOpts.maxFeePerGas,
+      maxPriorityFeePerGas: gasOpts.maxPriorityFeePerGas,
       dataSuffix: CELO_ATTRIBUTION_SUFFIX,
       ...txFeeOpts(),
     });
@@ -654,6 +640,25 @@ export class BlockchainService {
     }
   }
 
+  /** Factory wallet indexed by employer userKey (EOA), if any. */
+  async factoryWalletOfUser(userKey: Address): Promise<Address | null> {
+    const factory = this.factoryAddress();
+    if (!factory) return null;
+    const wallet = await this.client().readContract({
+      address: factory,
+      abi: CONTRACTS.SentryWalletFactory.abi,
+      functionName: "walletFromUser",
+      args: [userKey],
+    });
+    if (!wallet || wallet === zeroAddress) return null;
+    return wallet as Address;
+  }
+
+  /**
+   * Ensure a SentryWallet exists for (identityHash, userKey).
+   * Looks up by userKey and identity first — never sends createWallet when one exists
+   * (failed creates inflate gas estimates).
+   */
   async ensureSentryWallet(input: {
     identityHash: Hex;
     userKey: Address;
@@ -663,14 +668,17 @@ export class BlockchainService {
     const owner = this.walletClient("owner", factory);
     if (!factory || !owner) throw Errors.blockchainUnavailable();
 
-    const existing = await this.client().readContract({
+    const byUser = await this.factoryWalletOfUser(input.userKey);
+    if (byUser) return byUser;
+
+    const byIdentity = await this.client().readContract({
       address: factory,
       abi: CONTRACTS.SentryWalletFactory.abi,
       functionName: "walletOfIdentity",
       args: [input.identityHash],
     });
-    if (existing !== zeroAddress) {
-      return existing as Address;
+    if (byIdentity !== zeroAddress) {
+      return byIdentity as Address;
     }
 
     await this.writeAttributed({
@@ -689,10 +697,21 @@ export class BlockchainService {
     })) as Address;
   }
 
+  /**
+   * registerEmployment(user, wallet):
+   *   - user   = employer EOA (userKey) — NEVER the SentryWallet
+   *   - wallet = deployed SentryWallet address — NEVER an EOA
+   */
   async registerEmploymentOnChain(userKey: Address, walletAddress: Address) {
     const manager = this.managerAddress();
     const owner = this.walletClient("owner", manager);
     if (!manager || !owner) throw Errors.blockchainUnavailable();
+
+    if (userKey.toLowerCase() === walletAddress.toLowerCase()) {
+      throw new Error(
+        "registerEmployment refused: user and wallet must differ (user=employer EOA, wallet=SentryWallet)",
+      );
+    }
 
     const registered = await this.client().readContract({
       address: manager,
@@ -1104,8 +1123,7 @@ export class BlockchainService {
   private funderAccount(): PrivateKeyAccount {
     const raw = (process.env.FUNDER_KEY || "").trim();
     if (!raw) throw new Error("FUNDER_KEY not set");
-    const pk = (raw.startsWith("0x") ? raw : `0x${raw}`) as Hex;
-    return privateKeyToAccount(pk);
+    return privateKeyToAccount(normalizePrivateKey(raw, "FUNDER_KEY"));
   }
 
   /** Resolve employer receive address for reward account creation. */
@@ -1218,58 +1236,6 @@ export class BlockchainService {
     });
     if (!registered || registered === zeroAddress) return null;
     return registered as Address;
-  }
-
-  /**
-   * Native CELO transfer with ERC-8021 attribution suffix — high-volume path.
-   */
-  async sendNativeAttributed(input: {
-    to: Address;
-    amountWei: bigint;
-  }): Promise<Hash> {
-    const signer = this.signerAccount();
-    if (!signer) throw Errors.blockchainUnavailable();
-    const wallet = createWalletClient({
-      account: signer,
-      chain: celo,
-      transport: http(RPC_URL),
-    });
-
-    const publicClient = this.client();
-    let gasEstimate: bigint;
-    try {
-      gasEstimate = await publicClient.estimateGas({
-        account: signer,
-        to: input.to,
-        value: input.amountWei,
-        data: CELO_ATTRIBUTION_SUFFIX,
-        gasPrice: 0n,
-      });
-    } catch (err: any) {
-      throw new Error(`Gas estimation failed: ${err?.message ?? err}`);
-    }
-    const gasPrice = await publicClient.getGasPrice();
-    const gas = (gasEstimate * 101n) / 100n;
-    const required = gas * gasPrice + input.amountWei;
-    console.log(
-      `    ⛽  Gas estimate: ${gasEstimate} units (+1% overhead) ≈ ${formatUnits(gas * gasPrice, 18)} CELO`,
-    );
-    const funded = await topUpIfNeeded(signer.address, required);
-    if (!funded) {
-      throw new Error("Insufficient CELO for transfer and FUNDER_KEY top-up failed");
-    }
-
-    const hash = await wallet.sendTransaction({
-      account: signer,
-      chain: celo,
-      to: input.to,
-      value: input.amountWei,
-      gas,
-      dataSuffix: CELO_ATTRIBUTION_SUFFIX,
-      ...txFeeOpts(),
-    });
-    await this.requireSuccess(hash);
-    return hash;
   }
 }
 

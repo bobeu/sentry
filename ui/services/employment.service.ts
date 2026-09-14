@@ -8,6 +8,7 @@ import { blockchainService } from "@/services/blockchain.service";
 import { identityUserKey } from "@/lib/identity";
 import { logEvent } from "@/lib/logger";
 import { Errors } from "@/lib/errors";
+import { DEFAULT_NETWORK, isSupportedNetwork } from "@/lib/networks";
 import {
   EMPLOYMENT_AGREEMENT_TITLE,
   EMPLOYMENT_AGREEMENT_VERSION,
@@ -122,6 +123,10 @@ export class EmploymentService {
   async getStatus(userId: string) {
     let employment = await prisma.employment.findUnique({ where: { userId } });
     const walletRow = await prisma.wallet.findUnique({ where: { userId } });
+    const settings = await prisma.settings.findUnique({
+      where: { userId },
+      select: { preferredNetwork: true },
+    });
     const ledger = await billingService.getBalanceLedger(userId);
     const currency = ledger.currency;
     const settlement = await billingService.getSettlementStatus(userId);
@@ -138,6 +143,10 @@ export class EmploymentService {
 
     return {
       status: (employment?.status ?? "Inactive") as EmploymentStatus | "Inactive",
+      preferredNetwork:
+        settings?.preferredNetwork && isSupportedNetwork(settings.preferredNetwork)
+          ? settings.preferredNetwork
+          : DEFAULT_NETWORK,
       employment: employment
         ? {
             id: employment.id,

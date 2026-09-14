@@ -33,6 +33,8 @@ export const Errors = {
     ),
   groupNotFound: () => new SentryError("GROUP_NOT_FOUND", "Group not found for this account."),
   invalidCurrency: () => new SentryError("INVALID_CURRENCY", "Invalid payment currency."),
+  badRequest: (message = "Bad request") =>
+    new SentryError("BAD_REQUEST", message, 400),
 };
 
 export function errorResponse(error: unknown) {

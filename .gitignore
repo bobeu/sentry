@@ -13,13 +13,31 @@ agent/out/
 # Local agent work reports (not for git)
 REPORT.md
 **/REPORT.md
+CLAW_REPORT.md
+**/CLAW_REPORT.md
+
+# OpenClaw local link / secrets (never commit)
+sentryclaw/.env
+sentryclaw/.env.local
+sentryclaw/.vercel/
+
+# Hosted OpenClaw clone (separate Vercel project; do not vendor upstream into Sentry git)
+# Keep a thin README if present; ignore the cloned app tree.
+sentryclaw/**
+!sentryclaw/README.sentry.md
 
 # AskBot judge credentials (API key + payout wallet)
 askbots_secrets/
 **/askbots_secrets/
+aigora-feedback-20260806-111129-feature-agent-readiness.md
 
 # Local mainnet volume scripts: track source, never commit private keys
 smartContracts/tests/accounts.json
 **/smartContracts/tests/accounts.json
 smartContracts/tests/**/accounts.json
 smartContracts/tests/dist/
+.vercel
+.env*
+
+# Dev docs
+PROMPTS.md

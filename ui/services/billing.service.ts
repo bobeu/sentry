@@ -110,7 +110,10 @@ export class BillingService {
         settlementId: input.settlementId,
       });
       if (estimated != null && estimated > fee) {
-        fee = estimated;
+        // Never let gas quotes inflate the employer fee above a small multiple
+        // of the configured estimate (false "insufficient balance" storms).
+        const maxFromConfig = Math.max(fee * 5, 0.005);
+        fee = Math.min(estimated, maxFromConfig);
       }
     }
 

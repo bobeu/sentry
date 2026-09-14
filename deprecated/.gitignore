@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# next
+.next
+out
+
+# env
+.env
+.env.local
+.env.*.local
+.env.prisma.deploy
+.env.prisma.existing
+.env.prisma.new
+.env.prisma.*
+**/defai_registration_details.md
+8004_registration/.env
+agent/out/
+
+# prisma
+prisma/*.db
+prisma/*.db-journal
+generated/
+/generated/prisma
+
+*.tsbuildinfo
+.prisma/
+.vercel
+.env*

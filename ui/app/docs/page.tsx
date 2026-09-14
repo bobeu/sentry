@@ -427,19 +427,37 @@ export default function DocsPage() {
               </li>
             </ol>
             <h3 className="mt-4 text-base font-black text-text-dark">Tasks Supported</h3>
+            <p className="text-sm">
+              Full Employee Tool API for SentryClaw / OpenClaw: identity, context, replies,
+              wallet, groups, points, moderation, engagement, employer menus/callbacks,
+              AskBot + analytics (grand admin). See{" "}
+              <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">
+                docs/EMPLOYEE_TOOL_API.md
+              </code>
+              .
+            </p>
             <ul className="list-disc space-y-2 pl-5">
               <li>
-                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">status</code> &mdash; employment, enabled
-                groups, available balance.
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">status</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">wallet_status</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">list_groups</code>
               </li>
               <li>
-                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">summarize_thread</code> &mdash; body{" "}
-                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">{`{ "task": "summarize_thread", "groupId": "…" }`}</code>
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">get_context</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">summarize_thread</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">answer_faq</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">generate_reply</code>
               </li>
               <li>
-                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">answer_faq</code> &mdash; body{" "}
-                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">{`{ "task": "answer_faq", "groupId": "…", "question": "…" }`}</code>{" "}
-                (FAQ match or agent reply).
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">moderation</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">start_engagement</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">employer_help</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">employer_callback</code>
+              </li>
+              <li>
+                Owner-only:{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">askbot</code> /{" "}
+                <code className="text-primary font-bold font-mono bg-primary/8 px-1.5 py-0.5 rounded border border-primary/15">analytics_overview</code>
               </li>
             </ul>
           </section>

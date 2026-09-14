@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "GroupSettings" ADD COLUMN IF NOT EXISTS "humorEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "GroupSettings" ADD COLUMN IF NOT EXISTS "humorStyle" TEXT NOT NULL DEFAULT 'friendly';

@@ -23,6 +23,18 @@ const config: HardhatUserConfig = {
       // gas: 8000000,
       // gasPrice: 1000000000,
       saveDeployments: true
+    },
+    goatTestnet3: {
+      accounts: [process.env.KEY_ROUTE ? process.env.KEY_ROUTE.replace(/[^a-fA-F0-9x]/g, '').slice(0, 66) : "0x0000000000000000000000000000000000000000000000000000000000000001"],
+      url: "https://rpc.testnet3.goat.network",
+      chainId: 48816,
+      saveDeployments: true
+    },
+    goat: {
+      accounts: [process.env.KEY_FAR ? process.env.KEY_FAR.replace(/[^a-fA-F0-9x]/g, '').slice(0, 66) : "0x0000000000000000000000000000000000000000000000000000000000000001"],
+      url: "https://rpc.goat.network",
+      chainId: 2345,
+      saveDeployments: true
     }
   },
   paths: {
@@ -62,21 +74,29 @@ const config: HardhatUserConfig = {
       default: 0,
       11142220: `privatekey://${process.env.KEY_ROUTE}`,
       42220: `privatekey://${process.env.KEY_FAR}`,
+      48816: `privatekey://${process.env.KEY_ROUTE}`,
+      2345: `privatekey://${process.env.KEY_FAR}`,
     },
     treasury: {
       default: 0,
       11142220: `privatekey://${process.env.TREASURY}`,
       42220: `privatekey://${process.env.TREASURY}`,
+      48816: `privatekey://${process.env.TREASURY}`,
+      2345: `privatekey://${process.env.TREASURY}`,
     },
     operator: {
       default: 0,
       11142220: `privatekey://${process.env.OPERATOR}`,
       42220: `privatekey://${process.env.OPERATOR}`,
+      48816: `privatekey://${process.env.OPERATOR}`,
+      2345: `privatekey://${process.env.OPERATOR}`,
     },
     dd09: {
       default: 0,
       11142220: `privatekey://${process.env.NEW_OWNER}`,
       42220: `privatekey://${process.env.NEW_OWNER}`,
+      48816: `privatekey://${process.env.NEW_OWNER}`,
+      2345: `privatekey://${process.env.NEW_OWNER}`,
     }
   },
 

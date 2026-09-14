@@ -16,6 +16,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
+import { normalizePrivateKey } from "./keys";
 import {
   abi as eAbi,
   address as eAddress,
@@ -59,6 +60,8 @@ export const CONTRACTS = {
 export const RPC_URL = process.env.CELO_RPC_URL || process.env.CELO_RPC || "https://forno.celo.org";
 export const ACCOUNTS_FILE = path.resolve(__dirname, "..", "accounts.json");
 
+export { normalizePrivateKey } from "./keys";
+
 export interface StoredAccount {
   address: string;
   private_key: `0x${string}`;
@@ -94,14 +97,14 @@ export function parseCount(): number {
   return n;
 }
 
-function resolveFunderKey(): `0x${string}` {
+function resolveFunderKey(): Hex {
   const raw = (process.env.FUNDER_KEY || "").trim();
   if (!raw) {
     throw new Error(
       "FUNDER_KEY not set in env — required to top up accounts for gas.",
     );
   }
-  return (raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`;
+  return normalizePrivateKey(raw, "FUNDER_KEY");
 }
 
 /**
@@ -153,9 +156,19 @@ export async function topUpIfNeeded(
   }
 }
 
+export type EstimatedTxFees = {
+  gas: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+  gasCost: bigint;
+  required: bigint;
+};
+
 /**
- * Estimate gas for a contract call, ensure the signer has enough CELO (top-up via FUNDER_KEY),
- * and return gas limit (+1% overhead) for the write.
+ * Estimate gas + EIP-1559 fees for a contract call *before* sending.
+ * Tops up the signer via FUNDER_KEY to cover the estimated max cost, then
+ * re-checks balance. Returns null when the estimate itself fails or the tx
+ * cannot be funded — callers must not send in that case.
  */
 export async function estimateAndTopUpForContract(input: {
   account: Account;
@@ -164,7 +177,7 @@ export async function estimateAndTopUpForContract(input: {
   functionName: string;
   args?: readonly unknown[];
   value?: bigint;
-}): Promise<{ gas: bigint; gasPrice: bigint; gasCost: bigint } | null> {
+}): Promise<EstimatedTxFees | null> {
   const client = createPublicClient({
     chain: celo,
     transport: http(RPC_URL),
@@ -183,26 +196,59 @@ export async function estimateAndTopUpForContract(input: {
       gasPrice: 0n,
     });
   } catch (err: any) {
-    console.error(`    ❌  Gas estimation failed: ${err?.message ?? err}`);
+    console.error(
+      `    ❌  Estimate failed for ${input.functionName}: ${err?.message ?? err}`,
+    );
     return null;
   }
 
-  const gasPrice = await client.getGasPrice();
+  const fees = await client.estimateFeesPerGas().catch(() => null);
+  const networkGasPrice = await client.getGasPrice();
+  // Use the fees we will attach to writeContract so cost prediction matches reservation.
+  const maxFeePerGas = fees?.maxFeePerGas ?? networkGasPrice * 2n;
+  const maxPriorityFeePerGas =
+    fees?.maxPriorityFeePerGas ??
+    (maxFeePerGas > networkGasPrice ? maxFeePerGas - networkGasPrice : 1n);
   const gas = (gasEstimate * 101n) / 100n;
-  const gasCost = gas * gasPrice;
-  const required = gasCost + (input.value ?? 0n);
+  const gasCost = gas * maxFeePerGas;
+  // 10% buffer between estimate and send for fee-market movement.
+  const required = ((gasCost + (input.value ?? 0n)) * 110n) / 100n;
 
+  const signer = input.account.address as `0x${string}`;
+  const balanceBefore = await client.getBalance({ address: signer });
   console.log(
-    `    ⛽  Gas estimate: ${gasEstimate} units (+1% overhead) ≈ ${formatEther(gasCost)} CELO`,
+    `    ⛽  Estimate ${input.functionName}: gas=${gasEstimate} (+1%) maxFeePerGas=${maxFeePerGas.toString()}wei cost≈${formatEther(gasCost)} need≈${formatEther(required)} (bal ${formatEther(balanceBefore)})`,
   );
 
-  const funded = await topUpIfNeeded(input.account.address as `0x${string}`, required);
-  if (!funded) {
-    console.log(`    ❌  Cannot fund account for gas cost. Skipping.`);
+  if (balanceBefore < required) {
+    const funded = await topUpIfNeeded(signer, required);
+    if (!funded) {
+      console.error(
+        `    ❌  Preflight: cannot cover estimated cost ${formatEther(required)} CELO for ${input.functionName}. Not sending.`,
+      );
+      return null;
+    }
+  }
+
+  const balanceAfter = await client.getBalance({ address: signer });
+  if (balanceAfter < required) {
+    console.error(
+      `    ❌  Preflight: balance ${formatEther(balanceAfter)} < estimated need ${formatEther(required)} CELO after top-up. Not sending.`,
+    );
     return null;
   }
 
-  return { gas, gasPrice, gasCost };
+  console.log(
+    `    ✅  Preflight ok for ${input.functionName} (bal ${formatEther(balanceAfter)} ≥ ${formatEther(required)} CELO)`,
+  );
+
+  return {
+    gas,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    gasCost,
+    required,
+  };
 }
 
 /** Parse --wait N from process.argv. Defaults to 0 if not provided. */

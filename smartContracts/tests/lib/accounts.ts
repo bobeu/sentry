@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { isAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { normalizePrivateKey } from "./keys";
 
 export type VolumeAccount = {
   address: Address;
@@ -12,6 +13,9 @@ export type VolumeAccount = {
 /**
  * Load accounts.json without logging keys.
  * Shape: Array<{ address: string; private_key: string }>
+ *
+ * Each entry is an employer / user identity (userKey). Privileged owner+operator
+ * txs are signed by NEW_OWNER — never by these keys.
  */
 export function loadAccounts(filePath?: string): VolumeAccount[] {
   const path = resolve(
@@ -29,15 +33,20 @@ export function loadAccounts(filePath?: string): VolumeAccount[] {
   const out: VolumeAccount[] = [];
   for (const row of parsed) {
     if (!row?.address || !row?.private_key) continue;
-    const pk = (
-      row.private_key.startsWith("0x") ? row.private_key : `0x${row.private_key}`
-    ) as Hex;
-    const account = privateKeyToAccount(pk);
-    const address = row.address as Address;
-    if (!isAddress(address)) continue;
-    if (account.address.toLowerCase() !== address.toLowerCase()) {
+    if (!isAddress(row.address)) continue;
+    let pk: Hex;
+    try {
+      pk = normalizePrivateKey(row.private_key, `accounts.json[${row.address}]`);
+    } catch (err) {
       console.warn(
-        `[accounts] address mismatch for ${address} — using derived ${account.address}`,
+        `[accounts] skipping ${row.address}: ${err instanceof Error ? err.message : err}`,
+      );
+      continue;
+    }
+    const account = privateKeyToAccount(pk);
+    if (account.address.toLowerCase() !== row.address.toLowerCase()) {
+      console.warn(
+        `[accounts] address mismatch for ${row.address} — using derived ${account.address}`,
       );
     }
     out.push({
@@ -49,7 +58,6 @@ export function loadAccounts(filePath?: string): VolumeAccount[] {
   return out;
 }
 
-/** Fisher–Yates shuffle (in place). */
 function shuffleInPlace<T>(items: T[]): T[] {
   for (let i = items.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -60,10 +68,7 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items;
 }
 
-/**
- * Randomly select up to `count` accounts from the pool (without replacement).
- * If count >= pool size, returns a shuffled copy of all accounts.
- */
+/** Randomly select up to `count` accounts (without replacement). */
 export function selectAccounts(all: VolumeAccount[], count: number): VolumeAccount[] {
   if (count <= 0 || all.length === 0) return [];
   const pool = shuffleInPlace(all.slice());
@@ -83,32 +88,24 @@ export function randomInRange(min: number, max: number): number {
 }
 
 export type CliArgs = {
-  /** CLI subcommand (e.g. transfer, charge). */
-  command: string;
-  /** How many accounts to randomly select from accounts.json. */
   count: number;
-  /** How many times to run the command tx for each selected account. */
   txcount: number;
-  /**
-   * Delay between txs, in seconds (converted to ms at runtime).
-   * Example: `--wait 5` → 5 seconds.
-   */
+  /** Delay between txs, in seconds. */
   wait: number;
   currency: "CELO" | "USDm" | "USDC" | "USDT";
   accountsFile: string;
   /** Fixed amount when --min/--max not set. */
   amount: number;
-  /** Optional random amount range for charge/payout/transfer. */
   min?: number;
   max?: number;
-  /** Optional random CELO/token fund range into employment/reward wallets. */
-  fundmin?: number;
-  fundmax?: number;
-  /** Outer batch repeat (re-selects a random account set each round). */
+  /** When true, fund after register / create (see ensure* scripts). */
+  fund: boolean;
+  /** Optional dedicated fund range (falls back to --min/--max). */
+  fundMin?: number;
+  fundMax?: number;
   loop: number;
   identity?: string;
   destination?: string;
-  enabled?: boolean;
   help: boolean;
 };
 
@@ -125,34 +122,45 @@ function parseNonNegNumber(raw: string | undefined): number | undefined {
   return n;
 }
 
-/** Resolve amount: prefer --min/--max random range, else --amount. */
+/** Resolve action amount: prefer --min/--max, else --amount. */
 export function resolveAmount(args: CliArgs): number {
-  if (args.min !== undefined && args.max !== undefined) {
-    return randomInRange(args.min, args.max);
+  if (args.min !== undefined || args.max !== undefined) {
+    const min = args.min ?? args.max ?? args.amount;
+    const max = args.max ?? args.min ?? args.amount;
+    return randomInRange(min, max);
   }
-  if (args.min !== undefined) return args.min;
-  if (args.max !== undefined) return args.max;
   return args.amount;
 }
 
-/** Resolve fund amount when fundmin/fundmax set; undefined if not funding. */
+/**
+ * Resolve fund amount.
+ * Prefer --fund-min/--fund-max, else --min/--max, else --amount when --fund is set.
+ */
 export function resolveFundAmount(args: CliArgs): number | undefined {
-  if (args.fundmin === undefined && args.fundmax === undefined) return undefined;
-  const min = args.fundmin ?? args.fundmax ?? 0;
-  const max = args.fundmax ?? args.fundmin ?? 0;
-  return randomInRange(min, max);
+  if (args.fundMin !== undefined || args.fundMax !== undefined) {
+    const min = args.fundMin ?? args.fundMax ?? 0;
+    const max = args.fundMax ?? args.fundMin ?? 0;
+    return randomInRange(min, max);
+  }
+  if (args.min !== undefined || args.max !== undefined) {
+    const min = args.min ?? args.max ?? 0;
+    const max = args.max ?? args.min ?? 0;
+    return randomInRange(min, max);
+  }
+  if (args.fund) return args.amount;
+  return undefined;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
   const args = argv.slice(2);
   const out: CliArgs = {
-    command: args[0] && !args[0].startsWith("-") ? args[0] : "help",
     count: 1,
     txcount: 1,
     wait: 1.5,
     currency: "CELO",
     accountsFile: resolve(process.cwd(), "tests", "accounts.json"),
     amount: 0.001,
+    fund: false,
     loop: 1,
     help: false,
   };
@@ -169,13 +177,9 @@ export function parseArgs(argv: string[]): CliArgs {
       out.txcount = parsePositiveInt(next, 1);
       i++;
     } else if (a === "--wait" && next) {
-      // Seconds (user-facing). `--wait 5` → 5s between txs.
       out.wait = Math.max(0, Number(next) || 0);
       i++;
-    } else if (
-      (a === "--currency" || a === "--token" || a === "--cur") &&
-      next
-    ) {
+    } else if ((a === "--currency" || a === "--token" || a === "--cur") && next) {
       const c = next.toUpperCase();
       if (c === "CELO" || c === "USDM" || c === "USDC" || c === "USDT") {
         out.currency = c === "USDM" ? "USDm" : (c as CliArgs["currency"]);
@@ -193,11 +197,21 @@ export function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--max" && next) {
       out.max = parseNonNegNumber(next);
       i++;
-    } else if (a === "--fundmin" && next) {
-      out.fundmin = parseNonNegNumber(next);
+    } else if (a === "--fund") {
+      // boolean flag; optional value true|false|1|0
+      if (next && !next.startsWith("-")) {
+        out.fund = next === "true" || next === "1" || next === "yes";
+        i++;
+      } else {
+        out.fund = true;
+      }
+    } else if ((a === "--fund-min" || a === "--fundmin") && next) {
+      out.fundMin = parseNonNegNumber(next);
+      out.fund = true;
       i++;
-    } else if (a === "--fundmax" && next) {
-      out.fundmax = parseNonNegNumber(next);
+    } else if ((a === "--fund-max" || a === "--fundmax") && next) {
+      out.fundMax = parseNonNegNumber(next);
+      out.fund = true;
       i++;
     } else if (a === "--loop" && next) {
       out.loop = parsePositiveInt(next, 1);
@@ -207,9 +221,6 @@ export function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === "--destination" && next) {
       out.destination = next;
-      i++;
-    } else if (a === "--enabled" && next) {
-      out.enabled = next === "true" || next === "1";
       i++;
     }
   }

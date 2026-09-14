@@ -19,6 +19,8 @@ const secondaryBase = [
   { href: "/docs", label: "Docs" },
 ];
 
+const ownerLinks = [{ href: "/admin/analytics", label: "Analytics" }];
+
 function NavIcon({ d }: { d: string }) {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" aria-hidden>
@@ -34,7 +36,7 @@ const icons: Record<string, string> = {
   "/wallet": "M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M16 12a2 2 0 1 0 0-.01",
 };
 
-type SessionUser = { id: string; email: string } | null;
+type SessionUser = { id: string; email: string; isGrandAdmin?: boolean } | null;
 
 export function SiteNav() {
   const pathname = usePathname();
@@ -125,7 +127,12 @@ export function SiteNav() {
         : "text-text-dark hover:bg-primary/5 hover:text-primary"
     }`;
 
-  const moreActive = secondaryBase.some(
+  const secondary = [
+    ...secondaryBase,
+    ...(user?.isGrandAdmin ? ownerLinks : []),
+  ];
+
+  const moreActive = secondary.some(
     (l) => pathname === l.href || pathname.startsWith(`${l.href}/`),
   );
 
@@ -185,7 +192,7 @@ export function SiteNav() {
                 role="menu"
                 className="absolute right-0 top-full z-50 mt-1.5 min-w-[10rem] rounded-xl border border-primary/15 bg-white p-1.5 shadow-lg"
               >
-                {secondaryBase.map((link) => (
+                {secondary.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -272,7 +279,7 @@ export function SiteNav() {
         aria-hidden={!open}
       >
         <nav className="max-h-[min(70vh,28rem)] space-y-1 overflow-y-auto overscroll-contain px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          {[...primary, ...secondaryBase].map((link) => (
+          {[...primary, ...secondary].map((link) => (
             <Link
               key={link.href}
               href={link.href}

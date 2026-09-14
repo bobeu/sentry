@@ -508,6 +508,48 @@ export class BlockchainService {
     return Boolean(this.managerAddress() && key("operator"));
   }
 
+  /** Address derived from SENTRY_OPERATOR_KEY (null if unset/invalid). */
+  operatorSignerAddress(): Address | null {
+    const privateKey = key("operator");
+    if (!privateKey) return null;
+    try {
+      return privateKeyToAccount(privateKey).address;
+    } catch {
+      return null;
+    }
+  }
+
+  /** On-chain EmploymentManager.operator(). */
+  async onChainOperator(): Promise<Address | null> {
+    const manager = this.managerAddress();
+    if (!manager) return null;
+    try {
+      return (await this.client().readContract({
+        address: manager,
+        abi: CONTRACTS.EmploymentManager.abi,
+        functionName: "operator",
+      })) as Address;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fail fast when the configured signer is not the contract operator.
+   * Prevents silent UnauthorizedOperator() reverts after gas is spent.
+   */
+  async assertOperatorAuthorized() {
+    const signer = this.operatorSignerAddress();
+    if (!signer) throw Errors.blockchainUnavailable();
+    const onChain = await this.onChainOperator();
+    if (!onChain) throw Errors.blockchainUnavailable();
+    if (signer.toLowerCase() !== onChain.toLowerCase()) {
+      throw Errors.chargeFailed(
+        `Operator key mismatch: signer ${signer} is not EmploymentManager.operator ${onChain}. Update SENTRY_OPERATOR_KEY on Vercel to the NEW_OWNER key.`,
+      );
+    }
+  }
+
   isFactoryConfigured() {
     return Boolean(this.factoryAddress() && key("owner"));
   }
@@ -661,6 +703,7 @@ export class BlockchainService {
     const manager = this.managerAddress();
     const operator = this.walletClient("operator", manager);
     if (!manager || !operator) throw Errors.blockchainUnavailable();
+    await this.assertOperatorAuthorized();
     const hash = await operator.wallet.writeContract({
       address: manager,
       abi: CONTRACTS.EmploymentManager.abi,
@@ -684,6 +727,11 @@ export class BlockchainService {
   /**
    * Estimate operator gas cost for chargeSettlement in native CELO.
    * Returns null when estimation is unavailable (caller should use configured fee).
+   *
+   * Important: do NOT use maxFeePerGas alone — on Celo it routinely quotes
+   * ~200+ gwei ceilings while effective inclusion is far cheaper. That inflated
+   * the employer settlementFee (~0.026 CELO) and caused false "insufficient
+   * balance" failures for otherwise funded wallets.
    */
   async estimateChargeSettlementFeeCelo(input: {
     userKey: Address;
@@ -710,15 +758,21 @@ export class BlockchainService {
         account: operator.account,
       });
       const fees = await this.client().estimateFeesPerGas().catch(() => null);
+      const networkGasPrice = await this.client().getGasPrice().catch(() => null);
+      // Prefer gasPrice / (base-ish) over maxFeePerGas ceiling.
       const gasPrice =
-        fees?.maxFeePerGas ??
+        networkGasPrice ??
         fees?.gasPrice ??
-        (await this.client().getGasPrice());
+        fees?.maxPriorityFeePerGas ??
+        fees?.maxFeePerGas;
+      if (gasPrice == null) return null;
       const costWei = gas * gasPrice;
-      const celo = Number(formatUnits(costWei, 18));
-      if (!Number.isFinite(celo) || celo <= 0) return null;
-      // Small safety bump so the reserved fee covers fee market spikes.
-      return celo * 1.25;
+      const celoCost = Number(formatUnits(costWei, 18));
+      if (!Number.isFinite(celoCost) || celoCost <= 0) return null;
+      // Modest buffer; hard-cap so fee market noise cannot drain employers.
+      const buffered = celoCost * 1.15;
+      const CAP_CELO = 0.005;
+      return Math.min(buffered, CAP_CELO);
     } catch (err) {
       console.warn("[blockchain] fee estimate failed", err);
       return null;

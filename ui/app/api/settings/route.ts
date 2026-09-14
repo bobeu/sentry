@@ -2,9 +2,16 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import {
+  DEFAULT_NETWORK,
+  isSupportedNetwork,
+  SUPPORTED_NETWORKS,
+  type SupportedNetwork,
+} from "@/lib/networks";
 
 const updateSchema = z.object({
   displayName: z.string().max(80).optional(),
+  preferredNetwork: z.enum(SUPPORTED_NETWORKS).optional(),
   timeZone: z.string().min(1).max(64).optional(),
   autoResume: z.boolean().optional(),
   emailNotifications: z.boolean().optional(),
@@ -14,14 +21,19 @@ const updateSchema = z.object({
 
 function serialize(settings: {
   displayName: string | null;
+  preferredNetwork: string;
   timeZone: string;
   autoResume: boolean;
   emailNotifications: boolean;
   telegramUserId: string | null;
   telegramUsername: string | null;
 }) {
+  const preferredNetwork: SupportedNetwork = isSupportedNetwork(settings.preferredNetwork)
+    ? settings.preferredNetwork
+    : DEFAULT_NETWORK;
   return {
     displayName: settings.displayName ?? "",
+    preferredNetwork,
     timeZone: settings.timeZone,
     autoResume: settings.autoResume,
     emailNotifications: settings.emailNotifications,
@@ -35,7 +47,7 @@ export async function GET() {
     const user = await requireSessionUser();
     const settings = await prisma.settings.upsert({
       where: { userId: user.id },
-      create: { userId: user.id },
+      create: { userId: user.id, preferredNetwork: DEFAULT_NETWORK },
       update: {},
     });
     return NextResponse.json({ settings: serialize(settings) });
@@ -60,6 +72,7 @@ export async function PUT(request: Request) {
       create: {
         userId: user.id,
         displayName: data.displayName,
+        preferredNetwork: data.preferredNetwork ?? DEFAULT_NETWORK,
         timeZone: data.timeZone ?? "UTC",
         autoResume: data.autoResume ?? true,
         emailNotifications: data.emailNotifications ?? true,

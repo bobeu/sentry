@@ -101,14 +101,14 @@ export default function HomePage() {
         <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
           <div className="lg:col-span-6 space-y-6">
             <h1 className="font-sans text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-text-dark leading-[1.05] animate-rise">
-              Hire Sentry <br />
+              Sentry <br />
               <span className="text-primary">
-                Your Telegram AI Employee
+                Telegram ops for real communities
               </span>
             </h1>
 
             <p className="max-w-xl text-base sm:text-lg text-muted font-medium leading-relaxed animate-rise-delay-1">
-              Sentry is an intelligent AI Telegram employee — FAQ responder, moderator, and engagement host (polls, trivia, points & optional cash rewards). Paid from an on-chain prepaid wallet; billed only for completed work.
+              Sentry is a configurable Telegram agent for FAQ support, spam moderation, member engagement, and daily status reports. It is controlled by the employer, funded from a prepaid wallet, and designed to show what it did in plain language.
             </p>
 
             <div className="flex flex-wrap gap-4 pt-2 animate-rise-delay-2">
@@ -122,8 +122,23 @@ export default function HomePage() {
                 href="/docs"
                 className="rounded-full border border-primary/20 bg-white px-8 py-3.5 text-sm font-bold text-primary shadow-sm hover:bg-primary/5 transition-all"
               >
-                How it works
+                See the workflow
               </Link>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 pt-2 animate-rise-delay-2">
+              <div className="rounded-2xl border border-primary/10 bg-white p-3 shadow-sm">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-primary font-bold">FAQ</div>
+                <div className="mt-1 text-sm font-extrabold text-text-dark">Answer in chat</div>
+              </div>
+              <div className="rounded-2xl border border-primary/10 bg-white p-3 shadow-sm">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-primary font-bold">Moderation</div>
+                <div className="mt-1 text-sm font-extrabold text-text-dark">Catch spam fast</div>
+              </div>
+              <div className="rounded-2xl border border-primary/10 bg-white p-3 shadow-sm">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-primary font-bold">Reports</div>
+                <div className="mt-1 text-sm font-extrabold text-text-dark">Daily summaries</div>
+              </div>
             </div>
           </div>
 
@@ -132,8 +147,17 @@ export default function HomePage() {
             {/* Blurred background backing for image stack */}
             <div className="absolute inset-0 bg-white/40 backdrop-blur-xl rounded-[2.5rem] border border-white/60 shadow-lg -z-10" />
 
+            <div className="absolute inset-x-4 top-4 z-20 flex justify-between gap-2 pointer-events-none">
+              <div className="rounded-full bg-white/90 border border-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-primary shadow-sm">
+                Employer controlled
+              </div>
+              <div className="rounded-full bg-accent/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-900 shadow-sm">
+                Prepaid wallet
+              </div>
+            </div>
+
             {/* Floating Message Bubbles */}
-            <div className="absolute inset-x-4 top-4 h-16 pointer-events-none z-20">
+            <div className="absolute inset-x-4 top-14 h-16 pointer-events-none z-20">
               <AnimatePresence>
                 {(activeSlide === 0 || activeSlide === 3) && (
                   <motion.div
@@ -142,7 +166,7 @@ export default function HomePage() {
                     exit={{ opacity: 0, y: -20, scale: 0.8 }}
                     className="absolute left-4 top-2 bg-primary text-white text-[10px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5 shadow"
                   >
-                    💬 Bot @tgemployee_bot joined supergroup!
+                    💬 FAQ answered in-group
                   </motion.div>
                 )}
                 {activeSlide === 1 && (
@@ -152,7 +176,7 @@ export default function HomePage() {
                     exit={{ opacity: 0, y: -20, scale: 0.8 }}
                     className="absolute right-4 top-0 bg-[#00D283] text-slate-900 text-[10px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5 shadow"
                   >
-                    💰 Prepaid Wallet Funded +25 USDm
+                    💰 Wallet funded +25 USDm
                   </motion.div>
                 )}
                 {activeSlide === 2 && (
@@ -162,7 +186,7 @@ export default function HomePage() {
                     exit={{ opacity: 0, y: -20, scale: 0.8 }}
                     className="absolute left-1/2 -translate-x-1/2 top-1 bg-accent text-slate-900 text-[10px] font-bold uppercase tracking-wider rounded-full px-3.5 py-1.5 shadow"
                   >
-                    ⚡ Intercepted & Resolved FAQ Question
+                    ⚡ Spam blocked + handover sent
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -550,6 +574,90 @@ export default function HomePage() {
               />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Publicly verifiable product overview */}
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20 border-t border-primary/10">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+          <div className="space-y-5">
+            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-primary">What Sentry actually does</p>
+            <h2 className="text-3xl font-extrabold tracking-tight text-text-dark sm:text-4xl">
+              A Telegram employee with visible limits, clear controls, and real billing.
+            </h2>
+            <p className="text-base text-muted font-medium leading-relaxed">
+              Sentry is a community operations agent for Telegram groups. It can answer FAQs, moderate spam, welcome users, summarize activity, host polls and trivia, and optionally run rewards when the employer enables them. It does not claim to be a human employee, a legal fiduciary, or an autonomous custodian of funds.
+            </p>
+            <p className="text-base text-muted font-medium leading-relaxed">
+              The product is designed to be transparent: the employer configures the enabled workflows, funds the prepaid wallet, and reviews any escalations. That makes the work observable and auditable instead of vague marketing copy.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[{ title: "FAQ & support", body: "Answer community questions in chat and send short, targeted follow-ups based on the group’s configured knowledge base." }, { title: "Moderation", body: "Flag suspicious links, warn or filter spam, and surface only high-confidence actions for review." }, { title: "Engagement", body: "Host polls, quizzes, learn-and-earn prompts, and member activities when the group enables them." }, { title: "Reports", body: "Send daily or shift summaries with clear counts: FAQ replies, moderation actions, engagement outcomes, and remaining balance." }].map(({ title, body }) => (
+              <div key={title} className="rounded-2xl border border-primary/10 bg-white p-5 shadow-sm">
+                <div className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.18em] text-primary">{title}</div>
+                <p className="text-sm font-medium leading-relaxed text-text-dark">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="rounded-3xl border border-primary/10 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-6 text-center">
+            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-primary">What is publicly verifiable</p>
+            <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-text-dark">We state only what the product can prove.</h3>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
+              <div className="mb-2 text-sm font-extrabold text-text-dark">Observable facts</div>
+              <ul className="space-y-2 text-sm text-muted leading-relaxed">
+                <li>• Website loads over HTTPS.</li>
+                <li>• Telegram bot is enabled only when configured by an employer.</li>
+                <li>• Wallet balances and charges are visible in the dashboard.</li>
+                <li>• Reports are based on logged actions and counts.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
+              <div className="mb-2 text-sm font-extrabold text-text-dark">Not assumed</div>
+              <ul className="space-y-2 text-sm text-muted leading-relaxed">
+                <li>• No hidden custody claim.</li>
+                <li>• No undocumented security guarantee.</li>
+                <li>• No implied legal or financial fiduciary role.</li>
+                <li>• No unverified product claims without a visible workflow.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
+              <div className="mb-2 text-sm font-extrabold text-text-dark">How employer controls it</div>
+              <ul className="space-y-2 text-sm text-muted leading-relaxed">
+                <li>• Enable or disable features in the dashboard.</li>
+                <li>• Fund the prepaid wallet or reward account.</li>
+                <li>• Review escalation rules and balances.</li>
+                <li>• Ask Sentry to report or pause work when needed.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20 border-t border-primary/10">
+        <div className="text-center space-y-3 mb-10">
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-primary">How it works</p>
+          <h2 className="text-3xl font-extrabold tracking-tight text-text-dark sm:text-4xl">Simple flow, clear accountability.</h2>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-3">
+          {[{ step: "1. Enable", copy: "The employer adds Sentry to a Telegram group and chooses which capabilities are allowed: FAQ, moderation, polls, rewards, reports." }, { step: "2. Fund", copy: "The employer funds the prepaid wallet or separate reward account. Billing is a visible, actionable charge model, not an opaque subscription." }, { step: "3. Verify", copy: "The group sees actual outputs: answers, summaries, moderation, reports, and any wallet-linked event logs configured by the employer." }].map(({ step, copy }) => (
+            <div className="rounded-2xl border border-primary/10 bg-white p-6 shadow-sm" key={step}>
+              <div className="mb-3 text-xs font-extrabold uppercase tracking-[0.2em] text-primary">{step}</div>
+              <p className="text-base font-medium leading-relaxed text-text-dark">{copy}</p>
+            </div>
+          ))}
         </div>
       </section>
     </main>
