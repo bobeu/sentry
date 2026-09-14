@@ -5,7 +5,7 @@ const FRONTEND_DIR = path.join(__dirname, "../ui/lib/contracts");
 const DEPLOYMENTS_ROOT = path.join(__dirname, "deployments");
 const ARTIFACTS_ROOT = path.join(__dirname, "artifacts", "contracts");
 
-const NETWORK_PRIORITY = ["celo"];
+const PREFERRED_ORDER = ["celo", "goat", "goatTestnet3"];
 /** Deployed contracts synced into CONTRACTS (address + ABI). */
 const CONTRACTS_TO_SYNC = ["EmploymentManager", "SentryWalletFactory", "RewardFactory"];
 /**
@@ -62,7 +62,20 @@ function sync() {
     }
   }
 
-  for (const net of NETWORK_PRIORITY) {
+  const networkDirs = fs
+    .readdirSync(DEPLOYMENTS_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((a, b) => {
+      const ia = PREFERRED_ORDER.indexOf(a);
+      const ib = PREFERRED_ORDER.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+
+  for (const net of networkDirs) {
     const networkDir = path.join(DEPLOYMENTS_ROOT, net);
     if (!fs.existsSync(networkDir)) {
       console.warn(`  Skipping ${net}: directory not found.`);
@@ -117,10 +130,7 @@ function sync() {
     JSON.stringify(abis, null, 2),
   );
 
-  const primaryChain =
-    syncedNetworks.find((n) => n.name === "celo")?.chainId ??
-    syncedNetworks[0]?.chainId ??
-    "42220";
+  const primaryChain = syncedNetworks[0]?.chainId ?? "42220";
 
   const contractEntries = CONTRACTS_TO_SYNC.map((name) => {
     return `  ${name}: {

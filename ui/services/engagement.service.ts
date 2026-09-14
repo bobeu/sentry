@@ -267,6 +267,17 @@ export class EngagementService {
       );
     }
 
+    const recent = await prisma.engagementActivity.findMany({
+      where: { groupId: input.groupId },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { title: true, description: true },
+    });
+    const avoidTitles = recent
+      .map((r) => r.title.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+
     let sourceHint = "";
     const sourceUrl = settings?.engagementSourceUrl?.trim();
     if (sourceUrl) {
@@ -284,6 +295,7 @@ export class EngagementService {
       }
     }
 
+    const uniquenessSeed = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const draft = await aiService.generateEngagementActivity({
       type: input.type,
       context: input.context,
@@ -291,6 +303,10 @@ export class EngagementService {
         input.guidelines ?? settings?.engagementGuidelines,
         sourceUrl ? `Source URL: ${sourceUrl}` : null,
         sourceHint ? `Source material excerpt:\n${sourceHint}` : null,
+        avoidTitles.length
+          ? `Do NOT reuse these recent titles/topics: ${avoidTitles.join(" | ")}`
+          : null,
+        `Freshness seed (vary theme/options): ${uniquenessSeed}`,
       ]
         .filter(Boolean)
         .join("\n\n") || null,
@@ -921,7 +937,7 @@ export class EngagementService {
       }
     }
 
-    // Letter/number (A/B/1/2) or typed option text — prefer reply target, else latest quiz.
+    // Letter/number (A/B/1/2), "option 1", "I select option 2", or typed option text.
     const quizTarget =
       byReply ??
       active.find((a) => {
@@ -931,8 +947,20 @@ export class EngagementService {
     if (quizTarget) {
       const config = parseConfig<QuizConfig>(quizTarget.configJson);
       const opts = config.options ?? [];
-      const letter = answerRaw.trim().match(/^([a-d])(?:\b|[.)\s]|$)/i)?.[1];
-      const num = answerRaw.trim().match(/^([1-9])(?:\b|[.)\s]|$)/)?.[1];
+      const phrase = answerRaw
+        .trim()
+        .match(
+          /\b(?:option|choice|pick|select(?:ed)?|vote(?:d)?(?:\s+for)?)\s*#?\s*([1-9a-d])\b/i,
+        )?.[1];
+      const letter =
+        phrase && /[a-d]/i.test(phrase)
+          ? phrase
+          : answerRaw.trim().match(/^([a-d])(?:\b|[.)\s]|$)/i)?.[1];
+      const num =
+        phrase && /[1-9]/.test(phrase)
+          ? phrase
+          : answerRaw.trim().match(/^([1-9])(?:\b|[.)\s]|$)/)?.[1] ??
+            answerRaw.trim().match(/\b([1-9])\s*$/)?.[1];
       let idx = -1;
       if (letter) idx = letter.toLowerCase().charCodeAt(0) - 97;
       if (num) idx = Number(num) - 1;

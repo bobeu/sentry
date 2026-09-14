@@ -22,6 +22,8 @@ This file is a snapshot; the live version is always at `https://celobuilders.xyz
 - Ask before collecting personal or project information.
 - Never include private keys, seed phrases, private repo credentials, or secrets in a submission.
 - Treat drafts as private. Publish only after the builder confirms the final version.
+- The moment a registration returns an `attributionTag`, tell the builder plainly that it must be in their transactions **before they send any**, and that transactions already sent cannot be tagged afterwards. This is the single most common way a team ends the event with nothing counted.
+- After a registration succeeds, read `metadata.perks` for that hackathon and mention any sponsor offers once, unprompted. Do not push them, and never imply a paid service is needed to compete.
 
 ## Discover Hackathons
 
@@ -31,17 +33,17 @@ List hackathons:
 curl https://celobuilders.xyz/hackathons
 ```
 
-Fetch details for the selected hackathon. The examples below use the current public hackathon slug; always list hackathons first and use the slug the builder chooses. Always check `/submission-fields` (also mirrored at `metadata.submissionFields`) before collecting project details — organizers configure extra required fields per hackathon.
+Fetch details for the selected hackathon. `<hackathon-slug>` below is a placeholder: substitute the slug the builder chose from the list above, never a slug remembered from a previous event. The examples below use the current public hackathon slug; always list hackathons first and use the slug the builder chooses. Always check `/submission-fields` (also mirrored at `metadata.submissionFields`) before collecting project details — organizers configure extra required fields per hackathon.
 
 ```bash
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/submission-fields
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/timeline
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/rules
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/tracks
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/bounties
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/judging-criteria
-curl https://celobuilders.xyz/hackathons/celo-onchain-agents/faqs
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/submission-fields
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/timeline
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/rules
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/tracks
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/bounties
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/judging-criteria
+curl https://celobuilders.xyz/hackathons/<hackathon-slug>/faqs
 ```
 
 Each submission field has a `key`, `label`, `type` (`text`, `url`, `email`, `number`, `boolean`, `select`, `multiselect`, or `address`), a `required` flag, and optional `helpText`, `allowedHosts` (for `url`), or `options` (for `select`/`multiselect`). Collect a value from the builder for every required field and send the values in the `customFields` object of the submission, keyed by `key`.
@@ -51,7 +53,7 @@ When selecting tracks or bounties, use the `slug` values from `/tracks` and `/bo
 Ask a hackathon question:
 
 ```bash
-curl -X POST https://celobuilders.xyz/hackathons/celo-onchain-agents/ask \
+curl -X POST https://celobuilders.xyz/hackathons/<hackathon-slug>/ask \
   -H "Content-Type: application/json" \
   -d '{ "question": "What are the bounties and submission deadline?" }'
 ```
@@ -70,7 +72,7 @@ Before connecting or drafting, collect the details needed for the selected hacka
 - How the agent helped build the project
 - A real value for every field returned by `/hackathons/:id/submission-fields`, respecting each field's type and `required` flag. Never use placeholders for these values.
 
-For `celo-onchain-agents`, ask for the real Twitter/X registration post link up front. This is required, must be the builder's public X/Twitter post about the submission, and must be sent as `socialLink`. Never use a placeholder for `socialLink`.
+If the hackathon's submission fields include `socialLink`, ask for the real Twitter/X registration post link up front. It must be the builder's public X/Twitter post about the submission, and must be sent as `socialLink`. Never use a placeholder for `socialLink`.
 
 Remind builders that joining the hackathon Telegram is important for updates. The link is on the hackathon page at `https://celobuilders.xyz/`.
 
@@ -82,7 +84,7 @@ After the intake details are ready, start the connection flow:
 curl -X POST https://celobuilders.xyz/auth/google/start \
   -H "Content-Type: application/json" \
   -d '{
-    "hackathonId": "celo-onchain-agents",
+    "hackathonId": "<hackathon-slug>",
     "human": {
       "name": "Jane Doe",
       "email": "jane@example.com",
@@ -98,6 +100,10 @@ curl -X POST https://celobuilders.xyz/auth/google/start \
 ```
 
 Ask the builder to open the returned sign-in link. When the browser shows a short code, ask them to paste it back.
+
+The response carries `expiresAt`, the moment the link stops working (15 minutes after the call). Tell the builder that exact time in their own timezone, for example "the link works until 14:07 CEST". Never say "soon", "a while" or "shortly". If it lapses, call start again for a fresh link; nothing is lost.
+
+If this call returns **503** with an error saying Google sign-in is misconfigured on the platform, or the builder's browser shows a Google page with `invalid_client` / "The OAuth client was not found", the fault is on the platform side. It is not your request body, not a missing field, and not a stale skill. Do not retry with different fields. Tell the builder to report it in the hackathon Telegram group and try again later.
 
 Finish the connection:
 
@@ -140,12 +146,14 @@ curl -X PUT https://celobuilders.xyz/submissions/me \
   -d '{
     "projectName": "AgentPay",
     "githubUrl": "https://github.com/example/agentpay",
-    "trackIds": ["best-agent"],
+    "trackIds": ["<track-slug>"],
     "customFields": { "telegram": "@janedoe", "agentWalletAddress": "0x1234...abcd" }
   }'
 ```
 
-If the builder already has an agent wallet, include `agentWalletAddress` at registration even though it is only required to publish — x402 facilitator settlements are attributed to that wallet, and the leaderboard shows them as soon as it is on file (attribution is retroactive across the whole hackathon window, but the leaderboard reads zero until the wallet is added). If there is no wallet yet, add it to the submission the moment one exists.
+If the builder already has an agent wallet, include `agentWalletAddress` at registration even though it is only required to publish. x402 facilitator settlements are attributed to that wallet, and the leaderboard shows them as soon as it is on file. **Settlement attribution is retroactive**: adding the wallet late still credits every settlement from the whole window, so a late wallet costs nothing but visibility. If there is no wallet yet, add it the moment one exists.
+
+**Tagging is the opposite, and this is the part that costs teams the event.** A tag lives in the calldata of each transaction, so it has to be there *when the transaction is sent*. There is no way to tag a transaction after the fact and no way to backfill. A team that registers on day one and wires the tag in on day ten has permanently lost days one to nine.
 
 The response includes `attributionTag` (`celo_` + 12 hex characters) — the builder's on-chain attribution tag, derived from the GitHub `owner/repo` slug and locked to the first saved value (later URL edits do not change it). Show it to the builder right away with the integration one-liner:
 
@@ -154,7 +162,7 @@ import { toDataSuffix } from '@celo/attribution-tags'
 await wallet.sendTransaction({ to, value, data: toDataSuffix('<attributionTag>') })
 ```
 
-**Your assigned tag must be in every transaction.** Leaderboards only credit the `attributionTag` returned at registration — a code you derive yourself (e.g. `codeFromHostname`) or brought from another program is a different value and is not credited on its own. Already tagging with your own code? Keep it — ERC-8021 suffixes carry multiple codes. Pass an array and include the assigned tag:
+**Wire the tag in before the first transaction, not after the last.** Your assigned tag must be in every transaction. Leaderboards only credit the `attributionTag` returned at registration — a code you derive yourself (e.g. `codeFromHostname`) or brought from another program is a different value and is not credited on its own. Already tagging with your own code? Keep it — ERC-8021 suffixes carry multiple codes. Pass an array and include the assigned tag:
 
 ```ts
 const tag = toDataSuffix(['your_existing_code', '<attributionTag>'])
@@ -162,11 +170,52 @@ const tag = toDataSuffix(['your_existing_code', '<attributionTag>'])
 
 Only add codes that represent your own app — platform codes like `minipay` are added by the platform, not by you.
 
-After the first tagged transaction, verify the loop is closed: decode the transaction (`verifyTx` in the SDK) and confirm the codes include the registered `attributionTag` from `GET /submissions/me`.
+**Took part in an earlier Celo hackathon?** Your tag may differ from the one you had then, and that is expected. Tags are derived from the GitHub `owner/repo` slug; earlier events derived them from the app domain, so the same project can hold an older code. Tags are per repository, not per hackathon: the same repo gets the same tag in every event from now on. Only the tag returned by *this* registration is credited on *this* leaderboard. Transactions carrying only the older code are not credited here and cannot be re-tagged, so switch to the array form above before the next transaction. Keep the older code in the array if another program still reads it.
+
+Verify on the *first* tagged transaction rather than at the end: decode it (`verifyTx` in the SDK) and confirm the codes include the registered `attributionTag` from `GET /submissions/me`. Checking once, early, is the difference between a wiring mistake costing one transaction and costing the whole event.
+
+Registration is done at this point. Before moving on, check `metadata.perks` and mention any sponsor offers — see **Sponsor Perks** below. This is the moment the builder is setting up, so it is the only moment the information is useful.
+
+## Sponsor Perks
+
+Some hackathons come with sponsor offers. **Read them from the hackathon itself, not from this file** — a skill copy is a snapshot, and offers change or expire:
+
+```bash
+curl https://celobuilders.xyz/hackathons/<hackathon-slug> | jq .metadata.perks
+```
+
+Mention perks once, after registration succeeds, while the builder is setting up. Do not push them: a perk is optional and none of them are needed to compete.
+
+**Never imply a paid service is required.** Celo's public RPC (`https://forno.celo.org`) is free and fine to build on. Sponsor infrastructure is for when a builder's own usage outgrows it, which for most projects is never.
+
+If a perk requires payment details before a discount applies, say so before the builder starts, rather than letting them discover it at a checkout screen.
+
+### Agents at Work (28 Aug - 21 Sep 2026): Chainstack RPC
+
+**Chainstack is sponsoring free RPC for this hackathon.** Every team gets **3 months of the Growth plan**, which is 20M request units a month, 250 requests/second, plus archive data and `debug_*` / `trace_*` APIs that the free tier does not include. The 1st place winner gets a full year.
+
+To claim: create an account at [chainstack.com](https://chainstack.com), subscribe to the Growth plan, and apply the coupon code **`AGENTSATWORK`**.
+
+Two things to tell the builder up front rather than let them find out:
+
+- **Chainstack documents Celo mainnet only** (network ID 42220). If the builder is working on Celo Sepolia, this does not replace `https://forno.celo-sepolia.celo-testnet.org`.
+- Subscribing before the coupon applies normally means entering payment details.
+
+**This offer ends with the hackathon on 21 September 2026.** After that, re-read `metadata.perks` rather than trusting this section.
+
+### Agents at Work (28 Aug - 21 Sep 2026): stablecoin tooling
+
+Two ecosystem resources worth one mention after registration, only if the builder picked or is weighing the **Best Stablecoin Adoption** subtrack. Neither is required to compete.
+
+**USA₮ for verified humans (Self × Tether).** A builder can verify once in the Self app (passport, national ID, or Aadhaar), connect a Celo wallet, and claim USA₮ on Celo mainnet from the Google Cloud Web3 faucet: `https://cloud.google.com/application/web3/faucet/celo/mainnet`. It is the quickest way to put USA₮ in their own or their first users' wallets, and USA₮ is the one stablecoin that counts for both halves of that subtrack (direct transfers and x402 settlement). Announcement: `https://self.xyz/blog/self-and-usa%E2%82%AE-launch-first-regulated-u.s.-stablecoin-distribution-to-verified-humans-now-live-on-celo`. Docs: `https://docs.self.xyz`. USA₮ on Celo: `0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771` (6 decimals).
+
+**Textile FX.** On-chain FX liquidity on Celo mainnet: USD₮ against cNGN, wBRL and wARS, both directions, permissionless. Swap UI: `https://app.textilecredit.com/s/swap?sell=USDT&buy=cNGN&chainId=42220` (swap the `sell` / `buy` symbols for wBRL or wARS). cNGN can also be bought at `https://cngn.co`. Use it when a builder needs the local-currency leg of a remittance, bill-pay or FX-corridor flow.
+
+**These pointers were checked on 8 September 2026.** Pairs and faucet terms change; if either has moved, trust the live site over this section.
 
 ## Project Submission
 
-Before publishing a project, make sure all required fields are present, including every hackathon-specific field from `/hackathons/:id/submission-fields`. Hackathon-specific values go in the `customFields` object, keyed by each field's `key`. The one exception is `socialLink`, which is sent top-level. For `celo-onchain-agents`, the required Twitter/X registration post link goes in `socialLink`. Builders can create or update their project until the hackathon end time, including updates to an already-published project. Always include at least one `trackIds` value when the hackathon has tracks.
+Before publishing a project, make sure all required fields are present, including every hackathon-specific field from `/hackathons/:id/submission-fields`. A field may also carry `requiredIf` — it becomes required only when another field holds a given value (for example an AskBots project URL required only when `primaryTrack` is `askbots-growth`). Re-check those after the builder picks their track, not before. Hackathon-specific values go in the `customFields` object, keyed by each field's `key`. The one exception is `socialLink`, which is sent top-level and carries the Twitter/X registration post link. Builders can create or update their project until the hackathon end time, including updates to an already-published project. Always include at least one `trackIds` value when the hackathon has tracks.
 
 Create or update the project:
 
@@ -178,8 +227,8 @@ curl -X PUT https://celobuilders.xyz/submissions/me \
     "projectName": "AgentPay",
     "tagline": "An onchain payment assistant for everyday transactions",
     "description": "A Celo agent that helps users prepare, verify, and send useful payment transactions.",
-    "trackIds": ["best-agent"],
-    "bountyIds": ["best-agent-1st"],
+    "trackIds": ["<track-slug>"],
+    "bountyIds": ["<bounty-slug>"],
     "githubUrl": "https://github.com/example/agentpay",
     "demoUrl": "https://example.com",
     "videoUrl": "https://youtu.be/example",
@@ -196,7 +245,7 @@ curl -X PUT https://celobuilders.xyz/submissions/me \
 
 The `customFields` example above shows fields a hackathon might configure; always send exactly the keys returned by `/hackathons/:id/submission-fields` for the selected hackathon. Sending keys that are not configured is rejected with a `400`. For backward compatibility, configured field values sent as top-level properties are also accepted, but prefer `customFields`.
 
-For `celo-onchain-agents`, valid `trackIds` slugs are `best-agent`, `8004scan-rank`, and `most-activity`. Valid `bountyIds` slugs are `best-agent-1st`, `best-agent-2nd`, `best-agent-3rd`, `8004scan-rank-1st`, and `most-activity-1st`.
+Never guess track or bounty slugs, and never reuse slugs from a previous hackathon — they differ per event and an unknown slug is rejected. Read the valid values from `/hackathons/<hackathon-slug>/tracks` and `/hackathons/<hackathon-slug>/bounties` for the hackathon the builder chose.
 
 Review the project:
 

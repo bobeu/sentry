@@ -1,13 +1,18 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 
-const ASKBOT_BASE = "https://main--askbots.netlify.app/api";
+import {
+  GRAND_ADMIN_TELEGRAM_ID,
+  isGrandAdminTelegramId,
+} from "@/lib/owner";
+
+const ASKBOT_BASE = "https://www.askbots.ai/api";
 
 /** Only this Telegram user may trigger AskBot earn cycles via Sentry. */
-export const ASKBOT_AUTHORIZED_TELEGRAM_ID = "805099765";
+export const ASKBOT_AUTHORIZED_TELEGRAM_ID = GRAND_ADMIN_TELEGRAM_ID;
 
 export function isAskBotAuthorized(telegramUserId: string | null | undefined) {
-  return telegramUserId === ASKBOT_AUTHORIZED_TELEGRAM_ID;
+  return isGrandAdminTelegramId(telegramUserId);
 }
 
 /** Detect a request to check / earn on AskBot matches. */
@@ -25,7 +30,9 @@ export function isAskBotCheckRequest(text: string) {
 }
 
 type AskBotProject = {
-  id: string;
+  /** Convex-style id from AskBot list/detail payloads. */
+  _id?: string;
+  id?: string;
   name?: string;
   propertyType?: string;
   propertyUrl?: string;
@@ -38,6 +45,12 @@ type AskBotProject = {
     choices?: string[];
   }>;
 };
+
+function projectId(project: AskBotProject): string {
+  const id = project._id ?? project.id;
+  if (!id) throw new Error("AskBot project missing _id/id");
+  return id;
+}
 
 async function loadApiKey(): Promise<string> {
   const candidates = [
@@ -110,42 +123,62 @@ async function api<T>(
   return body as T;
 }
 
+function githubRawReadmeUrl(url: string): string | null {
+  const m = url.match(
+    /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
+  );
+  if (!m) return null;
+  return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/main/README.md`;
+}
+
 async function reviewProperty(project: AskBotProject): Promise<string> {
   const url = project.propertyUrl?.trim();
   if (!url) return "(no propertyUrl)";
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "SentryAskBot/1.0" },
-      signal: AbortSignal.timeout(12_000),
-    });
-    const text = await res.text();
-    const title =
-      text.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
-    const desc =
-      text
-        .match(
-          /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i,
-        )?.[1]
-        ?.trim() ?? "";
-    const snippet = text
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 900);
-    return [
-      `URL: ${url}`,
-      `HTTP ${res.status}`,
-      title ? `Title: ${title}` : null,
-      desc ? `Description: ${desc}` : null,
-      `Snippet: ${snippet || "(empty)"}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  } catch (err) {
-    return `Could not fetch ${url}: ${err instanceof Error ? err.message : String(err)}`;
+
+  const candidates = [githubRawReadmeUrl(url), url].filter(Boolean) as string[];
+  const notes: string[] = [`URL: ${url}`];
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        headers: {
+          "User-Agent": "SentryAskBot/1.0",
+          Accept: "text/plain,text/html,*/*",
+        },
+        signal: AbortSignal.timeout(12_000),
+        redirect: "follow",
+      });
+      const text = await res.text();
+      const title =
+        text.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ??
+        text.match(/^#\s+(.+)$/m)?.[1]?.trim() ??
+        "";
+      const desc =
+        text
+          .match(
+            /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i,
+          )?.[1]
+          ?.trim() ?? "";
+      const snippet = text
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 1800);
+      notes.push(`Fetched: ${candidate}`);
+      notes.push(`HTTP ${res.status}`);
+      if (title) notes.push(`Title: ${title}`);
+      if (desc) notes.push(`Description: ${desc}`);
+      notes.push(`Snippet: ${snippet || "(empty)"}`);
+      if (res.ok && snippet.length > 80) return notes.join("\n");
+    } catch (err) {
+      notes.push(
+        `Fetch failed ${candidate}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
+  return notes.join("\n");
 }
 
 function answerQuestion(
@@ -183,41 +216,24 @@ function answerQuestion(
 }
 
 function evalMathPrompt(prompt: string): string {
-  // "What is 847293 * 193847 + 582910384?"
-  const m = prompt.replace(/,/g, "").match(
-    /(-?\d+)\s*([*+\-/])\s*(-?\d+)(?:\s*([*+\-/])\s*(-?\d+))?/,
-  );
-  if (!m) {
-    // fallback: extract expression after "is"
-    const expr = prompt.replace(/what is/i, "").replace(/\?/g, "").trim();
+  // e.g. "What is (782540 + 221389) * 109226?"
+  const expr = prompt
+    .replace(/what is/i, "")
+    .replace(/,/g, "")
+    .replace(/\?$/, "")
+    .trim();
+  // Convert to BigInt arithmetic for large number precision
+  const bigExpr = expr.replace(/\d+/g, (m) => m + "n");
+  try {
+    // eslint-disable-next-line no-new-func
+    const val = Function(`return ${bigExpr}`)() as bigint;
+    return String(val);
+  } catch {
+    // fallback: plain evaluation
     // eslint-disable-next-line no-new-func
     const val = Function(`"use strict"; return (${expr})`)() as number | bigint;
     return String(val);
   }
-  const a = BigInt(m[1]!);
-  const op1 = m[2]!;
-  const b = BigInt(m[3]!);
-  let acc =
-    op1 === "*"
-      ? a * b
-      : op1 === "+"
-        ? a + b
-        : op1 === "-"
-          ? a - b
-          : a / b;
-  if (m[4] && m[5]) {
-    const c = BigInt(m[5]);
-    const op2 = m[4];
-    acc =
-      op2 === "*"
-        ? acc * c
-        : op2 === "+"
-          ? acc + c
-          : op2 === "-"
-            ? acc - c
-            : acc / c;
-  }
-  return acc.toString();
 }
 
 export class AskbotService {
@@ -264,14 +280,25 @@ export class AskbotService {
     const max = Math.min(opts?.maxProjects ?? 2, projects.length);
     for (let i = 0; i < max; i++) {
       const project = projects[i]!;
-      lines.push("", `── ${project.name ?? project.id} (${project.propertyType ?? "?"})`);
+      let pid: string;
+      try {
+        pid = projectId(project);
+      } catch (err) {
+        lines.push(
+          "",
+          `── ${project.name ?? "(unnamed)"} — skipped: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        continue;
+      }
+      lines.push("", `── ${project.name ?? pid} (${project.propertyType ?? "?"})`);
       lines.push(`URL: ${project.propertyUrl ?? "(none)"}`);
+      lines.push(`Project id: ${pid}`);
 
       let detail = project;
       try {
-        detail = await api<AskBotProject>(`/projects/${project.id}`, apiKey);
+        detail = await api<AskBotProject>(`/projects/${pid}`, apiKey);
       } catch {
-        // use list payload
+        // use list payload (AskBot detail endpoint may 500; list already has questions)
       }
 
       const review = await reviewProperty(detail);
@@ -291,7 +318,7 @@ export class AskbotService {
           challengeId: string;
           prompt: string;
           timeoutMs?: number;
-        }>(`/projects/${project.id}/respond`, apiKey, {
+        }>(`/projects/${pid}/respond`, apiKey, {
           method: "POST",
           body: JSON.stringify({ answers }),
         });
@@ -303,7 +330,7 @@ export class AskbotService {
           currency?: string;
           txHash?: string;
           error?: string;
-        }>(`/projects/${project.id}/verify-challenge`, apiKey, {
+        }>(`/projects/${pid}/verify-challenge`, apiKey, {
           method: "POST",
           body: JSON.stringify({
             challengeId: challenge.challengeId,

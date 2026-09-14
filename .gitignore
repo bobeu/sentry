@@ -29,6 +29,7 @@ sentryclaw/**
 # AskBot judge credentials (API key + payout wallet)
 askbots_secrets/
 **/askbots_secrets/
+aigora-feedback-20260806-111129-feature-agent-readiness.md
 
 # Local mainnet volume scripts: track source, never commit private keys
 smartContracts/tests/accounts.json
@@ -37,3 +38,6 @@ smartContracts/tests/**/accounts.json
 smartContracts/tests/dist/
 .vercel
 .env*
+
+# Dev docs
+PROMPTS.md
