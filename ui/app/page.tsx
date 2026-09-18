@@ -604,41 +604,29 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <section className="mx-auto max-w-6xl px-4 pb-8 pt-4 sm:px-6 sm:pb-12 sm:pt-8">
         <div className="rounded-3xl border border-primary/10 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-6 text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-primary">What is publicly verifiable</p>
-            <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-text-dark">We state only what the product can prove.</h3>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-primary">Publicly verifiable product statement</p>
+          <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-text-dark sm:text-3xl">
+            What the page says, what it proves, and what it does not claim
+          </h2>
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
             <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
-              <div className="mb-2 text-sm font-extrabold text-text-dark">Observable facts</div>
-              <ul className="space-y-2 text-sm text-muted leading-relaxed">
-                <li>• Website loads over HTTPS.</li>
-                <li>• Telegram bot is enabled only when configured by an employer.</li>
-                <li>• Wallet balances and charges are visible in the dashboard.</li>
-                <li>• Reports are based on logged actions and counts.</li>
+              <div className="mb-2 text-sm font-extrabold text-text-dark">Visible product evidence</div>
+              <ul className="space-y-2 text-sm leading-relaxed text-muted">
+                <li>• Sentry is positioned as a Telegram operations agent for FAQ replies, spam moderation, quizzes, and group summaries.</li>
+                <li>• The employer controls the enabled workflow, wallet funding, and review settings.</li>
+                <li>• The dashboard and work logs are designed to show actions, balances, and summaries in plain language.</li>
+                <li>• The billing model is explicit: prepaid wallet and funded workflow controls are part of the product model.</li>
               </ul>
             </div>
-
             <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
-              <div className="mb-2 text-sm font-extrabold text-text-dark">Not assumed</div>
-              <ul className="space-y-2 text-sm text-muted leading-relaxed">
-                <li>• No hidden custody claim.</li>
-                <li>• No undocumented security guarantee.</li>
-                <li>• No implied legal or financial fiduciary role.</li>
-                <li>• No unverified product claims without a visible workflow.</li>
-              </ul>
-            </div>
-
-            <div className="rounded-2xl border border-primary/10 bg-bg-light p-5">
-              <div className="mb-2 text-sm font-extrabold text-text-dark">How employer controls it</div>
-              <ul className="space-y-2 text-sm text-muted leading-relaxed">
-                <li>• Enable or disable features in the dashboard.</li>
-                <li>• Fund the prepaid wallet or reward account.</li>
-                <li>• Review escalation rules and balances.</li>
-                <li>• Ask Sentry to report or pause work when needed.</li>
+              <div className="mb-2 text-sm font-extrabold text-text-dark">Claims we avoid</div>
+              <ul className="space-y-2 text-sm leading-relaxed text-muted">
+                <li>• We do not claim hidden custody, undocumented wallet control, or secret security guarantees.</li>
+                <li>• We do not imply autonomous legal or fiduciary control over user funds.</li>
+                <li>• We do not present marketing promises without a visible operational workflow and employer review layer.</li>
+                <li>• We state only what can be checked from the public product page, the dashboard, and the configured workflows.</li>
               </ul>
             </div>
           </div>

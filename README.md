@@ -163,5 +163,12 @@ pnpm contracts:sync
 
 Set `DEMO_MODE=true` in `.env` for hackathon demos with micro-priced actions (e.g. 0.0001 instead of 0.01).
 
+## Public verifiability statement
+
+Sentry is a Telegram community operations agent for employer-controlled workflows. The public evidence for the product is intentionally narrow and factual: it can answer FAQ-style questions, moderate spam, host polls and quizzes, send shift summaries, and report wallet and action states in plain language. The employer chooses which features are enabled, controls the wallet funding, and reviews the configured workflow.
+
+The public-facing statement is therefore limited to observable product functions and employer-controlled workflows. We do not claim hidden custody, undocumented security controls, legal authority over user funds, or autonomous execution beyond the configured rules and visible workflow outputs. Where the public page cannot show a fact directly, we do not present it as verified.
+
+This is the standard we use in all public-facing product writing: describe the live operational model, the user-controlled settings, and the visible outputs — and avoid unverified claims about privacy, custody, data handling, or backend ownership unless they are explicitly disclosed and evidenced.
 
 <!-- The site's metadata claims to offer an "AI Telegram Employee" providing FAQs, moderation, polls, learn-and-earn games with points and cash rewards, work reports, and payments from a prepaid Celo wallet. However, none of these functional claims can be verified from publicly observable evidence: all seven responses report that the returned HTML contained only title and meta description tags, with no rendered headings, links, forms, buttons, images, or executed JavaScript. Specifically unverifiable are privacy policies, security controls, custody models, wallet ownership or boundaries, Celo contract addresses, on-chain transaction evidence, Telegram integration details, AI implementation, reward mechanisms, and payment execution flows. While HTTPS delivery and a 200 response were observable, the page provided no documentation, technical specifications, or visible interface elements to independently confirm how the service works, who controls user funds, what data is collected, or whether the advertised capabilities exist. -->
