@@ -171,4 +171,57 @@ The public-facing statement is therefore limited to observable product functions
 
 This is the standard we use in all public-facing product writing: describe the live operational model, the user-controlled settings, and the visible outputs — and avoid unverified claims about privacy, custody, data handling, or backend ownership unless they are explicitly disclosed and evidenced.
 
-<!-- The site's metadata claims to offer an "AI Telegram Employee" providing FAQs, moderation, polls, learn-and-earn games with points and cash rewards, work reports, and payments from a prepaid Celo wallet. However, none of these functional claims can be verified from publicly observable evidence: all seven responses report that the returned HTML contained only title and meta description tags, with no rendered headings, links, forms, buttons, images, or executed JavaScript. Specifically unverifiable are privacy policies, security controls, custody models, wallet ownership or boundaries, Celo contract addresses, on-chain transaction evidence, Telegram integration details, AI implementation, reward mechanisms, and payment execution flows. While HTTPS delivery and a 200 response were observable, the page provided no documentation, technical specifications, or visible interface elements to independently confirm how the service works, who controls user funds, what data is collected, or whether the advertised capabilities exist. -->
+<!-- The site's metadata claims to offer an "AI Telegram Employee" providing FAQs, moderation, polls, learn-and-earn games with points and cash rewards, work reports, and payments from a prepaid Celo wallet. However, none of these functional claims can be verified from publicly observable evidence: all seven responses report that the returned HTML contained only title and meta description tags, with no rendered headings, links, forms, buttons, images, or executed JavaScript. Specifically unverifiable are privacy policies, security controls, custody models, wallet ownership or boundaries, Celo contract addresses, on-chain transaction evidence, Telegram integration details, AI implementation, reward mechanisms, and payment execution flows. While HTTPS delivery and a 200 response were observable, the page provided no documentation, technical specifications, or visible interface elements to independently confirm how the service works, who controls user funds, what data is collected, or whether the advertised capabilities exist. 
+
+
+created account agentatwork
+  network:  mainnet
+  address:  0x645ea27b7B81dc0E43bD58e75606D1eB0c646a8B
+  key:      stored in OS keychain (legacy service=cpay)
+
+
+
+  Viewed fetch.js:1-132
+Edited run_buy_flow.ps1
+Edited run_buy_flow.sh
+
+I have identified the cause of the HTTP 400 error:
+
+### 🔎 Diagnosis & Finding
+
+- **Cause**: The `https://usebuy.ai/google/vm` endpoint requires an explicit `Content-Type: application/json` HTTP header when accepting POST JSON bodies (`{"script":"...","machineType":"e2-medium"}`). Without it, the server rejects the request with `bad request: body must be valid JSON`.
+- **Note for Feedback Report**: This is another great finding for your Track 5 feedback report — HTTP clients or agents using `buy fetch` or `buy curl` to hit GCP VM endpoints must explicitly set `-H "Content-Type: application/json"` or `buy fetch` defaults to `text/plain`.
+
+---
+
+### 🛠️ Fix Applied
+
+I updated [`scripts/buy/run_buy_flow.ps1`](file:///c:/Users/HP/Desktop/proofOfShip/sentry/scripts/buy/run_buy_flow.ps1) and [`scripts/buy/run_buy_flow.sh`](file:///c:/Users/HP/Desktop/proofOfShip/sentry/scripts/buy/run_buy_flow.sh) to include `-H "Content-Type: application/json"`:
+
+```powershell
+buy --account agentatwork fetch -X POST -H "Content-Type: application/json" --token USDT --max-amount 0.1 -d $PayloadJson https://usebuy.ai/google/vm
+```
+
+---
+
+### 💻 Command to Run
+
+Please run the command again in PowerShell:
+
+```powershell
+.\scripts\buy\run_buy_flow.ps1 -NonInteractive
+```
+
+Once it completes, paste or share what is saved in `scripts/buy/out/buy-response.json`, and we will proceed with the poll logs and issue creation!
+
+
+
+issues:
+1- https://github.com/celo-org/buy-skill/issues/31
+2- https://github.com/celo-org/buy-skill/issues/32
+3- https://github.com/celo-org/buy-skill/issues/33
+4- https://github.com/celo-org/buy-skill/issues/34
+5- https://github.com/celo-org/buy-skill/issues/35
+6- https://github.com/celo-org/buy-skill/issues/36
+
+-->

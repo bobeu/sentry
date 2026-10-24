@@ -1,59 +1,63 @@
-Usage
------
+# Sentry Track 5 (`buy` / prev. cPay Feedback) Execution Kit
 
-Interactive mode (default):
-	bash scripts/buy/run_buy_flow.sh
+This folder contains scripts and templates for completing **Track 5: Best Feedback for buy ($250 in CELO)** for Sentry.
 
-Non-interactive mode (useful for automation / CI in WSL):
-	bash scripts/buy/run_buy_flow.sh --non-interactive --network testnet --provider google --machine e2-medium --duration 1h --image ubuntu-22.04
+---
 
-To run a mainnet flow non-interactively you must either provide `--quote-id <id>` or run an earlier quoting step that produces `scripts/buy/out/quote.json` with a `quoteId` field. Example:
+## Pre-Requisites & Current Setup
 
-	# produce quote.json (interactive or separate run)
-	bash scripts/buy/run_buy_flow.sh
+- **Installed CLI:** `@celo/buy@0.6.0` (`npm install -g @celo/buy@0.6.0`)
+- **Active Account:** `agentatwork`
+- **Wallet Address:** `0x645ea27b7B81dc0E43bD58e75606D1eB0c646a8B` (Celo Mainnet)
 
-	# then run non-interactive pay/status with the quoted id
-	bash scripts/buy/run_buy_flow.sh --non-interactive --network mainnet --quote-id <QUOTE_ID>
+---
 
-Artifacts
- - `scripts/buy/out/quote.json` — raw quote output
- - `scripts/buy/out/settlement.json` — settlement details
- - `scripts/buy/out/settlement-status.log` — poll output for settlement status
- - `scripts/buy/out/ssh-run.log` — captured SSH session output (if SSH succeeds)
+## How to Run
 
-Notes
- - Start with `testnet` for verification and debugging.
- - On `mainnet` funding must be provided to the facilitator address (USDC/USDT) before the facilitator will accept payment; record the funding tx hash in `scripts/buy/out/funding.tx` if you want the agent to consume it later.
- - The script requires `node`, `npx`, and `jq` for best extraction of values.
-Buy / cPay feedback workflow (WSL)
-=================================
+You can run the driver script in **Windows PowerShell** or **WSL (Bash)**.
 
-This folder contains a WSL-friendly script and an issue template to run the `buy` closed-beta flow, collect artifacts, and file a public issue on `celo-org/buy-skill` suitable for the Agents at Work Track 5 submission.
+### Option A: Windows PowerShell (Native)
 
-Prerequisites (WSL):
-- Node.js and `npx` (Node 18+ recommended)
-- `jq` (optional but recommended for JSON parsing)
-- SSH client (openssh)
-- A funded Celo wallet with USDC/USDT for mainnet runs (testnet is free)
+```powershell
+# Open PowerShell in repo root (c:\Users\HP\Desktop\proofOfShip\sentry)
+.\scripts\buy\run_buy_flow.ps1
+```
 
-Quick usage (testnet first):
+Or for non-interactive mode:
+```powershell
+.\scripts\buy\run_buy_flow.ps1 -NonInteractive -Network mainnet -Machine e2-medium -Duration 1h
+```
+
+### Option B: WSL (Linux Bash)
 
 ```bash
-# open WSL bash
-cd /mnt/c/Users/HP/Desktop/proofOfShip/sentry
+# Open WSL bash in repo root (/mnt/c/Users/HP/Desktop/proofOfShip/sentry)
 bash scripts/buy/run_buy_flow.sh
 ```
 
-The script will:
-- install the `@celo/buy` tool via `npx` if requested
-- obtain a quote and save `scripts/buy/out/quote.json`
-- prompt you to fund the facilitator address (if mainnet)
-- call the pay step and save `scripts/buy/out/settlement.json`
-- poll settlement status and save a log in `scripts/buy/out/settlement-status.log`
-- attempt an SSH run and save `scripts/buy/out/ssh-run.log`
+Or for non-interactive mode:
+```bash
+bash scripts/buy/run_buy_flow.sh --non-interactive --network mainnet --machine e2-medium --duration 1h
+```
 
-When finished, use `scripts/buy/issue_template.md` to compose the public issue for `celo-org/buy-skill` and paste in the artifacts and tx hashes.
+---
 
-Notes:
-- The `buy` CLI flags and outputs may evolve. Inspect `scripts/buy/out/*.json` files and adapt the script if the CLI differs.
-- The script is intentionally interactive for the funding step — do not paste private keys or secrets into the issue.
+## What the Script Does
+
+1. **Quote:** Requests a quote for GCP compute (`e2-medium`, `ubuntu-22.04`, `1h`) using `@celo/buy`. Saves to `scripts/buy/out/quote.json`.
+2. **Funding Check:** Prompts for your funding transaction hash on Celo Mainnet (`0x645ea27b7B81dc0E43bD58e75606D1eB0c646a8B`).
+3. **Pay:** Executes settlement using `buy pay --settlement <QUOTE_ID>`. Saves to `scripts/buy/out/settlement.json`.
+4. **Poll:** Monitors allocation status with `buy status` and saves logs to `scripts/buy/out/settlement-status.log`.
+5. **Workload:** Connects via SSH to the VM host and executes a deterministic CPU benchmark, saving to `scripts/buy/out/ssh-run.log`.
+6. **Timing Metrics:** Records latencies for all steps in `scripts/buy/out/timing.log`.
+
+---
+
+## Filing the Public Issue on GitHub (Track 5 Requirement)
+
+1. Open `scripts/buy/issue_template.md`.
+2. Fill in the placeholders (`<INSERT_FUNDING_TX_HASH>`, quote JSON, settlement JSON, timing numbers, observed friction points).
+3. Post the completed markdown as a **Public Issue** on:
+   `https://github.com/celo-org/buy-skill/issues/new`
+4. Copy the URL of the created public GitHub issue (e.g. `https://github.com/celo-org/buy-skill/issues/42`).
+5. Paste this issue URL into your Celo Builders submission for Sentry on `https://celobuilders.xyz`.
