@@ -8,7 +8,8 @@ import {
 } from "../lib/identity";
 import { priceFor, averageActionCost, getPricing, PRICING_AMOUNTS } from "../lib/pricing";
 import { isDemoMode } from "../lib/demo-mode";
-import { isPaymentCurrency, formatAmount } from "../lib/payment-currency";
+import { isPaymentCurrency, formatAmount, tokenDecimals } from "../lib/payment-currency";
+import { CELO_ATTRIBUTION_TAG, CELO_ATTRIBUTION_SUFFIX } from "../lib/attribution";
 import { bufferedSettlementFee, getSettlementConfig } from "../lib/settlement-config";
 
 describe("identity", () => {
@@ -54,9 +55,22 @@ describe("pricing", () => {
 });
 
 describe("payment currency", () => {
-  it("accepts only supported currencies", () => {
+  it("accepts only supported currencies including LatAm tokens and USAT", () => {
     assert.equal(isPaymentCurrency("USDm"), true);
+    assert.equal(isPaymentCurrency("wARS"), true);
+    assert.equal(isPaymentCurrency("wBRL"), true);
+    assert.equal(isPaymentCurrency("USAT"), true);
     assert.equal(isPaymentCurrency("BTC"), false);
+  });
+
+  it("assigns correct token decimals", () => {
+    assert.equal(tokenDecimals("CELO"), 18);
+    assert.equal(tokenDecimals("USDm"), 18);
+    assert.equal(tokenDecimals("wARS"), 18);
+    assert.equal(tokenDecimals("wBRL"), 18);
+    assert.equal(tokenDecimals("USDC"), 6);
+    assert.equal(tokenDecimals("USDT"), 6);
+    assert.equal(tokenDecimals("USAT"), 6);
   });
 
   it("formats amounts with currency label", () => {
@@ -120,5 +134,18 @@ describe("fee currency (gas)", () => {
     process.env.FEE_CURRENCY_STABLE = prevStable;
     process.env.FEE_CURRENCY_ADDRESS = prevAddr;
     process.env.CELO_USDM_ADDRESS = prevUsdm;
+  });
+});
+
+describe("Agents on Open Rails attribution", () => {
+  it("carries the correct hackathon attribution tag", () => {
+    assert.equal(CELO_ATTRIBUTION_TAG, "celo_39f96dcb58cc");
+  });
+
+  it("formats the exact ERC-8021 suffix expected by Loops", () => {
+    assert.equal(
+      CELO_ATTRIBUTION_SUFFIX,
+      "0x63656c6f5f333966393664636235386363110080218021802180218021802180218021",
+    );
   });
 });

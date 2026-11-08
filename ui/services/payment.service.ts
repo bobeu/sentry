@@ -9,11 +9,32 @@ import {
 import { blockchainService } from "@/services/blockchain.service";
 import { logEvent } from "@/lib/logger";
 
-const ENV_TOKEN: Partial<Record<PaymentCurrency, string | undefined>> = {
-  USDm: process.env.CELO_USDM_ADDRESS,
-  USDC: process.env.CELO_USDC_ADDRESS,
-  USDT: process.env.CELO_USDT_ADDRESS,
+export const DEFAULT_CELO_TOKEN_ADDRESSES: Record<string, string> = {
+  USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
+  USDC: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+  USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+  wARS: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D",
+  wBRL: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0",
+  USAT: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771",
 };
+
+const ENV_TOKEN: Partial<Record<PaymentCurrency, string | undefined>> = {
+  USDm: process.env.CELO_USDM_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USDm,
+  USDC: process.env.CELO_USDC_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USDC,
+  USDT: process.env.CELO_USDT_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USDT,
+  wARS: process.env.CELO_WARS_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wARS,
+  wBRL: process.env.CELO_WBRL_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wBRL,
+  USAT: process.env.CELO_USAT_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USAT,
+};
+
+const ERC20_CURRENCIES: PaymentCurrency[] = [
+  "USDm",
+  "USDC",
+  "USDT",
+  "wARS",
+  "wBRL",
+  "USAT",
+];
 
 export class PaymentService {
   async ensureConfigs() {
@@ -31,7 +52,7 @@ export class PaymentService {
       ),
     );
     await Promise.all(
-      (["USDm", "USDC", "USDT"] as const).map((currency) => {
+      ERC20_CURRENCIES.map((currency) => {
         const tokenAddress = ENV_TOKEN[currency];
         return tokenAddress && isAddress(tokenAddress)
           ? prisma.paymentCurrencyConfig.updateMany({

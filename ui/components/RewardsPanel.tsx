@@ -15,7 +15,7 @@ import {
 import { celo } from "viem/chains";
 import { useToast } from "@/components/Toast";
 import { getInjectedProvider } from "@/lib/wagmi";
-import { tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
+import { PAYMENT_CURRENCIES, tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 
 type RewardRow = {
@@ -56,11 +56,17 @@ function envToken(currency: string): Address | null {
     USDm: process.env.NEXT_PUBLIC_CELO_USDM_ADDRESS || process.env.CELO_USDM_ADDRESS,
     USDC: process.env.NEXT_PUBLIC_CELO_USDC_ADDRESS || process.env.CELO_USDC_ADDRESS,
     USDT: process.env.NEXT_PUBLIC_CELO_USDT_ADDRESS || process.env.CELO_USDT_ADDRESS,
+    wARS: process.env.NEXT_PUBLIC_CELO_WARS_ADDRESS || process.env.CELO_WARS_ADDRESS,
+    wBRL: process.env.NEXT_PUBLIC_CELO_WBRL_ADDRESS || process.env.CELO_WBRL_ADDRESS,
+    USAT: process.env.NEXT_PUBLIC_CELO_USAT_ADDRESS || process.env.CELO_USAT_ADDRESS,
   };
   const defaults: Record<string, string> = {
     USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
     USDC: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
     USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+    wARS: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D",
+    wBRL: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0",
+    USAT: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771",
   };
   const raw = (map[currency] || defaults[currency] || "").trim();
   return raw.startsWith("0x") ? (raw as Address) : null;
@@ -127,7 +133,7 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (
       row?.rewardCurrency &&
-      ["CELO", "USDm", "USDC", "USDT"].includes(row.rewardCurrency)
+      PAYMENT_CURRENCIES.includes(row.rewardCurrency as any)
     ) {
       setFundCurrency(row.rewardCurrency as PaymentCurrency);
     }
@@ -481,7 +487,7 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                   Balance & Reward Metrics
                 </h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  {(["CELO", "USDm", "USDC", "USDT"] as const).map((c) => {
+                  {PAYMENT_CURRENCIES.map((c) => {
                     const v =
                       balances?.[c] != null ? Number(balances[c]) : c === fundCurrency ? balance : 0;
                     return (
@@ -598,10 +604,9 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
                             }
                             className="mt-2 block w-full rounded-lg border border-primary/15 bg-white px-3.5 py-2.5 text-text-dark outline-none focus:border-primary text-xs font-bold"
                           >
-                            <option value="CELO">CELO</option>
-                            <option value="USDm">USDm</option>
-                            <option value="USDC">USDC</option>
-                            <option value="USDT">USDT</option>
+                            {PAYMENT_CURRENCIES.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
                           </select>
                         </label>
                         <label className="flex-1 text-xs text-muted">

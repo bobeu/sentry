@@ -431,6 +431,16 @@ async function gatherAgentTools(input: {
     toolLines.push("[tool:search_knowledge] (no sources configured)");
   }
 
+  try {
+    const { buyService } = await import("@/services/buy.service");
+    const intel = await buyService.fetchExternalIntel(input.userQuestion);
+    if (intel) {
+      toolLines.push(`[tool:buy_x402_intel]\n${intel}`);
+    }
+  } catch {
+    // Non-blocking external intel lookup
+  }
+
   return { faqHit, toolBlock: toolLines.join("\n\n") };
 }
 

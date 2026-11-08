@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   createWalletClient,
+  erc20Abi,
   formatUnits,
   http,
   isAddress,
@@ -24,6 +25,9 @@ const TOKEN_INDEX: Record<PaymentCurrency, number> = {
   USDm: 1,
   USDC: 2,
   USDT: 3,
+  wARS: 4,
+  wBRL: 5,
+  USAT: 6,
 };
 
 const walletAbi = [
@@ -984,23 +988,41 @@ export class BlockchainService {
     })) as bigint;
   }
 
-  async rewardAccountBalances(accountAddress: Address): Promise<{
-    CELO: bigint;
-    USDm: bigint;
-    USDC: bigint;
-    USDT: bigint;
-  }> {
+  async rewardAccountBalances(accountAddress: Address): Promise<Record<PaymentCurrency, bigint>> {
     const result = (await this.client().readContract({
       address: accountAddress,
       abi: REWARD_ACCOUNT_ABI,
       functionName: "balances",
     })) as readonly [bigint, bigint, bigint, bigint];
-    return {
-      CELO: result[0],
-      USDm: result[1],
-      USDC: result[2],
-      USDT: result[3],
+
+    const balances: Record<PaymentCurrency, bigint> = {
+      CELO: result[0] ?? 0n,
+      USDm: result[1] ?? 0n,
+      USDC: result[2] ?? 0n,
+      USDT: result[3] ?? 0n,
+      wARS: 0n,
+      wBRL: 0n,
+      USAT: 0n,
     };
+
+    const { DEFAULT_CELO_TOKEN_ADDRESSES } = await import("./payment.service");
+    for (const token of ["wARS", "wBRL", "USAT"] as const) {
+      const tokenAddr = (process.env[`CELO_${token.toUpperCase()}_ADDRESS`] || DEFAULT_CELO_TOKEN_ADDRESSES[token]) as Address;
+      if (tokenAddr && isAddress(tokenAddr)) {
+        try {
+          balances[token] = (await this.client().readContract({
+            address: tokenAddr,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [accountAddress],
+          })) as bigint;
+        } catch {
+          balances[token] = 0n;
+        }
+      }
+    }
+
+    return balances;
   }
 
   /** Member payout via RewardFactory (operator only). */
