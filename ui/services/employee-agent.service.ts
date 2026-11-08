@@ -177,6 +177,26 @@ export class EmployeeAgentService {
     }
   }
 
+  private async buyIntel(
+    user: AgentUser,
+    input: EmployeeTaskInput,
+  ): Promise<EmployeeTaskResult> {
+    const query = (input.question ?? input.messageText ?? "").trim();
+    if (!query) throw Errors.badRequest("query or question required");
+    const { buyService } = await import("@/services/buy.service");
+    const intel = await buyService.fetchExternalIntel(query);
+    return {
+      billable: true,
+      groupId: input.groupId,
+      result: {
+        intel: intel ?? "No external intelligence was required or found for this query.",
+        query,
+        attributionTag: buyService.getAttributionTag(),
+      },
+      metadata: { task: "buy_intel", attributionTag: buyService.getAttributionTag() },
+    };
+  }
+
   private async status(user: AgentUser): Promise<EmployeeTaskResult> {
     const ledger = await billingService.getBalanceLedger(user.id);
     const groups = await prisma.groupEmployment.count({
