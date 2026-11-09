@@ -14,7 +14,7 @@ Pay-per-completed-work flow:
 4. Completed work accumulates as **outstanding charges** off-chain; batch **settlements** settle on-chain via `chargeSettlement()`.
 5. **Available balance** = on-chain balance − outstanding charges. Work stops when available balance is exhausted.
 
-Supported payment currencies: **CELO**, **USDm**, **USDC**, **USDT**. Each wallet keeps one immutable currency; admins enable/disable currencies only for future wallets.
+Supported payment currencies: **CELO**, **USDm**, **USDC**, **USDT**, **wARS**, **wBRL**, **wCOP**, **wMXN**, **wPEN**, **wCLP** (Ripio wFIAT), **USAT**. Each wallet keeps one immutable currency; admins enable/disable currencies only for future wallets.
 
 ### What Sentry can do
 

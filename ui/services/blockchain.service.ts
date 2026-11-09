@@ -27,7 +27,11 @@ const TOKEN_INDEX: Record<PaymentCurrency, number> = {
   USDT: 3,
   wARS: 4,
   wBRL: 5,
-  USAT: 6,
+  wCOP: 6,
+  wMXN: 7,
+  wPEN: 8,
+  wCLP: 9,
+  USAT: 10,
 };
 
 const walletAbi = [
@@ -1002,11 +1006,15 @@ export class BlockchainService {
       USDT: result[3] ?? 0n,
       wARS: 0n,
       wBRL: 0n,
+      wCOP: 0n,
+      wMXN: 0n,
+      wPEN: 0n,
+      wCLP: 0n,
       USAT: 0n,
     };
 
     const { DEFAULT_CELO_TOKEN_ADDRESSES } = await import("./payment.service");
-    for (const token of ["wARS", "wBRL", "USAT"] as const) {
+    for (const token of ["wARS", "wBRL", "wCOP", "wMXN", "wPEN", "wCLP", "USAT"] as const) {
       const tokenAddr = (process.env[`CELO_${token.toUpperCase()}_ADDRESS`] || DEFAULT_CELO_TOKEN_ADDRESSES[token]) as Address;
       if (tokenAddr && isAddress(tokenAddr)) {
         try {

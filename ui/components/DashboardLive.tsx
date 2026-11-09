@@ -22,7 +22,7 @@ type NextSettlement = {
 
 type StatusPayload = {
   status: string;
-  preferredNetwork?: "CELO" | "GOAT";
+  preferredNetwork?: "CELO";
   currency: string;
   wallet: {
     address: string;
@@ -194,7 +194,7 @@ export function DashboardLive() {
   const preferredNetwork = data.preferredNetwork ?? "CELO";
   const next = data.nextSettlement;
 
-  async function setPreferredNetwork(nextNetwork: "CELO" | "GOAT") {
+  async function setPreferredNetwork(nextNetwork: "CELO") {
     if (!data || nextNetwork === preferredNetwork) return;
     setNetworkSaving(true);
     try {
@@ -238,16 +238,13 @@ export function DashboardLive() {
                 value={preferredNetwork}
                 disabled={networkSaving}
                 onChange={(event) =>
-                  void setPreferredNetwork(event.target.value as "CELO" | "GOAT")
+                  void setPreferredNetwork(event.target.value as "CELO")
                 }
                 className="rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold text-white outline-none"
                 aria-label="Preferred network"
               >
                 <option value="CELO" className="text-text-dark">
-                  CELO (existing on-chain billing)
-                </option>
-                <option value="GOAT" className="text-text-dark">
-                  GOAT (AgentKit + ERC-8004)
+                  CELO (Celo Mainnet)
                 </option>
               </select>
             </div>

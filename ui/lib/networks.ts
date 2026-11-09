@@ -1,4 +1,4 @@
-export const SUPPORTED_NETWORKS = ["CELO", "GOAT"] as const;
+export const SUPPORTED_NETWORKS = ["CELO"] as const;
 
 export type SupportedNetwork = (typeof SUPPORTED_NETWORKS)[number];
 

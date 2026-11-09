@@ -522,6 +522,10 @@ export class RewardService {
       USDT: 0,
       wARS: 0,
       wBRL: 0,
+      wCOP: 0,
+      wMXN: 0,
+      wPEN: 0,
+      wCLP: 0,
       USAT: 0,
     };
     for (const row of rows) {

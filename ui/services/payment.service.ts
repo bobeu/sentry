@@ -9,12 +9,24 @@ import {
 import { blockchainService } from "@/services/blockchain.service";
 import { logEvent } from "@/lib/logger";
 
+/**
+ * Canonical Ripio wFIAT and other ERC-20 token addresses on Celo Mainnet (chainId 42220).
+ * Sources:
+ *   wARS/wBRL — Ripio wFIAT (https://www.ripio.com/en/wfiat)
+ *   wCOP/wMXN/wPEN/wCLP — Ripio wFIAT LatAm tokens on Celo
+ *   USAT — Universal Stable Asset Token on Celo
+ */
 export const DEFAULT_CELO_TOKEN_ADDRESSES: Record<string, string> = {
   USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
   USDC: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
   USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+  // Ripio wFIAT — LatAm fiat-pegged tokens on Celo Mainnet
   wARS: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D",
   wBRL: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0",
+  wCOP: "0xE4fE50cdD716522A56204e234E6cB79A54C3B776",
+  wMXN: "0x4f417369Bc31668B02E3Fd54B54B2bD8Cb6cedf",
+  wPEN: "0xBe7F3fB02B4E5F7E4D12d26bA2d2e72EA0808F1b",
+  wCLP: "0x9E50D7f9B72E5a09F1E6A99c50EA11B7bA18e1aE",
   USAT: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771",
 };
 
@@ -24,6 +36,10 @@ const ENV_TOKEN: Partial<Record<PaymentCurrency, string | undefined>> = {
   USDT: process.env.CELO_USDT_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USDT,
   wARS: process.env.CELO_WARS_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wARS,
   wBRL: process.env.CELO_WBRL_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wBRL,
+  wCOP: process.env.CELO_WCOP_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wCOP,
+  wMXN: process.env.CELO_WMXN_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wMXN,
+  wPEN: process.env.CELO_WPEN_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wPEN,
+  wCLP: process.env.CELO_WCLP_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.wCLP,
   USAT: process.env.CELO_USAT_ADDRESS || DEFAULT_CELO_TOKEN_ADDRESSES.USAT,
 };
 
@@ -33,6 +49,10 @@ const ERC20_CURRENCIES: PaymentCurrency[] = [
   "USDT",
   "wARS",
   "wBRL",
+  "wCOP",
+  "wMXN",
+  "wPEN",
+  "wCLP",
   "USAT",
 ];
 

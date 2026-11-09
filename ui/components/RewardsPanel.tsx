@@ -58,6 +58,10 @@ function envToken(currency: string): Address | null {
     USDT: process.env.NEXT_PUBLIC_CELO_USDT_ADDRESS || process.env.CELO_USDT_ADDRESS,
     wARS: process.env.NEXT_PUBLIC_CELO_WARS_ADDRESS || process.env.CELO_WARS_ADDRESS,
     wBRL: process.env.NEXT_PUBLIC_CELO_WBRL_ADDRESS || process.env.CELO_WBRL_ADDRESS,
+    wCOP: process.env.NEXT_PUBLIC_CELO_WCOP_ADDRESS || process.env.CELO_WCOP_ADDRESS,
+    wMXN: process.env.NEXT_PUBLIC_CELO_WMXN_ADDRESS || process.env.CELO_WMXN_ADDRESS,
+    wPEN: process.env.NEXT_PUBLIC_CELO_WPEN_ADDRESS || process.env.CELO_WPEN_ADDRESS,
+    wCLP: process.env.NEXT_PUBLIC_CELO_WCLP_ADDRESS || process.env.CELO_WCLP_ADDRESS,
     USAT: process.env.NEXT_PUBLIC_CELO_USAT_ADDRESS || process.env.CELO_USAT_ADDRESS,
   };
   const defaults: Record<string, string> = {
@@ -66,6 +70,10 @@ function envToken(currency: string): Address | null {
     USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
     wARS: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D",
     wBRL: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0",
+    wCOP: "0xE4fE50cdD716522A56204e234E6cB79A54C3B776",
+    wMXN: "0x4f417369Bc31668B02E3Fd54B54B2bD8Cb6cedf",
+    wPEN: "0xBe7F3fB02B4E5F7E4D12d26bA2d2e72EA0808F1b",
+    wCLP: "0x9E50D7f9B72E5a09F1E6A99c50EA11B7bA18e1aE",
     USAT: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771",
   };
   const raw = (map[currency] || defaults[currency] || "").trim();
