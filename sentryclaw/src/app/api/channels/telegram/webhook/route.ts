@@ -30,7 +30,7 @@ import {
 } from "@/server/channels/telegram/adapter";
 import { tryHandleSentryEngagementUpdate } from "@/server/channels/telegram/engagement-bridge";
 import { tryHandleSentryTelegramUpdate } from "@/server/channels/telegram/sentry-bridge";
-import { deleteMessage, sendMessage } from "@/server/channels/telegram/bot-api";
+import { deleteMessage, editMessageText, sendMessage } from "@/server/channels/telegram/bot-api";
 import { extractRequestId, logError, logInfo, logWarn } from "@/server/log";
 import { createOperationContext, withOperationContext } from "@/server/observability/operation-context";
 import { OPENCLAW_TELEGRAM_WEBHOOK_PORT } from "@/server/openclaw/config";
@@ -919,13 +919,26 @@ export async function POST(request: Request): Promise<Response> {
         outcome: "workflow-started",
       });
     } catch (error) {
-      // Best-effort clean up the boot message so the user doesn't see an orphan
-      // message left over from a failed workflow start on Telegram's retry path.
+      // Best-effort update the boot message to a user-visible error rather than
+      // deleting it. Deleting causes the user to see nothing and Telegram will
+      // retry the webhook (500 response), repeating the cycle indefinitely.
+      // Leaving the message visible (even if stale) is better UX on failure.
       if (bootMessageId && chatId) {
         try {
-          await deleteMessage(config.botToken, Number(chatId), bootMessageId);
+          await editMessageText(
+            config.botToken,
+            Number(chatId),
+            bootMessageId,
+            "\u26a0\ufe0f Couldn't start. Telegram will retry automatically \u2014 please wait a moment.",
+          );
         } catch {
-          // Don't let cleanup failure block the error response.
+          // editMessageText may fail (e.g. message already edited by workflow).
+          // Fall back to deleting so we do not leave a stale wake message.
+          try {
+            await deleteMessage(config.botToken, Number(chatId), bootMessageId);
+          } catch {
+            // Don't let cleanup failure block the error response.
+          }
         }
       }
       const dedupRelease = await releaseTelegramWebhookDedupLockForRetry(dedupLock);
