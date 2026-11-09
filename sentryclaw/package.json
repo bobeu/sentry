@@ -25,7 +25,7 @@
     "test:deploy-requirements": "node --import tsx --test src/server/deploy-requirements.test.ts",
     "test:lifecycle": "node --import tsx --test src/server/sandbox/lifecycle.test.ts",
     "verify:observability-pass": "pnpm run test:launch-verify && pnpm run test:preflight && pnpm run test:deploy-requirements && pnpm run test:lifecycle",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@vercel/oidc": "^3.2.0",

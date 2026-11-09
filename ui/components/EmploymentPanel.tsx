@@ -62,8 +62,7 @@ export function EmploymentPanel() {
         void openAgreement(true);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once on mount for ?hire=1
-  }, []);
+      }, []);
 
   async function openAgreement(forHire: boolean) {
     setHireMode(forHire);

@@ -193,7 +193,7 @@ export function toComicDisplay(text: string): string {
  * Final envelope for every Sentry reply.
  * Brand header only — body stays normal weight so **bold** is reserved for real emphasis.
  */
-export function formatSentryMessage(raw: string, _opts?: { comic?: boolean }): string {
+export function formatSentryMessage(raw: string, _opts?: { comic?: boolean }) /* eslint-disable-line @typescript-eslint/no-unused-vars */: string {
   let body = toTelegramHtml(raw);
   if (!body) return "";
   // Prefer clear paragraphs (blank line between blocks)

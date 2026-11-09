@@ -15,7 +15,7 @@ import {
 import { celo } from "viem/chains";
 import { useToast } from "@/components/Toast";
 import { getInjectedProvider } from "@/lib/wagmi";
-import { PAYMENT_CURRENCIES, tokenDecimals, type PaymentCurrency } from "@/lib/payment-currency";
+import { PAYMENT_CURRENCIES, tokenDecimals, isPaymentCurrency, type PaymentCurrency } from "@/lib/payment-currency";
 import { CELO_ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 
 type RewardRow = {
@@ -133,9 +133,9 @@ export function RewardsPanel({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (
       row?.rewardCurrency &&
-      PAYMENT_CURRENCIES.includes(row.rewardCurrency as any)
+      isPaymentCurrency(row.rewardCurrency)
     ) {
-      setFundCurrency(row.rewardCurrency as PaymentCurrency);
+      setFundCurrency(row.rewardCurrency);
     }
   }, [row?.rewardCurrency, row?.groupId]);
 
