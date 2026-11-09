@@ -520,6 +520,9 @@ export class RewardService {
       USDm: 0,
       USDC: 0,
       USDT: 0,
+      wARS: 0,
+      wBRL: 0,
+      USAT: 0,
     };
     for (const row of rows) {
       if (!isPaymentCurrency(row.currency)) continue;
