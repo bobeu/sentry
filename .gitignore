@@ -41,4 +41,4 @@ smartContracts/tests/dist/
 
 # Dev docs
 PROMPTS.md
-scripts
+/scripts

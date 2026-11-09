@@ -18,6 +18,7 @@
     "bot:webhook": "tsx scripts/setup-telegram-webhook.ts",
     "scheduler": "tsx scripts/run-scheduler.ts",
     "test": "tsx --test tests/backend.test.ts",
+    "send:tagged": "tsx scripts/send-tagged-tx.ts",
     "start:all": "pnpm prisma:generate && pnpm prisma:deploy && pnpm dev",
     "start:dev": "pnpm prisma:generate && pnpm prisma:migrate && pnpm dev",
     "start:prod": "pnpm prisma:deploy && pnpm start"
