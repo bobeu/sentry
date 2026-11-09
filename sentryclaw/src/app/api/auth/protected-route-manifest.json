@@ -1,0 +1,208 @@
+{
+  "version": 3,
+  "generatedAt": "2026-05-06T20:01:40.196Z",
+  "roots": [
+    "src/app/api/admin",
+    "src/app/api/firewall",
+    "src/app/api/debug"
+  ],
+  "discoveredRouteCount": 48,
+  "unauthenticatedRouteCount": 0,
+  "violationCount": 0,
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/api/admin/channel-secrets"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/lifecycle-lock"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/firewall/allowlist"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/firewall/learned"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/channel-forward-diag"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/channels/dlq"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/faq"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/launch-verify"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/lifecycle-lock"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/logs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/preflight"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/prepare-restore"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/sandbox-diag"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/snapshots"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/watchdog"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/why-not-ready"
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/after-timing"
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/lock-timing"
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/store-timing"
+    },
+    {
+      "method": "GET",
+      "path": "/api/firewall"
+    },
+    {
+      "method": "GET",
+      "path": "/api/firewall/diagnostics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/firewall/report"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/channel-secrets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ensure"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/launch-verify"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/prepare-restore"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/refresh-token"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/snapshots"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/snapshots/delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/snapshots/restore"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ssh"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/stop"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/watchdog"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/cold-start"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/oidc-timing"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/pre-create-timing"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/restore-waterfall"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/sandbox-timing"
+    },
+    {
+      "method": "POST",
+      "path": "/api/debug/sdk-import-timing"
+    },
+    {
+      "method": "POST",
+      "path": "/api/firewall/allowlist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/firewall/ingest"
+    },
+    {
+      "method": "POST",
+      "path": "/api/firewall/promote"
+    },
+    {
+      "method": "POST",
+      "path": "/api/firewall/sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/firewall/test"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/admin/channel-secrets"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/firewall"
+    }
+  ],
+  "unauthenticatedRoutes": [],
+  "violations": []
+}

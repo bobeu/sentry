@@ -1,0 +1,323 @@
+import type { PublicChannelState } from "@/shared/channel-admin-state";
+import type { HostedFeatureSupportMatrix } from "@/shared/hosted-feature-support";
+import type {
+  RestorePreparedStatus,
+  RestorePreparedReason,
+  RestorePhaseMetrics,
+  RestoreOracleState,
+} from "@/shared/types";
+import type {
+  RestoreTargetAttestation,
+  RestoreTargetPlan,
+} from "@/shared/launch-verification";
+
+export type DomainCategory = "npm" | "curl" | "git" | "dns" | "fetch" | "unknown";
+
+export type LearnedDomain = {
+  domain: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  hitCount: number;
+  categories?: DomainCategory[];
+};
+
+export type FirewallEvent = {
+  id: string;
+  timestamp: number;
+  action: string;
+  decision: string;
+  domain?: string;
+  reason?: string;
+  source?: string;
+  sourceCommand?: string;
+  category?: DomainCategory;
+};
+
+export type SetupProgressLine = {
+  ts: number;
+  stream: "stdout" | "stderr" | "system";
+  text: string;
+};
+
+export type SetupProgress = {
+  attemptId: string;
+  active: boolean;
+  phase:
+    | "creating-sandbox"
+    | "resuming-sandbox"
+    | "installing-openclaw"
+    | "installing-bun"
+    | "cleaning-cache"
+    | "installing-plugin"
+    | "writing-config"
+    | "checking-version"
+    | "starting-gateway"
+    | "waiting-for-gateway"
+    | "pairing-device"
+    | "applying-firewall"
+    | "ready"
+    | "failed";
+  phaseLabel: string;
+  startedAt: number;
+  updatedAt: number;
+  preview: string | null;
+  lines: SetupProgressLine[];
+};
+
+export type StatusPayload = {
+  authMode: "admin-secret" | "sign-in-with-vercel";
+  storeBackend: string;
+  persistentStore: boolean;
+  sandboxSdkVersion?: string | null;
+  openclawVersion?: string | null;
+  status: string;
+  sandboxId: string | null;
+  snapshotId: string | null;
+  gatewayReady: boolean;
+  gatewayStatus: "ready" | "not-ready" | "unknown";
+  gatewayCheckedAt: number | null;
+  gatewayUrl: string;
+  lastError: string | null;
+  lastKeepaliveAt: number | null;
+  sleepAfterMs: number;
+  heartbeatIntervalMs: number;
+  timeoutRemainingMs: number | null;
+  timeoutSource: "live" | "estimated" | "none";
+  setupProgress: SetupProgress | null;
+  firewall: {
+    mode: "disabled" | "learning" | "enforcing";
+    allowlist: string[];
+    learned: LearnedDomain[];
+    events: FirewallEvent[];
+    updatedAt: number;
+    lastIngestedAt: number | null;
+    learningStartedAt: number | null;
+    commandsObserved: number;
+    wouldBlock: string[];
+  };
+  channels: PublicChannelState;
+  featureSupport?: HostedFeatureSupportMatrix;
+  restoreTarget: {
+    restorePreparedStatus: RestorePreparedStatus;
+    restorePreparedReason: RestorePreparedReason | null;
+    restorePreparedAt: number | null;
+    snapshotDynamicConfigHash: string | null;
+    runtimeDynamicConfigHash: string | null;
+    snapshotAssetSha256: string | null;
+    runtimeAssetSha256: string | null;
+    attestation?: RestoreTargetAttestation;
+    plan?: RestoreTargetPlan;
+    oracle?: RestoreOracleState;
+  };
+  lifecycle: {
+    lastRestoreMetrics: RestorePhaseMetrics | null;
+    restoreHistory: RestorePhaseMetrics[];
+    lastTokenRefreshAt: number | null;
+    lastTokenSource: "oidc" | "api-key" | null;
+    lastTokenExpiresAt: number | null;
+    lastTokenRefreshError: string | null;
+    consecutiveTokenRefreshFailures: number;
+    breakerOpenUntil: number | null;
+  };
+  user: {
+    sub: string;
+    email?: string;
+    name?: string;
+    preferredUsername?: string;
+  } | null;
+};
+
+export type UnauthorizedPayload = {
+  authorizeUrl?: string;
+  error: string;
+  message: string;
+};
+
+export type SlackTestPayload = {
+  ok: boolean;
+  team: string;
+  user: string;
+  botId: string;
+};
+
+export type TelegramPreviewPayload = {
+  ok: boolean;
+  bot: {
+    id: number;
+    first_name: string;
+    username?: string;
+  };
+};
+
+export type DiagnosticsResponse = {
+  mode: "disabled" | "learning" | "enforcing";
+  learningHealth: {
+    durationMs: number | null;
+    commandsObserved: number;
+    uniqueDomains: number;
+    lastIngestedAt: number | null;
+    stalenessMs: number | null;
+  };
+  syncStatus: {
+    lastAppliedAt: number | null;
+    lastFailedAt: number | null;
+    lastReason: string | null;
+  };
+  ingestionStatus: {
+    lastSkipReason: string | null;
+    consecutiveSkips: number;
+  };
+  wouldBlockCount: number;
+};
+
+export type FirewallIngestOutcome = {
+  timestamp: number;
+  durationMs: number;
+  domainsSeenCount: number;
+  newCount: number;
+  updatedCount: number;
+  skipReason: string | null;
+};
+
+export type FirewallSyncOutcome = {
+  timestamp: number;
+  durationMs: number;
+  allowlistCount: number;
+  policyHash: string;
+  applied: boolean;
+  reason: string;
+};
+
+export type FirewallStatePayload = {
+  mode: "disabled" | "learning" | "enforcing";
+  allowlist: string[];
+  learned: LearnedDomain[];
+  events: FirewallEvent[];
+  updatedAt: number;
+  lastIngestedAt: number | null;
+  learningStartedAt: number | null;
+  commandsObserved: number;
+  wouldBlock: string[];
+  lastSyncAppliedAt: number | null;
+  lastSyncFailedAt: number | null;
+  lastSyncReason: string | null;
+  lastIngestionSkipReason: string | null;
+  ingestionSkipCount: number;
+  lastIngestOutcome: FirewallIngestOutcome | null;
+  lastSyncOutcome: FirewallSyncOutcome | null;
+};
+
+export type FirewallReportPayload = {
+  schemaVersion: 1;
+  generatedAt: number;
+  state: FirewallStatePayload;
+  diagnostics: DiagnosticsResponse;
+  groupedLearned: Array<{
+    registrableDomain: string;
+    domains: LearnedDomain[];
+  }>;
+  wouldBlock: string[];
+  lastIngest: FirewallIngestOutcome | null;
+  lastSync: FirewallSyncOutcome | null;
+  limitations: string[];
+  policyHash: string;
+};
+
+export type LiveConfigSyncPayload = {
+  outcome: "applied" | "skipped" | "degraded" | "failed";
+  reason: string | null;
+  liveConfigFresh: boolean;
+  operatorMessage: string | null;
+};
+
+export type ActionErrorCode =
+  | "unauthorized"
+  | "http-error"
+  | "network-error";
+
+export type ActionSuccessMeta = {
+  requestId: string;
+  action: string;
+  label: string;
+  status: number | null;
+  refreshed: boolean;
+  liveConfigSync?: LiveConfigSyncPayload;
+};
+
+export type ActionErrorMeta = {
+  requestId: string;
+  action: string;
+  label: string;
+  status: number | null;
+  code: ActionErrorCode;
+  retryable: boolean;
+};
+
+export type ActionResult<T> =
+  | { ok: true; data: T | null; meta: ActionSuccessMeta }
+  | { ok: false; error: string; data?: unknown; meta: ActionErrorMeta };
+
+export type AdminActionEvent =
+  | {
+      event: "admin.action.start";
+      source: "admin-shell";
+      ts: string;
+      requestId: string;
+      action: string;
+      label: string;
+      method: string;
+      refreshAfter: boolean;
+    }
+  | {
+      event: "admin.action.success";
+      source: "admin-shell";
+      ts: string;
+      requestId: string;
+      action: string;
+      label: string;
+      status: number | null;
+      refreshed: boolean;
+    }
+  | {
+      event: "admin.action.error";
+      source: "admin-shell";
+      ts: string;
+      requestId: string;
+      action: string;
+      label: string;
+      status: number | null;
+      code: ActionErrorCode;
+      error: string;
+      retryable: boolean;
+    }
+  | {
+      event: "admin.action.live-config-warning";
+      source: "admin-shell";
+      ts: string;
+      requestId: string;
+      action: string;
+      label: string;
+      status: number | null;
+      outcome: string;
+      reason: string | null;
+    }
+  | {
+      event: "admin.read.error";
+      source: "admin-shell";
+      ts: string;
+      requestId: string;
+      action: string;
+      status: number | null;
+      code: "unauthorized" | "http-error" | "network-error";
+      error: string;
+    };
+
+export type RunAction = (
+  action: string,
+  input: RequestInit & { label: string; successMessage?: string },
+) => Promise<boolean>;
+
+export type RequestJson = <T>(
+  action: string,
+  input: RequestInit & { label: string; successMessage?: string; refreshAfter?: boolean },
+) => Promise<ActionResult<T>>;

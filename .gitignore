@@ -21,10 +21,6 @@ sentryclaw/.env
 sentryclaw/.env.local
 sentryclaw/.vercel/
 
-# Hosted OpenClaw clone (separate Vercel project; do not vendor upstream into Sentry git)
-# Keep a thin README if present; ignore the cloned app tree.
-sentryclaw/**
-!sentryclaw/README.sentry.md
 
 # AskBot judge credentials (API key + payout wallet)
 askbots_secrets/
@@ -41,5 +37,5 @@ smartContracts/tests/dist/
 
 # Dev docs
 PROMPTS.md
-scripts
+/scripts
 ui/scripts

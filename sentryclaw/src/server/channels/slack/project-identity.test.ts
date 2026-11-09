@@ -1,0 +1,203 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildSlackManifest } from "./app-definition";
+
+import {
+  buildBotDisplayName,
+  buildDescription,
+  buildDisplayName,
+  getProjectIdentity,
+  slugifyForSlash,
+  type ProjectIdentity,
+} from "./project-identity";
+
+function identity(scope: string, name: string): ProjectIdentity {
+  return { scope, name, combined: `${scope}-${name}` };
+}
+
+function withEnv<T>(
+  vars: Record<string, string | undefined>,
+  fn: () => T,
+): T {
+  const prev: Record<string, string | undefined> = {};
+  for (const key of Object.keys(vars)) {
+    prev[key] = process.env[key];
+    if (vars[key] === undefined) delete process.env[key];
+    else process.env[key] = vars[key]!;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(prev)) {
+      if (prev[key] === undefined) delete process.env[key];
+      else process.env[key] = prev[key]!;
+    }
+  }
+}
+
+test("getProjectIdentity: reads and sanitizes env vars", () => {
+  withEnv(
+    { VCLAW_PROJECT_SCOPE: "Vercel_Labs!", VCLAW_PROJECT_NAME: "My Bot.v2" },
+    () => {
+      const id = getProjectIdentity();
+      assert.equal(id.scope, "vercel-labs");
+      assert.equal(id.name, "my-bot-v2");
+      assert.equal(id.combined, "vercel-labs-my-bot-v2");
+    },
+  );
+});
+
+test("getProjectIdentity: falls back when env vars missing", () => {
+  withEnv(
+    {
+      VCLAW_PROJECT_SCOPE: undefined,
+      VCLAW_PROJECT_NAME: undefined,
+      VERCEL_PROJECT_ID: "prj_abc123xyz",
+    },
+    () => {
+      const id = getProjectIdentity();
+      assert.equal(id.scope, "vclaw");
+      // prj_abc123xyz → sanitize → prj-abc123xyz → slice(-8) = "bc123xyz"
+      assert.equal(id.name, "bc123xyz");
+    },
+  );
+});
+
+test("slugifyForSlash: short identity is returned verbatim", () => {
+  assert.equal(slugifyForSlash(identity("vercel-labs", "my-bot")), "/vercel-labs-my-bot");
+});
+
+test("slugifyForSlash: truncates and appends hash when over 31 chars", () => {
+  const id = identity("some-really-long-org-slug", "a-very-very-long-project-name-indeed");
+  const slashed = slugifyForSlash(id);
+  assert.ok(slashed.startsWith("/"));
+  assert.ok(slashed.length <= 32, `got ${slashed.length}: ${slashed}`);
+  // Hash suffix keeps identical-prefix identities distinct.
+  const other = slugifyForSlash(
+    identity("some-really-long-org-slug", "a-very-very-long-project-name-variant"),
+  );
+  assert.notEqual(slashed, other);
+});
+
+test("slugifyForSlash: deterministic for same input", () => {
+  const id = identity("aaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbb");
+  assert.equal(slugifyForSlash(id), slugifyForSlash(id));
+});
+
+test("buildDisplayName: format is `name (scope)` and ≤ 35 chars when it fits", () => {
+  assert.equal(buildDisplayName(identity("vercel-labs", "my-bot")), "my-bot (vercel-labs)");
+});
+
+test("buildDisplayName: drops scope (no mid-paren cut) when `name (scope)` exceeds 35", () => {
+  // Repro of the production bug: scope="vercel-internal-playground" +
+  // name="vercel-openclaw-3" was rendering as "vercel-openclaw-3 (vercel-internal-"
+  // — truncated mid-paren.
+  const display = buildDisplayName(
+    identity("vercel-internal-playground", "vercel-openclaw-3"),
+  );
+  assert.equal(display, "vercel-openclaw-3");
+  assert.ok(display.length <= 35);
+  assert.ok(!display.includes("(") || display.includes(")"));
+});
+
+test("buildDisplayName: truncates name when name alone exceeds 35 chars", () => {
+  const display = buildDisplayName(
+    identity("s", "a-very-very-very-very-very-very-long-project-name"),
+  );
+  assert.ok(display.length <= 35);
+  assert.ok(!display.includes("("));
+});
+
+test("buildDisplayName: honors override (trimmed, truncated to 35 chars)", () => {
+  assert.equal(
+    buildDisplayName(identity("vercel-labs", "my-bot"), "  My Custom Bot Name  "),
+    "My Custom Bot Name",
+  );
+  const long = buildDisplayName(
+    identity("vercel-labs", "my-bot"),
+    "a".repeat(100),
+  );
+  assert.ok(long.length <= 35);
+});
+
+test("buildDisplayName: empty/whitespace override falls through to identity", () => {
+  assert.equal(
+    buildDisplayName(identity("vercel-labs", "my-bot"), "   "),
+    "my-bot (vercel-labs)",
+  );
+  assert.equal(
+    buildDisplayName(identity("vercel-labs", "my-bot"), ""),
+    "my-bot (vercel-labs)",
+  );
+});
+
+test("buildBotDisplayName: uses `.` separator to satisfy Slack's [a-z0-9-_.] rule", () => {
+  const name = buildBotDisplayName(identity("vercel-labs", "my-bot"));
+  assert.equal(name, "my-bot.vercel-labs");
+  assert.match(name, /^[a-z0-9._-]+$/);
+});
+
+test("buildBotDisplayName: app-name override updates bot display name when bot override is omitted", () => {
+  const name = buildBotDisplayName(
+    identity("vercel-labs", "my-bot"),
+    "  My Custom Bot!  ",
+  );
+  assert.equal(name, "my-custom-bot");
+  assert.match(name, /^[a-z0-9._-]+$/);
+});
+
+test("buildBotDisplayName: bot-name override wins over app-name override", () => {
+  const name = buildBotDisplayName(
+    identity("vercel-labs", "my-bot"),
+    "My Custom App",
+    "Support Bot!",
+  );
+  assert.equal(name, "support-bot");
+  assert.match(name, /^[a-z0-9._-]+$/);
+});
+
+test("buildSlackManifest: app-name override drives app and bot fallback names only", () => {
+  const manifest = buildSlackManifest({
+    webhookUrl: "https://app.example.com/api/channels/slack/webhook",
+    identity: identity("vercel-labs", "my-bot"),
+    appName: "My Custom Bot",
+  }) as {
+    display_information: { name: string };
+    features: {
+      bot_user: { display_name: string };
+      slash_commands: Array<{ command: string }>;
+    };
+  };
+
+  assert.equal(manifest.display_information.name, "My Custom Bot");
+  assert.equal(manifest.features.bot_user.display_name, "my-custom-bot");
+  assert.equal(manifest.features.slash_commands[0]?.command, "/vercel-labs-my-bot");
+});
+
+
+
+test("buildSlackManifest: bot-name override drives only bot display name", () => {
+  const manifest = buildSlackManifest({
+    webhookUrl: "https://app.example.com/api/channels/slack/webhook",
+    identity: identity("vercel-labs", "my-bot"),
+    appName: "My Custom App",
+    botName: "Support Bot!",
+  }) as {
+    display_information: { name: string };
+    features: {
+      bot_user: { display_name: string };
+      slash_commands: Array<{ command: string }>;
+    };
+  };
+
+  assert.equal(manifest.display_information.name, "My Custom App");
+  assert.equal(manifest.features.bot_user.display_name, "support-bot");
+  assert.equal(manifest.features.slash_commands[0]?.command, "/vercel-labs-my-bot");
+});
+
+test("buildDescription: always includes full untruncated `scope=X project=Y` and ≤ 140 chars", () => {
+  const desc = buildDescription(identity("vercel-labs", "my-bot"));
+  assert.ok(desc.includes("scope=vercel-labs project=my-bot"));
+  assert.ok(desc.length <= 140);
+});

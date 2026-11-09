@@ -1,0 +1,21 @@
+# Readiness Glossary
+
+- `oauthComplete`: platform OAuth completed.
+- `credentialsSaved`: app persisted channel config.
+- `authTestPassed`: platform credential test passed.
+- `configSyncApplied`: wrapper wrote/synced OpenClaw channel config.
+- `handlerRegistered`: sandbox native route is mounted.
+- `routeReady`: operator-facing route check passes.
+- `lastForwardAccepted`: recent `lastForward` is `ok=true classification=accepted`.
+- `nativeAccepted`: handler accepted the payload.
+- `userVisibleReply`: platform user saw a reply or explicit status update.
+- `deliveryReady`: product label; inspect the evidence behind it before trusting.
+- `deliveryId`: Per-message correlation ID used to tie app webhook logs, workflow logs, sandbox forwards, and handoff evidence together.
+- `workflowRunId`: Vercel Workflow run identifier for `drainChannelWorkflow`; useful for proving whether fallback actually ran, stalled, retried, or completed.
+- `sandboxId`: Actual Vercel Sandbox runtime identifier accepted by `sandbox exec` / `sandbox connect`.
+- `projectId`: Vercel project identifier; valid for `--project`, not as the positional sandbox ID.
+- `oc-prj id`: OpenClaw/project/instance-style identifier. Treat as context, not proof of a live Vercel Sandbox runtime ID.
+- `sandboxRuntimeReachable`: The sandbox can be inspected through `npx sandbox` or the app admin SSH/exec fallback.
+- `workflowStateObserved`: Workflow run state has been inspected through `npx workflow` or explicitly unavailable with fallback logs collected.
+- `runtimeLogCorrelated`: Vercel logs, admin logs, and channel request IDs point to the same incident.
+- `projectTargetVerified`: CLI output and live runtime evidence prove the intended Vercel project/team/deployment was inspected, rather than whatever `.vercel/project.json` inferred.

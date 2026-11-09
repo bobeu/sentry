@@ -1,0 +1,296 @@
+import { getVercelOidcToken } from "@vercel/oidc";
+import {
+  DEFAULT_OPENCLAW_INSTANCE_ID,
+  INSTANCE_ID_OVERRIDE_GLOBAL_KEY,
+  resolveOpenclawInstanceId,
+} from "@/shared/types";
+import { logWarn } from "@/server/log";
+
+export type AuthMode = "admin-secret" | "sign-in-with-vercel";
+
+export type AiGatewayCredentialSource = "oidc" | "api-key";
+
+export type AiGatewayCredential = {
+  token: string;
+  source: AiGatewayCredentialSource;
+  expiresAt: number | null;
+};
+
+export function getAuthMode(): AuthMode {
+  return process.env.VERCEL_AUTH_MODE === "sign-in-with-vercel"
+    ? "sign-in-with-vercel"
+    : "admin-secret";
+}
+
+export function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * @deprecated Use `resolveSessionSecret()` from `@/server/auth/session-secret`.
+ *
+ * This sync accessor remains for the deployment contract and test surface
+ * that need to observe the configured env var without touching the store.
+ * Runtime callers must use the async resolver so admin-secret mode can
+ * auto-generate and persist a session secret through Redis on first login.
+ */
+export function getSessionSecret(): string {
+  const configured = process.env.SESSION_SECRET?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  if (getAuthMode() === "sign-in-with-vercel" && isVercelDeployment()) {
+    throw new Error(
+      "SESSION_SECRET is required for deployed sign-in-with-vercel mode.",
+    );
+  }
+
+  return "openclaw-single-local-session-secret-change-me";
+}
+
+export function getOauthClientId(): string {
+  const clientId = process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID?.trim();
+  if (!clientId) {
+    throw new Error("NEXT_PUBLIC_VERCEL_APP_CLIENT_ID is required.");
+  }
+  return clientId;
+}
+
+export function getOauthClientSecret(): string {
+  const clientSecret = process.env.VERCEL_APP_CLIENT_SECRET?.trim();
+  if (!clientSecret) {
+    throw new Error("VERCEL_APP_CLIENT_SECRET is required.");
+  }
+  return clientSecret;
+}
+
+export function getStoreEnv(): { url: string } | null {
+  const url =
+    process.env.REDIS_URL?.trim() ?? process.env.KV_URL?.trim() ?? "";
+
+  if (!url) {
+    return null;
+  }
+
+  return { url };
+}
+
+let _instanceIdOverrideForTesting: string | null = null;
+
+function readInstanceIdOverrideFromGlobal(): string | null | undefined {
+  return (
+    globalThis as typeof globalThis & {
+      [INSTANCE_ID_OVERRIDE_GLOBAL_KEY]?: string | null;
+    }
+  )[INSTANCE_ID_OVERRIDE_GLOBAL_KEY];
+}
+
+export function getOpenclawInstanceId(): string {
+  return resolveOpenclawInstanceId(
+    _instanceIdOverrideForTesting ??
+      readInstanceIdOverrideFromGlobal() ??
+      process.env.OPENCLAW_INSTANCE_ID ??
+      process.env.VERCEL_PROJECT_ID,
+  );
+}
+
+export { DEFAULT_OPENCLAW_INSTANCE_ID };
+
+export function _setInstanceIdOverrideForTesting(id: string | null): void {
+  _instanceIdOverrideForTesting = id;
+  (
+    globalThis as typeof globalThis & {
+      [INSTANCE_ID_OVERRIDE_GLOBAL_KEY]?: string | null;
+    }
+  )[INSTANCE_ID_OVERRIDE_GLOBAL_KEY] = id;
+}
+
+export type CronSecretSource = "cron-secret" | "admin-secret" | "missing";
+
+export type CronSecretConfig = {
+  value: string | null;
+  source: CronSecretSource;
+};
+
+export function getCronSecretConfig(): CronSecretConfig {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (cronSecret) {
+    return { value: cronSecret, source: "cron-secret" };
+  }
+  const adminSecret = process.env.ADMIN_SECRET?.trim();
+  if (adminSecret) {
+    return { value: adminSecret, source: "admin-secret" };
+  }
+  return { value: null, source: "missing" };
+}
+
+export function getCronSecret(): string | null {
+  return getCronSecretConfig().value;
+}
+
+let _aiGatewayTokenOverride: string | undefined | null = null;
+
+export function _setAiGatewayTokenOverrideForTesting(value: string | undefined | null): void {
+  _aiGatewayTokenOverride = value;
+}
+
+let _aiGatewayCredentialOverride: AiGatewayCredential | null | undefined;
+
+export function _setAiGatewayCredentialOverrideForTesting(cred: AiGatewayCredential | null): void {
+  _aiGatewayCredentialOverride = cred === null ? undefined : cred;
+}
+
+/**
+ * Decode the `exp` claim from a JWT without verification.
+ * Returns the numeric Unix epoch seconds, or `null` on any parse error.
+ */
+export function decodeJwtExp(token: string): number | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2 || !parts[1]) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (typeof payload?.exp === "number" && Number.isFinite(payload.exp)) {
+      return payload.exp;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve an AI Gateway credential with source tracking and TTL info.
+ *
+ * Priority in tests:
+ *  1. Explicit test overrides
+ *  2. Static `AI_GATEWAY_API_KEY` env var
+ *  3. Never fetch OIDC
+ *
+ * Priority:
+ *  1. Static `AI_GATEWAY_API_KEY` when set (explicit operator override; does not expire)
+ *  2. Vercel OIDC token (`@vercel/oidc`) on deployed Vercel, or locally after `vercel env pull`
+ *
+ * Preferring an explicit API key avoids injecting a short-lived OIDC bearer that AI Gateway
+ * rejects (HTTP 401 asking for AI_GATEWAY_API_KEY) while a valid key is already configured.
+ *
+ * Returns `null` or `undefined` when no credential is available.
+ */
+export async function resolveAiGatewayCredentialOptional(): Promise<AiGatewayCredential | null | undefined> {
+  // Test credential override takes highest priority.
+  if (_aiGatewayCredentialOverride !== undefined) {
+    return _aiGatewayCredentialOverride;
+  }
+
+  // Legacy token override for existing tests.
+  if (_aiGatewayTokenOverride !== null) {
+    if (_aiGatewayTokenOverride === undefined) return null;
+    return { token: _aiGatewayTokenOverride, source: "oidc", expiresAt: decodeJwtExp(_aiGatewayTokenOverride) };
+  }
+
+  // Skip real OIDC lookups in tests. Use the static key when provided.
+  if (process.env.NODE_ENV === "test") {
+    const staticKey = process.env.AI_GATEWAY_API_KEY?.trim();
+    if (staticKey) {
+      return { token: staticKey, source: "api-key", expiresAt: null };
+    }
+    return undefined;
+  }
+
+  // Explicit API key wins over OIDC whenever present.
+  const staticKey = process.env.AI_GATEWAY_API_KEY?.trim();
+  if (staticKey) {
+    return { token: staticKey, source: "api-key", expiresAt: null };
+  }
+
+  // OIDC on Vercel deployments, or locally when pulled into the environment.
+  try {
+    const oidcToken = await getVercelOidcToken();
+    if (oidcToken) {
+      return { token: oidcToken, source: "oidc", expiresAt: decodeJwtExp(oidcToken) };
+    }
+  } catch {
+    // OIDC unavailable.
+  }
+
+  return null;
+}
+
+/**
+ * Resolve an AI Gateway bearer token.
+ *
+ * Returns `undefined` when no credential is available.
+ */
+export async function getAiGatewayBearerTokenOptional(): Promise<string | undefined> {
+  const cred = await resolveAiGatewayCredentialOptional();
+  return cred?.token;
+}
+
+export function isVercelDeployment(): boolean {
+  return Boolean(
+    process.env.VERCEL?.trim() ||
+      process.env.VERCEL_ENV?.trim() ||
+      process.env.VERCEL_URL?.trim() ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim(),
+  );
+}
+
+/**
+ * Single shared rule: a durable Redis store is required on Vercel deployments.
+ * Consumed by both runtime (getStore) and preflight (store check).
+ */
+export function requiresDurableStore(): boolean {
+  return isVercelDeployment();
+}
+
+/**
+ * Resolve the openclaw npm package spec to install in the sandbox.
+ *
+ * Resolution order:
+ * 1. `OPENCLAW_PACKAGE_SPEC` env var (e.g. "openclaw@1.2.3", "openclaw@latest")
+ * 2. Falls back to a known-good pinned version when unset (all environments).
+ *
+ * The fallback is pinned rather than "openclaw@latest" because upstream
+ * releases can ship broken dependencies (e.g. 2026.3.31 — see
+ * openclaw/openclaw#59081).  On Vercel deployments the fallback is also
+ * logged as a warning because it may drift from the intended version.
+ */
+const OPENCLAW_DEFAULT_PACKAGE_SPEC = "openclaw@2026.4.12";
+
+export type OpenclawPackageSpecSource = "explicit" | "fallback";
+
+export type OpenclawPackageSpecConfig = {
+  value: string;
+  source: OpenclawPackageSpecSource;
+};
+
+let packageSpecFallbackWarned = false;
+
+export function _resetOpenclawPackageSpecWarnedForTesting(): void {
+  packageSpecFallbackWarned = false;
+}
+
+export function getOpenclawPackageSpecConfig(): OpenclawPackageSpecConfig {
+  const explicit = process.env.OPENCLAW_PACKAGE_SPEC?.trim();
+  if (explicit) {
+    return { value: explicit, source: "explicit" };
+  }
+  if (isVercelDeployment() && !packageSpecFallbackWarned) {
+    packageSpecFallbackWarned = true;
+    logWarn("env.openclaw_package_spec_fallback", {
+      resolved: OPENCLAW_DEFAULT_PACKAGE_SPEC,
+      reason: "OPENCLAW_PACKAGE_SPEC is not set on a Vercel deployment",
+    });
+  }
+  return { value: OPENCLAW_DEFAULT_PACKAGE_SPEC, source: "fallback" };
+}
+
+export function getOpenclawPackageSpec(): string {
+  return getOpenclawPackageSpecConfig().value;
+}
+
+export async function getAiGatewayAuthMode(): Promise<"oidc" | "api-key" | "unavailable"> {
+  const cred = await resolveAiGatewayCredentialOptional();
+  if (!cred) return "unavailable";
+  return cred.source;
+}

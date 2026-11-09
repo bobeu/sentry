@@ -1,0 +1,71 @@
+{
+  "name": "vercel-openclaw",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "typecheck:build": "tsc --noEmit -p tsconfig.build.json",
+    "test": "node scripts/test.mjs",
+    "test:watch": "node scripts/test.mjs --watch",
+    "smoke:remote": "tsx src/server/smoke/remote-smoke.ts",
+    "slack:debug-send": "node scripts/slack-debug-send.mjs",
+    "test:telegram-wake": "node scripts/test-telegram-wake.mjs",
+    "verify": "node scripts/verify.mjs",
+    "verify:package-manager": "node scripts/verify-package-manager.mjs",
+    "check:verify-contract": "node scripts/check-verifier-contract.mjs",
+    "audit:verifier-surface": "node scripts/audit-verifier-surface.mjs",
+    "audit:dead-channel-queue-surface": "node scripts/audit-dead-channel-queue-surface.mjs",
+    "check:deploy-readiness": "node scripts/check-deploy-readiness.mjs",
+    "test:launch-verify": "node --import tsx --test src/app/api/admin/launch-verify/route.test.ts",
+    "test:preflight": "node --import tsx --test src/server/deploy-preflight.test.ts",
+    "test:deploy-requirements": "node --import tsx --test src/server/deploy-requirements.test.ts",
+    "test:lifecycle": "node --import tsx --test src/server/sandbox/lifecycle.test.ts",
+    "verify:observability-pass": "pnpm run test:launch-verify && pnpm run test:preflight && pnpm run test:deploy-requirements && pnpm run test:lifecycle",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@vercel/oidc": "^3.2.0",
+    "@vercel/queue": "^0.1.4",
+    "@vercel/sandbox": "^2.0.0-beta.10",
+    "geist": "^1.7.0",
+    "ioredis": "^5.4.2",
+    "jose": "^6.1.0",
+    "next": "16.1.6",
+    "next-themes": "^0.4.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sonner": "^2.0.7",
+    "virtua": "^0.48.6",
+    "workflow": "^4.2.0-beta.71",
+    "zod": "^4.3.6"
+  },
+  "engines": {
+    "node": ">=20.x",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "husky": "^9.1.7",
+    "tsx": "^4.20.6",
+    "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}
