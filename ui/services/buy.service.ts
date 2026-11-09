@@ -60,7 +60,7 @@ export class BuyService {
    * stamps the ERC-8021 attribution tag, and retries with payment credentials.
    */
   async fetchWithX402(url: string, init?: RequestInit): Promise<BuyCallResult> {
-    const operatorKey = process.env.SENTRY_OPERATOR_KEY || process.env.AGENT_PRIVATE_KEY;
+    const operatorKey = process.env.AGENT_KEY || process.env.SENTRY_OPERATOR_KEY || process.env.AGENT_PRIVATE_KEY;
 
     try {
       // First request (optimistic / discovery)
